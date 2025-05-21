@@ -1,3 +1,4 @@
+.DS_store
 sample_data/
 AutogluonModels/
 # Byte-compiled / optimized / DLL files
