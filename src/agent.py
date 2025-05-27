@@ -10,6 +10,7 @@ from docx import Document
 
 nest_asyncio.apply()
 
+
 class InteractiveProjectAgent:
     def __init__(self):
         self.client = AsyncClient()
@@ -41,14 +42,18 @@ Analyze the input and give guidance on what to do next. Based on your understand
     async def ask_agent(self, user_input: str, context: Optional[str] = "") -> str:
         # Add user input to conversation history
         if context:
-            full_prompt = f"{user_input.strip()}\n\n---\nAdditional context:\n{context.strip()}"
+            full_prompt = (
+                f"{user_input.strip()}\n\n---\nAdditional context:\n{context.strip()}"
+            )
         else:
             full_prompt = user_input.strip()
 
         self.add_to_history("user", full_prompt)
 
         # Create message list including full history
-        messages = [{"role": "system", "content": self.instruction}] + self.conversation_history
+        messages = [
+            {"role": "system", "content": self.instruction}
+        ] + self.conversation_history
 
         # Get model response
         response = await self.client.chat(model="gemma3:4b", messages=messages)
@@ -59,7 +64,8 @@ Analyze the input and give guidance on what to do next. Based on your understand
     def parse_intent_from_text(self, text: str) -> dict:
         lower_text = text.lower()
         return {
-            "enough_information": "enough information" in lower_text and "yes" in lower_text,
+            "enough_information": "enough information" in lower_text
+            and "yes" in lower_text,
             "needs_files": "upload" in lower_text or "file" in lower_text,
             "wants_to_train": "train" in lower_text,
             "use_existing_model": "existing model" in lower_text,
@@ -69,7 +75,9 @@ Analyze the input and give guidance on what to do next. Based on your understand
         }
 
     def extract_question(self, text: str) -> str:
-        match = re.search(r"(?:(?:need|please provide|missing).+?\?)", text, re.IGNORECASE)
+        match = re.search(
+            r"(?:(?:need|please provide|missing).+?\?)", text, re.IGNORECASE
+        )
         return match.group(0) if match else ""
 
     async def process_user_input(
@@ -83,7 +91,9 @@ Analyze the input and give guidance on what to do next. Based on your understand
         if parsed_intent["needs_files"] and file_path:
             file_text = self.read_word_document(Path(file_path))
             if not file_text.startswith("⚠️"):
-                file_summary = await self.ask_agent(f"The user uploaded this file:\n\n{file_text[:2000]}")
+                file_summary = await self.ask_agent(
+                    f"The user uploaded this file:\n\n{file_text[:2000]}"
+                )
                 parsed_intent["file_summary"] = file_summary
             else:
                 parsed_intent["file_error"] = file_text
@@ -92,4 +102,7 @@ Analyze the input and give guidance on what to do next. Based on your understand
         return parsed_intent
 
     def get_chat_history(self) -> str:
-        return "\n".join(f"**{m['role'].capitalize()}**: {m['content']}" for m in self.conversation_history)
+        return "\n".join(
+            f"**{m['role'].capitalize()}**: {m['content']}"
+            for m in self.conversation_history
+        )

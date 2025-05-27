@@ -11,9 +11,16 @@ st.title("🤖 Interactive Project Assistant")
 
 agent = InteractiveProjectAgent()
 
+
 def read_file_content(file_path: Path, mime: str) -> str:
     try:
-        if mime.startswith("text/") or file_path.suffix.lower() in [".html", ".css", ".py", ".json", ".csv"]:
+        if mime.startswith("text/") or file_path.suffix.lower() in [
+            ".html",
+            ".css",
+            ".py",
+            ".json",
+            ".csv",
+        ]:
             return file_path.read_text(encoding="utf-8", errors="ignore")
         elif file_path.suffix.lower() == ".docx":
             return agent.read_word_document(file_path)
@@ -22,9 +29,12 @@ def read_file_content(file_path: Path, mime: str) -> str:
     except Exception as e:
         return f"⚠️ Failed to read {file_path.name}: {e}"
 
+
 with st.form("user_input_form"):
     user_query = st.text_area("💬 What would you like help with?", height=150)
-    uploaded_files = st.file_uploader("📂 Upload any number of files", type=None, accept_multiple_files=True)
+    uploaded_files = st.file_uploader(
+        "📂 Upload any number of files", type=None, accept_multiple_files=True
+    )
     submitted = st.form_submit_button("Submit")
 
 if submitted and user_query:
@@ -32,7 +42,9 @@ if submitted and user_query:
 
     if uploaded_files:
         for file in uploaded_files:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.name).suffix) as tmp:
+            with tempfile.NamedTemporaryFile(
+                delete=False, suffix=Path(file.name).suffix
+            ) as tmp:
                 print(f"Processing file: {file.name}")
                 tmp.write(file.read())
                 tmp_path = Path(tmp.name)
@@ -44,7 +56,9 @@ if submitted and user_query:
     # print(f"Aggregated context: {aggregated_context}")
 
     with st.spinner("Thinking... 🤔"):
-        result_text = asyncio.run(agent.ask_agent(user_query, context=aggregated_context))
+        result_text = asyncio.run(
+            agent.ask_agent(user_query, context=aggregated_context)
+        )
         parsed = agent.parse_intent_from_text(result_text)
     if st.sidebar.button("🔁 Reset Conversation"):
         agent.conversation_history.clear()
@@ -54,13 +68,15 @@ if submitted and user_query:
 
     st.markdown("---")
     st.subheader("🧾 Parsed Understanding")
-    st.write({
-        "Has enough info?": parsed["enough_information"],
-        "Needs files or data?": parsed["needs_files"],
-        "Wants to train model?": parsed["wants_to_train"],
-        "Use existing model?": parsed["use_existing_model"],
-        "Extra question": parsed["extra_question"]
-    })
+    st.write(
+        {
+            "Has enough info?": parsed["enough_information"],
+            "Needs files or data?": parsed["needs_files"],
+            "Wants to train model?": parsed["wants_to_train"],
+            "Use existing model?": parsed["use_existing_model"],
+            "Extra question": parsed["extra_question"],
+        }
+    )
     st.markdown("---")
     st.subheader("🗂️ Chat History")
     st.markdown(agent.get_chat_history())
