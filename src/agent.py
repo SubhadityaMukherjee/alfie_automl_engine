@@ -1,108 +1,154 @@
-# agent.py (with file processing support)
-import asyncio
-import re
-from pathlib import Path
-from typing import Optional, Union
+import json
+from typing import List, Optional, Tuple
 
-import nest_asyncio
-from ollama import AsyncClient
-from docx import Document
+from pydantic import BaseModel, Field
 
-nest_asyncio.apply()
+from src.tasks import (LLMProcessingTask, TabularSupervisedClassificationTask,
+                       TabularSupervisedRegressionTask,
+                       TabularSupervisedTimeSeriesTask)
 
 
-class InteractiveProjectAgent:
-    def __init__(self):
-        self.client = AsyncClient()
-        self.session_context = {}
-        self.conversation_history = []
+class ChatbotTaskSchema(BaseModel):
+    task_type: Optional[str] = Field(
+        default=None,
+        description="What type of task is this? (e.g. classification, regression, etc.)",
+    )
+    need_to_train: Optional[str] = Field(
+        default=None, description="Does the user need to train the model? (yes/no)"
+    )
+    train_file: Optional[str] = Field(default=None, description="Path to training file")
+    test_file: Optional[str] = Field(default=None, description="Path to test file")
+    target_column: Optional[str] = Field(
+        default=None, description="Target column to predict"
+    )
+    external_handler: Optional[str] = Field(
+        default=None,
+        description="External handler like openml, huggingface or '' if not mentioned.",
+    )
 
-        self.instruction = """
-Analyze the input and give guidance on what to do next. Based on your understanding, answer the following in free text format (no JSON required):
+    def missing_fields(self) -> list[str]:
+        return [
+            name
+            for name, field in type(self).model_fields.items()
+            if getattr(self, name) in (None, "")
+        ]
 
-- Do you have enough information to act?
-- What other info (if any) do you need?
-- Does this involve file/data processing?
-- Is the user trying to train a model?
-- If so, do they want to use an existing model?
-- If they want to process files, process them and return the results.
-- Provide a next step or action plan.
-"""
-
-    def read_word_document(self, path: Path) -> str:
-        try:
-            doc = Document(str(path))
-            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
-        except Exception as e:
-            return f"⚠️ Error reading document: {e}"
-
-    def add_to_history(self, role: str, content: str):
-        self.conversation_history.append({"role": role, "content": content})
-
-    async def ask_agent(self, user_input: str, context: Optional[str] = "") -> str:
-        # Add user input to conversation history
-        if context:
-            full_prompt = (
-                f"{user_input.strip()}\n\n---\nAdditional context:\n{context.strip()}"
-            )
-        else:
-            full_prompt = user_input.strip()
-
-        self.add_to_history("user", full_prompt)
-
-        # Create message list including full history
-        messages = [
-            {"role": "system", "content": self.instruction}
-        ] + self.conversation_history
-
-        # Get model response
-        response = await self.client.chat(model="gemma3:4b", messages=messages)
-        reply = response.message.content
-        self.add_to_history("assistant", reply)
-        return reply
-
-    def parse_intent_from_text(self, text: str) -> dict:
-        lower_text = text.lower()
+    def field_prompts(self) -> dict[str, str]:
         return {
-            "enough_information": "enough information" in lower_text
-            and "yes" in lower_text,
-            "needs_files": "upload" in lower_text or "file" in lower_text,
-            "wants_to_train": "train" in lower_text,
-            "use_existing_model": "existing model" in lower_text,
-            "extra_question": self.extract_question(text),
-            "final_answer": text.strip(),
-            "proccessed_files": [],
+            name: field.description or f"Please provide a value for '{name}'"
+            for name, field in type(self).model_fields.items()
         }
 
-    def extract_question(self, text: str) -> str:
-        match = re.search(
-            r"(?:(?:need|please provide|missing).+?\?)", text, re.IGNORECASE
-        )
-        return match.group(0) if match else ""
 
-    async def process_user_input(
-        self, user_input: str, file_path: Optional[Union[str, Path]] = None
-    ) -> dict:
-        # Step 1: Base LLM analysis
-        initial_response = await self.ask_agent(user_input)
-        parsed_intent = self.parse_intent_from_text(initial_response)
+class LLMClient:
+    def __init__(self, backend: str, model: str, client: object):
+        self.backend = backend
+        self.model = model
+        self.client = client
 
-        # Step 2: Handle file if needed
-        if parsed_intent["needs_files"] and file_path:
-            file_text = self.read_word_document(Path(file_path))
-            if not file_text.startswith("⚠️"):
-                file_summary = await self.ask_agent(
-                    f"The user uploaded this file:\n\n{file_text[:2000]}"
-                )
-                parsed_intent["file_summary"] = file_summary
-            else:
-                parsed_intent["file_error"] = file_text
+    async def chat(self, messages: List[dict]):
+        if self.backend == "openai":
+            response = await self.client.chat.completions.create(
+                model=self.model, messages=messages
+            )
+            return response.choices[0].message.content
+        elif self.backend == "ollama":
+            response = await self.client.chat(model=self.model, messages=messages)
+            return response.message.content
+        else:
+            raise ValueError(f"Unsupported backend: {self.backend}")
 
-        parsed_intent["initial_response"] = initial_response
-        return parsed_intent
+    async def check_model_exists(self):
+        try:
+            await self.chat(messages=[{"role": "user", "content": "Hello"}])
+            return True
+        except Exception:
+            return False
 
-    def get_chat_history(self) -> str:
-        return "\n".join(
-            f"**{m['role'].capitalize()}**: {m['content']}"
-            for m in self.conversation_history
-        )
+
+class InteractiveAgent:
+    def __init__(
+        self, llm_client: LLMClient
+    ):
+        self.client = llm_client
+
+        possible_tasks = [
+            LLMProcessingTask,
+            TabularSupervisedClassificationTask,
+            TabularSupervisedRegressionTask,
+            TabularSupervisedTimeSeriesTask,
+        ]
+
+        external_handlers = ["openml"]
+
+        self.task_types = ", ".join([t.__name__ for t in possible_tasks])
+        self.external_handlers = ", ".join(external_handlers)
+
+        self.instruction = f"""
+        You are a chatbot that needs to understand what the user wants to do. From their query, pick one of the following types of tasks.
+        Return the JSON output:
+        {{
+        "task_type": ..,
+        "need_to_train": ..,
+        "train_file": ..,
+        "test_file": ..,
+        "target_column": ..,
+        "external_handler": ..
+        }}
+
+        Schema: {ChatbotTaskSchema.__pydantic_fields__}
+
+        Task type can be one of the following: {self.task_types}.
+        All results should be of string type. If you do not know the answer, return an empty string.
+        """
+
+    async def get_initial_response(
+        self, user_query: str, history: List[dict]
+    ) -> Tuple[ChatbotTaskSchema, List[dict]]:
+        history += [
+            {"role": "system", "content": self.instruction},
+            {"role": "user", "content": user_query},
+        ]
+
+        reply = await self.client.chat(history)
+        reply_cleaned = reply.strip().replace("```", "").replace("json", "")
+        data = json.loads(reply_cleaned)
+        history.append({"role": "assistant", "content": reply})
+        return ChatbotTaskSchema(**data), history
+
+    async def complete_missing_fields(
+        self, task: ChatbotTaskSchema, history: List[dict]
+    ) -> ChatbotTaskSchema:
+        missing = task.missing_fields()
+        if not missing:
+            return task
+
+        prompts = task.field_prompts()
+
+        for field in missing:
+            question = prompts[field]
+            user_answer = input(
+                f"I still need the following information: {question}\n> "
+            )
+            history.append({"role": "user", "content": user_answer})
+
+            followup = history + [
+                {
+                    "role": "system",
+                    "content": f"You're helping complete the missing field '{field}'. Please respond with ONLY the value, not a full JSON.",
+                }
+            ]
+            response = await self.client.chat(followup)
+            answer = response.strip().replace("```", "").replace("json", "")
+
+            try:
+                parsed = json.loads(answer)
+                if isinstance(parsed, dict) and field in parsed:
+                    answer = parsed[field]
+            except json.JSONDecodeError:
+                pass
+
+            setattr(task, field, answer)
+            history.append({"role": "assistant", "content": answer})
+
+        return task

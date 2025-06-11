@@ -1,6 +1,8 @@
 .DS_store
+.webui_secret_key
 sample_data/
 AutogluonModels/
+*.drawio.bkp
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

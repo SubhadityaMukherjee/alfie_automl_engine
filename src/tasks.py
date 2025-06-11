@@ -1,7 +1,20 @@
-import pandas as pd
 from pathlib import Path
 from typing import Optional
+
+import pandas as pd
 from pydantic import BaseModel
+
+
+class LLMProcessingTask(BaseModel):
+    """
+    LLM processing format
+    """
+
+    input_text: str = ""
+    query: str = ""
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 class TabularTask(BaseModel):
@@ -18,7 +31,7 @@ class TabularTask(BaseModel):
         arbitrary_types_allowed = True
 
 
-class SupervisedClassificationTask(TabularTask):
+class TabularSupervisedClassificationTask(TabularTask):
     """
     Classification task format
     """
@@ -26,7 +39,7 @@ class SupervisedClassificationTask(TabularTask):
     task_type: str = "classification"
 
 
-class SupervisedRegressionTask(TabularTask):
+class TabularSupervisedRegressionTask(TabularTask):
     """
     Regression task format
     """
@@ -34,7 +47,7 @@ class SupervisedRegressionTask(TabularTask):
     task_type: str = "regression"
 
 
-class SupervisedTimeSeriesTask(TabularTask):
+class TabularSupervisedTimeSeriesTask(TabularTask):
     """
     Regression task format
     """

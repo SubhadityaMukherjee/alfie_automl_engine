@@ -1,11 +1,13 @@
 from typing import Optional, Union
+
+import numpy as np
 import openml
+import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-import pandas as pd
-import numpy as np
 
-from src.tabular.tasks import SupervisedClassificationTask, SupervisedRegressionTask
+from src.tasks import (TabularSupervisedClassificationTask,
+                       TabularSupervisedRegressionTask)
 
 
 class OpenMLDatasetHandler:
@@ -37,14 +39,16 @@ class OpenMLDatasetHandler:
 
     def get_task_type(
         self,
-    ) -> Optional[Union[SupervisedClassificationTask, SupervisedRegressionTask]]:
+    ) -> Optional[
+        Union[TabularSupervisedClassificationTask, TabularSupervisedRegressionTask]
+    ]:
         try:
             target_col_name = self.dataset.default_target_attribute
             target_col_type = self.get_target_col_type(self.dataset, target_col_name)
 
             if target_col_type:
                 if target_col_type in ["nominal", "string", "categorical"]:
-                    self.task_type = SupervisedClassificationTask
+                    self.task_type = TabularSupervisedClassificationTask
                     # try:
                     #     self.class_labels = self.dataset.get_data()[0][target_col_name].unique()
                     # except Exception as e:
@@ -53,7 +57,7 @@ class OpenMLDatasetHandler:
                 elif target_col_type == "numeric":
                     # evaluation_measure = "mean_absolute_error"
                     task_type = openml.tasks.TaskType.SUPERVISED_REGRESSION
-                    self.task_type = SupervisedRegressionTask
+                    self.task_type = TabularSupervisedRegressionTask
                     # self.class_labels = []
                 else:
                     return None

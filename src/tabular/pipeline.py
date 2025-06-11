@@ -1,16 +1,14 @@
-import pandas as pd
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
+
+import pandas as pd
 from autogluon.tabular import TabularDataset, TabularPredictor
 from autogluon.timeseries import TimeSeriesPredictor
-from abc import ABC, abstractmethod
 
-from src.tabular.tasks import (
-    SupervisedClassificationTask,
-    SupervisedRegressionTask,
-    SupervisedTimeSeriesTask,
-    TabularChecks,
-)
+from src.tasks import (TabularChecks, TabularSupervisedClassificationTask,
+                       TabularSupervisedRegressionTask,
+                       TabularSupervisedTimeSeriesTask)
 
 
 def load_and_validate_df(
@@ -38,7 +36,7 @@ class BaseTabularAutoMLPipeline(ABC):
                 return
 
         if (
-            type(self.task) is SupervisedTimeSeriesTask
+            type(self.task) is TabularSupervisedTimeSeriesTask
             and self.task.time_stamp_col is None
         ):
             raise ValueError(
@@ -84,12 +82,12 @@ class AutoGluonTabularPipeline(BaseTabularAutoMLPipeline):
 
     def __init__(self, task):
         self.supported_tasks = [
-            SupervisedClassificationTask,
-            SupervisedRegressionTask,
-            SupervisedTimeSeriesTask,
+            TabularSupervisedClassificationTask,
+            TabularSupervisedRegressionTask,
+            TabularSupervisedTimeSeriesTask,
         ]
         super().__init__(task)
-        if isinstance(self.task, SupervisedTimeSeriesTask):
+        if isinstance(self.task, TabularSupervisedTimeSeriesTask):
             self.predictor = TimeSeriesPredictor(label=self.task.target_feature)
         self.predictor: Optional[TabularPredictor] = None
 
