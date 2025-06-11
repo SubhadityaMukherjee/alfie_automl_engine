@@ -76,6 +76,7 @@ class BaseTabularAutoMLPipeline(ABC):
         """Evaluate the model on the test set and return evaluation results."""
         pass
 
+
 class AutoGluonTabularPipeline(BaseTabularAutoMLPipeline):
     """AutoML pipeline using AutoGluon."""
 
@@ -88,7 +89,9 @@ class AutoGluonTabularPipeline(BaseTabularAutoMLPipeline):
         super().__init__(task)
         self.save_path = save_path
         if isinstance(self.task, TabularSupervisedTimeSeriesTask):
-            self.predictor = TimeSeriesPredictor(label=self.task.target_feature, path=save_path)
+            self.predictor = TimeSeriesPredictor(
+                label=self.task.target_feature, path=save_path
+            )
         else:
             self.predictor: Optional[TabularPredictor] = None
 
@@ -97,9 +100,9 @@ class AutoGluonTabularPipeline(BaseTabularAutoMLPipeline):
             self.load_data()
         train_data = TabularDataset(self.train_df)
 
-        self.predictor = TabularPredictor(label=self.task.target_feature, path=self.save_path).fit(
-            train_data, time_limit=time_limit
-        )
+        self.predictor = TabularPredictor(
+            label=self.task.target_feature, path=self.save_path
+        ).fit(train_data, time_limit=time_limit)
 
     def evaluate(self) -> Optional[pd.DataFrame]:
         if self.test_df is not None and self.predictor is not None:

@@ -1,0 +1,91 @@
+Warning: path already exists! This predictor may overwrite an existing predictor! path="autogluon_output"
+Verbosity: 2 (Standard Logging)
+=================== System Info ===================
+AutoGluon Version:  1.3.0
+Python Version:     3.12.10
+Operating System:   Darwin
+Platform Machine:   arm64
+Platform Version:   Darwin Kernel Version 24.5.0: Tue Apr 22 19:54:29 PDT 2025; root:xnu-11417.121.6~2/RELEASE_ARM64_T6030
+CPU Count:          11
+Memory Avail:       3.59 GB / 18.00 GB (19.9%)
+Disk Space Avail:   84.80 GB / 460.43 GB (18.4%)
+===================================================
+No presets specified! To achieve strong results with AutoGluon, it is recommended to use the available presets. Defaulting to `'medium'`...
+	Recommended Presets (For more details refer to https://auto.gluon.ai/stable/tutorials/tabular/tabular-essentials.html#presets):
+	presets='experimental' : New in v1.2: Pre-trained foundation model + parallel fits. The absolute best accuracy without consideration for inference speed. Does not support GPU.
+	presets='best'         : Maximize accuracy. Recommended for most users. Use in competitions and benchmarks.
+	presets='high'         : Strong accuracy with fast inference speed.
+	presets='good'         : Good accuracy with very fast inference speed.
+	presets='medium'       : Fast training time, ideal for initial prototyping.
+Beginning AutoGluon training ... Time limit = 20s
+AutoGluon will save models to "/Users/smukherjee/Documents/Projects/ALFIE/alfie_automl_engine/autogluon_output"
+Train Data Rows:    148060
+Train Data Columns: 2
+Label Column:       target
+AutoGluon infers your prediction problem is: 'regression' (because dtype of label-column == float and many unique label-values observed).
+	Label info (max, min, mean, stddev): (703008.0, 10.0, 13310.90058, 53906.94841)
+	If 'regression' is not the correct problem_type, please manually specify the problem_type parameter during Predictor init (You may specify problem_type as one of: ['binary', 'multiclass', 'regression', 'quantile'])
+Problem Type:       regression
+Preprocessing data ...
+Using Feature Generators to preprocess the data ...
+Fitting AutoMLPipelineFeatureGenerator...
+	Available Memory:                    3718.88 MB
+	Train Data (Original)  Memory Usage: 16.91 MB (0.5% of available memory)
+	Inferring data type of each feature based on column values. Set feature_metadata_in to manually specify special dtypes of the features.
+	Stage 1 Generators:
+		Fitting AsTypeFeatureGenerator...
+	Stage 2 Generators:
+		Fitting FillNaFeatureGenerator...
+	Stage 3 Generators:
+		Fitting CategoryFeatureGenerator...
+			Fitting CategoryMemoryMinimizeFeatureGenerator...
+		Fitting DatetimeFeatureGenerator...
+	Stage 4 Generators:
+		Fitting DropUniqueFeatureGenerator...
+	Stage 5 Generators:
+		Fitting DropDuplicatesFeatureGenerator...
+	Types of features in original data (raw dtype, special dtypes):
+		('object', [])                     : 1 | ['item_id']
+		('object', ['datetime_as_object']) : 1 | ['timestamp']
+	Types of features in processed data (raw dtype, special dtypes):
+		('category', [])             : 1 | ['item_id']
+		('int', ['datetime_as_int']) : 4 | ['timestamp', 'timestamp.month', 'timestamp.day', 'timestamp.dayofweek']
+	0.2s = Fit runtime
+	2 features in original data used to generate 5 features in processed data.
+	Train Data (Processed) Memory Usage: 4.80 MB (0.1% of available memory)
+Data preprocessing and feature engineering runtime = 0.25s ...
+AutoGluon will gauge predictive performance using evaluation metric: 'root_mean_squared_error'
+	This metric's sign has been flipped to adhere to being higher_is_better. The metric score can be multiplied by -1 to get the metric value.
+	To change this, specify the eval_metric parameter of Predictor()
+Automatically generating train/validation split with holdout_frac=0.016885046602728625, Train Rows: 145560, Val Rows: 2500
+User-specified model hyperparameters to be fit:
+{
+	'NN_TORCH': [{}],
+	'GBM': [{'extra_trees': True, 'ag_args': {'name_suffix': 'XT'}}, {}, {'learning_rate': 0.03, 'num_leaves': 128, 'feature_fraction': 0.9, 'min_data_in_leaf': 3, 'ag_args': {'name_suffix': 'Large', 'priority': 0, 'hyperparameter_tune_kwargs': None}}],
+	'CAT': [{}],
+	'XGB': [{}],
+	'FASTAI': [{}],
+	'RF': [{'criterion': 'gini', 'ag_args': {'name_suffix': 'Gini', 'problem_types': ['binary', 'multiclass']}}, {'criterion': 'entropy', 'ag_args': {'name_suffix': 'Entr', 'problem_types': ['binary', 'multiclass']}}, {'criterion': 'squared_error', 'ag_args': {'name_suffix': 'MSE', 'problem_types': ['regression', 'quantile']}}],
+	'XT': [{'criterion': 'gini', 'ag_args': {'name_suffix': 'Gini', 'problem_types': ['binary', 'multiclass']}}, {'criterion': 'entropy', 'ag_args': {'name_suffix': 'Entr', 'problem_types': ['binary', 'multiclass']}}, {'criterion': 'squared_error', 'ag_args': {'name_suffix': 'MSE', 'problem_types': ['regression', 'quantile']}}],
+	'KNN': [{'weights': 'uniform', 'ag_args': {'name_suffix': 'Unif'}}, {'weights': 'distance', 'ag_args': {'name_suffix': 'Dist'}}],
+}
+Fitting 11 L1 models, fit_strategy="sequential" ...
+Fitting model: KNeighborsUnif ... Training model for up to 19.75s of the 19.74s of remaining time.
+	-59611.6024	 = Validation score   (-root_mean_squared_error)
+	0.08s	 = Training   runtime
+	0.02s	 = Validation runtime
+Fitting model: KNeighborsDist ... Training model for up to 19.64s of the 19.64s of remaining time.
+	-59611.6024	 = Validation score   (-root_mean_squared_error)
+	0.09s	 = Training   runtime
+	0.02s	 = Validation runtime
+Fitting model: LightGBMXT ... Training model for up to 19.53s of the 19.53s of remaining time.
+	-4520.1363	 = Validation score   (-root_mean_squared_error)
+	19.68s	 = Training   runtime
+	0.56s	 = Validation runtime
+Fitting model: WeightedEnsemble_L2 ... Training model for up to 19.75s of the -0.92s of remaining time.
+	Ensemble Weights: {'LightGBMXT': 1.0}
+	-4520.1363	 = Validation score   (-root_mean_squared_error)
+	0.0s	 = Training   runtime
+	0.0s	 = Validation runtime
+AutoGluon training complete, total runtime = 20.95s ... Best model: WeightedEnsemble_L2 | Estimated inference throughput: 4495.0 rows/s (2500 batch size)
+TabularPredictor saved. To load, use: predictor = TabularPredictor.load("/Users/smukherjee/Documents/Projects/ALFIE/alfie_automl_engine/autogluon_output")

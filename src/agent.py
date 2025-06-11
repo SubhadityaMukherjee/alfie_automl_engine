@@ -67,9 +67,7 @@ class LLMClient:
 
 
 class InteractiveAgent:
-    def __init__(
-        self, llm_client: LLMClient
-    ):
+    def __init__(self, llm_client: LLMClient):
         self.client = llm_client
 
         possible_tasks = [

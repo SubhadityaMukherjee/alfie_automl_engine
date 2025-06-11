@@ -3,25 +3,21 @@ import json
 import mimetypes
 import os
 import tempfile
+from collections import OrderedDict
 from pathlib import Path
 from typing import Union
 
+import nest_asyncio
+import ollama
 import streamlit as st
 from docx import Document
-from openai import AsyncOpenAI
-import nest_asyncio
 from ollama import AsyncClient as OllamaAsyncClient
+from openai import AsyncOpenAI
 
-from src.agent import InteractiveAgent, LLMClient, ChatbotTaskSchema
-
-from src.tasks import (
-    LLMProcessingTask,
-    TabularSupervisedClassificationTask,
-    TabularSupervisedRegressionTask,
-    TabularSupervisedTimeSeriesTask,
-)
-from collections import OrderedDict
-import ollama
+from src.agent import ChatbotTaskSchema, InteractiveAgent, LLMClient
+from src.tasks import (LLMProcessingTask, TabularSupervisedClassificationTask,
+                       TabularSupervisedRegressionTask,
+                       TabularSupervisedTimeSeriesTask)
 
 nest_asyncio.apply()
 
@@ -111,61 +107,67 @@ def chat(message, model="gemma3:4b"):
         else:
             return f"An unexpected error occurred with model '{model}': {str(e)}"
 
+
 def get_target_column(uploaded_files, file_paths, max_attempts=3) -> tuple[bool, str]:
     """
     Asks the user for the target column repeatedly until valid or max attempts reached.
-    
+
     Args:
         uploaded_files: List of uploaded files
         file_paths: Dictionary mapping filenames to temporary file paths
         max_attempts: Maximum number of attempts before giving up
-        
+
     Returns:
         tuple: (success: bool, target_column: str)
     """
     attempt = 0
     target_col = ""
-    
+
     while attempt < max_attempts:
         # First try to extract from user messages
         combined_user_messages = "\n".join(
-            [msg['content'] for msg in st.session_state.messages if msg['role'] == 'user']
+            [
+                msg["content"]
+                for msg in st.session_state.messages
+                if msg["role"] == "user"
+            ]
         )
         target_check = chat(
             f"Did the user mention a target column for the tabular data? "
             f"If yes, what is the column name? Only return the name, nothing else. "
             f"If no, return 'no'. User messages: {combined_user_messages}"
         )
-        
-        if target_check.lower() != 'no':
+
+        if target_check.lower() != "no":
             target_col = target_check.strip()
             return True, target_col
-        
+
         # If not found in messages, ask directly
         attempt += 1
         remaining_attempts = max_attempts - attempt + 1
         target_col = st.text_input(
             f"Please specify the target column name (attempt {attempt}/{max_attempts}):",
-            key=f"target_col_attempt_{attempt}"
+            key=f"target_col_attempt_{attempt}",
         )
-        
+
         if not target_col:
             return False, ""
-            
+
         # Validate the column exists in the data
         if validate_target_column(uploaded_files, file_paths, target_col):
             return True, target_col
-            
+
         st.warning(f"Column '{target_col}' not found in the data. Please try again.")
-    
+
     return False, ""
+
 
 def validate_target_column(uploaded_files, file_paths, target_col) -> bool:
     """
     Validates that the target column exists in the uploaded files.
     """
     for file in uploaded_files:
-        if file.name.endswith('.csv'):
+        if file.name.endswith(".csv"):
             file_path = file_paths[file.name]
             try:
                 df = pd.read_csv(file_path)
@@ -175,7 +177,10 @@ def validate_target_column(uploaded_files, file_paths, target_col) -> bool:
                 continue
     return False
 
+
 import streamlit as st
+
+
 def handle_query(user_query, pipeline_choice, uploaded_files, conversation_history):
     """
     Handles user queries with support for multi-step conversations.
@@ -188,20 +193,20 @@ def handle_query(user_query, pipeline_choice, uploaded_files, conversation_histo
                 "train": "",
                 "test": "",
                 "target_col": "",
-                "file_name_col": ""
+                "file_name_col": "",
             }
-        
+
         # Process uploaded files
         if uploaded_files:
             _, file_paths = aggregate_file_content(uploaded_files)
             train_files = [f for f in file_paths if "train" in f.lower()]
             test_files = [f for f in file_paths if "test" in f.lower()]
-            
+
             if train_files:
                 st.session_state.file_info["train"] = train_files[0]
             if test_files:
                 st.session_state.file_info["test"] = test_files[0]
-        
+
         # Check for target column in the LATEST user message only
         target_col = ""
         if conversation_history and conversation_history[-1]["role"] == "user":
@@ -213,43 +218,50 @@ def handle_query(user_query, pipeline_choice, uploaded_files, conversation_histo
             if target_check.strip().lower() != "no":
                 target_col = target_check
                 st.session_state.file_info["target_col"] = target_col
-        
+
         # Determine what's missing
         missing_info = []
         if not st.session_state.file_info["train"]:
-            missing_info.append("training data file (should contain 'train' in filename)")
+            missing_info.append(
+                "training data file (should contain 'train' in filename)"
+            )
         if not st.session_state.file_info["test"]:
             missing_info.append("test data file (should contain 'test' in filename)")
         if not st.session_state.file_info["target_col"]:
             missing_info.append("target column name")
-        
+
         if missing_info:
             if len(missing_info) == 1:
                 msg = f"❓ To proceed with AutoML Tabular, please provide the {missing_info[0]}."
             else:
                 msg = f"❓ To proceed with AutoML Tabular, please provide: {', '.join(missing_info[:-1])} and {missing_info[-1]}."
             return msg, True, False
-        
+
         # If we have everything
         return (
             f"✅ AutoML Tabular setup complete!\n"
             f"- Training file: {st.session_state.file_info['train']}\n"
             f"- Test file: {st.session_state.file_info['test']}\n"
             f"- Target column: {st.session_state.file_info['target_col']}\n"
-            f"How would you like to proceed?", 
+            f"How would you like to proceed?",
             False,
-            True
+            True,
         )
 
     elif pipeline_choice == "ARIA Guidelines":
-        return "📚 Starting ARIA-guidelines-based assistant. How can I help you with accessibility or interface design?", False, True
+        return (
+            "📚 Starting ARIA-guidelines-based assistant. How can I help you with accessibility or interface design?",
+            False,
+            True,
+        )
 
     return "⚠️ Unknown pipeline selected.", False, True
+
 
 def main():
     st.set_page_config(page_title="Project Assistant", layout="wide")
     st.title("🤖 Interactive Project Assistant")
-    
+
     # Initialize session state
     if "messages" not in st.session_state:
         st.session_state.messages = []
@@ -259,34 +271,35 @@ def main():
         st.session_state.current_pipeline = None
     if "conversation_complete" not in st.session_state:
         st.session_state.conversation_complete = False
-    
+
     # Sidebar for history and controls
     with st.sidebar:
         st.header("Conversation History")
-        
+
         # Display condensed history
         for i, msg in enumerate(st.session_state.messages):
             role = "👤" if msg["role"] == "user" else "🤖"
             with st.container():
-                st.caption(f"{role}: {msg['content'][:50]}{'...' if len(msg['content']) > 50 else ''}")
-        
+                st.caption(
+                    f"{role}: {msg['content'][:50]}{'...' if len(msg['content']) > 50 else ''}"
+                )
+
         st.divider()
-        
+
         # Pipeline selection - only enabled when not in middle of conversation
         pipeline_choice = st.selectbox(
-            "Choose a Pipeline", 
+            "Choose a Pipeline",
             ["AutoML Tabular", "ARIA Guidelines"],
             key="pipeline_selector",
-            disabled=st.session_state.awaiting_response and not st.session_state.conversation_complete
+            disabled=st.session_state.awaiting_response
+            and not st.session_state.conversation_complete,
         )
-        
+
         # File uploader - always enabled
         uploaded_files = st.file_uploader(
-            "📂 Upload files", 
-            accept_multiple_files=True,
-            key="file_uploader"
+            "📂 Upload files", accept_multiple_files=True, key="file_uploader"
         )
-        
+
         # Clear conversation button
         if st.button("Clear Conversation"):
             st.session_state.messages = []
@@ -296,27 +309,35 @@ def main():
             if "file_info" in st.session_state:
                 del st.session_state.file_info
             st.rerun()
-    
+
     # Main chat area
     col1, col2 = st.columns([3, 1])
-    
+
     with col1:
         # Display full messages
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
-        
+
         # Chat input - only show if we're not waiting for a response or conversation is complete
-        if not st.session_state.awaiting_response or st.session_state.conversation_complete:
+        if (
+            not st.session_state.awaiting_response
+            or st.session_state.conversation_complete
+        ):
             if user_input := st.chat_input("What would you like help with?"):
-                st.session_state.messages.append({"role": "user", "content": user_input})
+                st.session_state.messages.append(
+                    {"role": "user", "content": user_input}
+                )
                 st.session_state.awaiting_response = True
                 st.session_state.current_pipeline = st.session_state.pipeline_selector
                 st.session_state.conversation_complete = False
                 st.rerun()
-    
+
     # Handle response generation (after user input)
-    if st.session_state.awaiting_response and not st.session_state.conversation_complete:
+    if (
+        st.session_state.awaiting_response
+        and not st.session_state.conversation_complete
+    ):
         with col1:
             with st.chat_message("assistant"):
                 # Get response
@@ -324,19 +345,22 @@ def main():
                     st.session_state.messages[-1]["content"],
                     st.session_state.current_pipeline,
                     uploaded_files,
-                    st.session_state.messages
+                    st.session_state.messages,
                 )
-                
+
                 # Display response
                 st.markdown(response)
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                
+                st.session_state.messages.append(
+                    {"role": "assistant", "content": response}
+                )
+
                 # Update state flags
                 st.session_state.awaiting_response = needs_more_info
                 st.session_state.conversation_complete = is_complete
-        
+
         # Rerun to ensure UI updates
         st.rerun()
+
 
 if __name__ == "__main__":
     main()
