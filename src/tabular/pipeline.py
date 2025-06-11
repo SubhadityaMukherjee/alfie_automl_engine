@@ -76,26 +76,28 @@ class BaseTabularAutoMLPipeline(ABC):
         """Evaluate the model on the test set and return evaluation results."""
         pass
 
-
 class AutoGluonTabularPipeline(BaseTabularAutoMLPipeline):
     """AutoML pipeline using AutoGluon."""
 
-    def __init__(self, task):
+    def __init__(self, task, save_path: str = "autogluon_model"):
         self.supported_tasks = [
             TabularSupervisedClassificationTask,
             TabularSupervisedRegressionTask,
             TabularSupervisedTimeSeriesTask,
         ]
         super().__init__(task)
+        self.save_path = save_path
         if isinstance(self.task, TabularSupervisedTimeSeriesTask):
-            self.predictor = TimeSeriesPredictor(label=self.task.target_feature)
-        self.predictor: Optional[TabularPredictor] = None
+            self.predictor = TimeSeriesPredictor(label=self.task.target_feature, path=save_path)
+        else:
+            self.predictor: Optional[TabularPredictor] = None
 
     def fit(self, time_limit: int = 60) -> None:
         if self.train_df is None:
             self.load_data()
         train_data = TabularDataset(self.train_df)
-        self.predictor = TabularPredictor(label=self.task.target_feature).fit(
+
+        self.predictor = TabularPredictor(label=self.task.target_feature, path=self.save_path).fit(
             train_data, time_limit=time_limit
         )
 
