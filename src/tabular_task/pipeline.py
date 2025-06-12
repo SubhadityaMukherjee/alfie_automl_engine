@@ -3,12 +3,15 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
+import src.tabular_task.tasks as tabular_task_modules
 from autogluon.tabular import TabularDataset, TabularPredictor
 from autogluon.timeseries import TimeSeriesPredictor
+from .tasks import (TabularChecks, TabularSupervisedClassificationTask,
+                   TabularSupervisedRegressionTask,
+                   TabularSupervisedTimeSeriesTask)
 
-from tasks import (TabularChecks, TabularSupervisedClassificationTask,
-                       TabularSupervisedRegressionTask,
-                       TabularSupervisedTimeSeriesTask)
+from src.chat_module.handler import ChatHandler
+from src.file_processing.reader import FileHandler
 
 
 def load_and_validate_df(
@@ -16,6 +19,18 @@ def load_and_validate_df(
 ) -> Optional[pd.DataFrame]:
     """Load and validate a dataframe from path or directly if provided."""
     return TabularChecks(target_feature=target, csv_file_path=path, df=df)()
+
+
+class DataValidator:
+    @staticmethod
+    def validate_target_column(train_file: str | Path, target_col: str) -> bool:
+        target_col = target_col.strip()
+        try:
+            df = pd.read_csv(train_file)
+        except Exception as e:
+            print(e)
+            return False
+        return target_col in df.columns
 
 
 class BaseTabularAutoMLPipeline(ABC):
@@ -75,6 +90,72 @@ class BaseTabularAutoMLPipeline(ABC):
     def evaluate(self) -> Optional[pd.DataFrame]:
         """Evaluate the model on the test set and return evaluation results."""
         pass
+
+    @staticmethod
+    def process_uploaded_files(uploaded_files):
+        aggregate, file_paths = FileHandler.aggregate_file_content(uploaded_files)
+        train_files = [f for f in file_paths if "train" in f.lower()]
+        test_files = [f for f in file_paths if "test" in f.lower()]
+
+        file_info = {
+            "train": train_files[0] if train_files else "",
+            "test": test_files[0] if test_files else "",
+        }
+
+        return aggregate, file_paths, file_info
+
+    @staticmethod
+    def detect_target_column(conversation_text):
+        return ChatHandler.detect_target_column(user_text=conversation_text)
+
+    @staticmethod
+    def detect_timestamp_column(conversation_text):
+        return ChatHandler.detect_timestamp_column(user_text=conversation_text)
+
+    @staticmethod
+    def validate_column(filepath, column_name):
+        return DataValidator.validate_target_column(filepath, column_name)
+
+    @staticmethod
+    def infer_task_type(aggregate_info):
+        task_classes = [
+            TabularSupervisedClassificationTask,
+            TabularSupervisedRegressionTask,
+            TabularSupervisedTimeSeriesTask,
+        ]
+        task_names = ", ".join(cls.__name__ for cls in task_classes)
+        return ChatHandler.chat(
+            f"Which task type do you think this is? Choose only from: {task_names}. File context: {aggregate_info}"
+        ).strip()
+
+    @staticmethod
+    def create_pipeline(task_type, file_info):
+        task_class = getattr(tabular_task_modules, task_type)
+        try:
+            if task_class in [
+                TabularSupervisedClassificationTask,
+                TabularSupervisedRegressionTask,
+                TabularSupervisedTimeSeriesTask,
+            ]:
+                task = task_class(
+                    target_feature=file_info["target_col"],
+                    train_file_path=Path(file_info["train"]),
+                    test_file_path=Path(file_info["test"]),
+                    time_stamp_col=file_info["time_stamp_col"],
+                )
+                pipeline = AutoGluonTabularPipeline(task, save_path="autogluon_output")
+                return pipeline
+        except Exception as e:
+            print(f"Error creating pipeline: {e}")
+            return None
+
+    @staticmethod
+    def train_pipeline(pipeline, time_limit):
+        pipeline.fit(time_limit=time_limit)
+
+    @staticmethod
+    def evaluate_pipeline(pipeline):
+        return pipeline.evaluate()
 
 
 class AutoGluonTabularPipeline(BaseTabularAutoMLPipeline):

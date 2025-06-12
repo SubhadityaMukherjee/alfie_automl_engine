@@ -1,6 +1,6 @@
 import re
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import nest_asyncio
 import pandas as pd
@@ -8,14 +8,6 @@ import streamlit as st
 
 from src.chat_module.handler import ChatHandler
 from src.file_processing.reader import FileHandler
-from src.llm_task.tasks import LLMProcessingTask
-from src.tabular_task.pipeline import AutoGluonTabularPipeline
-from src.tabular_task.tasks import (
-    TabularSupervisedClassificationTask,
-    TabularSupervisedRegressionTask,
-    TabularSupervisedTimeSeriesTask,
-)
-from src.pipeline_manager import PipelineManager
 
 nest_asyncio.apply()
 
@@ -63,8 +55,63 @@ Evaluate the following file named `{filename}`:
 {chunk}
 ### End File Content
 """
+
     @staticmethod
     def _extract_wcag_score(response):
         match = re.search(r"\bScore[:\s]*([0-9](?:\.\d+)?)", response, re.IGNORECASE)
         return float(match.group(1)) if match else None
 
+    @staticmethod
+    def process_uploaded_files(uploaded_files):
+        try:
+            _, file_paths = FileHandler.aggregate_file_content(uploaded_files)
+            return {"status": "success", "file_paths": file_paths}
+        except Exception as e:
+            return {"status": "error", "message": f"Error processing files: {e}"}
+
+    @staticmethod
+    def process_file(filename, content, chunk_size=3000):
+        chunks, line_ranges = WCAGPipeline._split_into_chunks(content, chunk_size)
+        outputs, scores = [], []
+
+        for i, (chunk, (start_line, end_line)) in enumerate(zip(chunks, line_ranges)):
+            prompt = WCAGPipeline._build_chunk_prompt(
+                filename, chunk, i, len(chunks), start_line, end_line
+            )
+            response = ChatHandler.chat(prompt)
+            score = WCAGPipeline._extract_wcag_score(response)
+            if score is not None:
+                scores.append(score)
+
+            feedback = {
+                "chunk_index": i,
+                "start_line": start_line,
+                "end_line": end_line,
+                "response": response,
+            }
+            outputs.append(feedback)
+
+        avg_score = round(sum(scores) / len(scores), 2) if scores else None
+        return {
+            "filename": filename,
+            "num_chunks": len(chunks),
+            "average_score": avg_score,
+            "feedback": outputs,
+        }
+
+    @staticmethod
+    def handle_user_input(user_input: str, uploaded_files) -> Dict[str, Any]:
+        if not uploaded_files:
+            return {"status": "error", "message": "No files uploaded"}
+
+        try:
+            files = FileHandler.read_each_file(uploaded_files)
+        except Exception as e:
+            return {"status": "error", "message": f"Error reading files: {e}"}
+
+        results: List[Dict[str, Any]] = []
+        for filename, content in files.items():
+            result = WCAGPipeline.process_file(filename, content)
+            results.append(result)
+
+        return {"status": "success", "results": results}
