@@ -1,196 +1,23 @@
-import asyncio
-import json
-import mimetypes
-import os
-import tempfile
-from collections import OrderedDict
+import re
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
 import nest_asyncio
-import ollama
 import pandas as pd
 import streamlit as st
-from docx import Document
-from ollama import AsyncClient as OllamaAsyncClient
-from openai import AsyncOpenAI
 
-import src.tasks as tasks
-from src.tabular.pipeline import AutoGluonTabularPipeline
-from src.tasks import (LLMProcessingTask, TabularSupervisedClassificationTask,
-                       TabularSupervisedRegressionTask,
-                       TabularSupervisedTimeSeriesTask)
+from src.chat_module.handler import ChatHandler
+from src.file_processing.reader import FileHandler
+from src.llm_task.tasks import LLMProcessingTask
+from src.llm_task.wcag import WCAGPipeline
+from src.tabular_task.pipeline import AutoGluonTabularPipeline, BaseTabularAutoMLPipeline
+from src.tabular_task.tasks import (TabularSupervisedClassificationTask,
+                                    TabularSupervisedRegressionTask,
+                                    TabularSupervisedTimeSeriesTask)
+from src.pipeline_manager import PipelineManager
 
 nest_asyncio.apply()
 
-
-class FileHandler:
-    @staticmethod
-    def read_word_document(path: Path) -> str:
-        try:
-            doc = Document(str(path))
-            return "\n".join(p.text for p in doc.paragraphs if p.text.strip())
-        except Exception as e:
-            return f"⚠️ Error reading document: {e}"
-
-    @staticmethod
-    def csv_summary(path: Path) -> str:
-        try:
-            df = pd.read_csv(path)
-            print(df.describe)
-            return str(df.describe())
-        except Exception as e:
-            return f"⚠️ Error reading document: {e}"
-
-    @staticmethod
-    def read_file_content(file_path: Path, mime: str) -> str:
-        try:
-            if mime.startswith("text/") or file_path.suffix.lower() in [
-                ".html",
-                ".css",
-                ".py",
-                ".json",
-                ".csv",
-                ".ts",
-                ".txt",
-            ]:
-                return file_path.read_text(encoding="utf-8", errors="ignore")
-            elif file_path.suffix.lower() == ".docx":
-                return FileHandler.read_word_document(file_path)
-            elif file_path.suffix.lower() == ".csv":
-                return FileHandler.csv_summary(file_path)
-            else:
-                return f"📦 Binary or unsupported file type: {file_path.name} ({mime})"
-        except Exception as e:
-            return f"⚠️ Failed to read {file_path.name}: {e}"
-
-    @staticmethod
-    def save_temp_file(file) -> tuple[str, str, Path]:
-        """Save uploaded file to a temp file and return (filename, mime, tmp_path)."""
-        file_suffix = Path(file.name).suffix
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_suffix) as tmp:
-            tmp.write(file.read())
-            tmp_path = Path(tmp.name)
-
-        mime_type, _ = mimetypes.guess_type(tmp_path.name)
-        return file.name, mime_type or "application/octet-stream", tmp_path
-
-    @staticmethod
-    def read_each_file(uploaded_files) -> dict[str, str]:
-        """Returns {filename: content} for each uploaded file."""
-        result = {}
-        for file in uploaded_files:
-            filename, mime, tmp_path = FileHandler.save_temp_file(file)
-            content = FileHandler.read_file_content(tmp_path, mime)
-            result[filename] = content
-        return result
-
-    @staticmethod
-    def aggregate_file_content(uploaded_files) -> tuple[str, dict[str, str]]:
-        """Returns an aggregated string summary and file paths."""
-        file_info: str = ""
-        aggregated_context: str = ""
-        file_paths: dict[str, str] = {}
-
-        for file in uploaded_files:
-            filename, mime, tmp_path = FileHandler.save_temp_file(file)
-            file_suffix = Path(filename).suffix
-            file_paths[filename] = str(tmp_path)
-
-            file_info += (
-                f"The user has uploaded a file {filename} of type {file_suffix}.\n"
-            )
-            content = FileHandler.read_file_content(tmp_path, mime)
-
-            aggregated_context += f"\n---\nFile: {filename} ({mime})"
-            if file_suffix not in [".zip"]:
-                aggregated_context += f"\n{content[:100]}\n"
-
-        return file_info + aggregated_context, file_paths
-
-
-class ChatHandler:
-    @staticmethod
-    def chat(message: str, model: str = "gemma3:4b") -> str:
-        try:
-            response = ollama.chat(
-                model=model,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": message,
-                    }
-                ],
-            )
-            return response["message"]["content"]
-        except Exception as e:
-            error_message = str(e).lower()
-            if "not found" in error_message:
-                return f"Model '{model}' not found. Please refer to Documentation at https://ollama.com/library."
-            else:
-                return f"An unexpected error occurred with model '{model}': {str(e)}"
-
-    @staticmethod
-    def detect_target_column(user_text: str) -> str:
-        response = ChatHandler.chat(
-            "Did the user mention what you think could be a target column for the tabular data classification/regression? "
-            "If yes, what is the column name? Only return the column name, nothing else. ignore the words column and similar in the output"
-            "Eg: Classify signature column -> signature, recognize different classes -> no, classify -> no, signature column -> signature"
-            "If no, return 'no'. User messages:\n" + user_text
-        )
-        return response.strip()
-
-    @staticmethod
-    def detect_timestamp_column(user_text: str) -> str:
-        response = ChatHandler.chat(
-            "Did the user mention what you think could be a timestamp column for the tabular time series data classification/regression? "
-            "If yes, what is the column name? Only return the column name, nothing else. ignore the words column and similar in the output"
-            "Eg: Classify signature column -> signature, recognize different classes -> no, classify -> no, signature column -> signature"
-            "If no, return 'no'. User messages:\n" + user_text
-        )
-        return response.strip()
-
-
-class DataValidator:
-    @staticmethod
-    def validate_target_column(train_file: str | Path, target_col: str) -> bool:
-        target_col = target_col.strip()
-        try:
-            df = pd.read_csv(train_file)
-        except Exception as e:
-            print(e)
-            return False
-        return target_col in df.columns
-
-
-class PipelineManager:
-    @staticmethod
-    def create_pipeline(
-        task_type: str, file_info: dict
-    ) -> Optional[AutoGluonTabularPipeline]:
-        try:
-            task_class = getattr(tasks, task_type)
-
-            if task_class in [
-                TabularSupervisedClassificationTask,
-                TabularSupervisedRegressionTask,
-                TabularSupervisedTimeSeriesTask,
-            ]:
-                task = task_class(
-                    target_feature=file_info["target_col"],
-                    train_file_path=Path(file_info["train"]),
-                    test_file_path=Path(file_info["test"]),
-                    time_stamp_col=file_info["time_stamp_col"],
-                )
-                pipeline = AutoGluonTabularPipeline(task, save_path="autogluon_output")
-                return pipeline
-            elif task_class == LLMProcessingTask:
-                # Handle LLM specific pipeline creation
-                pass
-
-        except Exception as e:
-            print(f"Error creating pipeline: {e}")
-            return None
 
 
 class SessionStateManager:
@@ -273,44 +100,29 @@ class UIComponents:
                         st.markdown(msg["content"])
                     msg["displayed"] = True  # Mark as displayed
 
+class DataValidator:
+    @staticmethod
+    def validate_target_column(train_file: str | Path, target_col: str) -> bool:
+        target_col = target_col.strip()
+        try:
+            df = pd.read_csv(train_file)
+        except Exception as e:
+            print(e)
+            return False
+        return target_col in df.columns
 
-class AutoMLTabularPipelineHandler:
+class AutoMLTabularUI:
+
     @staticmethod
     def process_uploaded_files(uploaded_files):
         try:
             aggregate, file_paths = FileHandler.aggregate_file_content(uploaded_files)
+            AutoMLTabularUI._log_uploaded_files(file_paths, aggregate)
 
-            for path in file_paths:
-                SessionStateManager.append_message(
-                    "user-hidden",
-                    f"The user uploaded a file {path} with content like {aggregate}",
-                )
-
-            train_files = [f for f in file_paths if "train" in f.lower()]
-            test_files = [f for f in file_paths if "test" in f.lower()]
-
-            if train_files:
-                st.session_state.file_info["train"] = file_paths[train_files[0]]
-                SessionStateManager.append_message(
-                    "assistant", "✅ Found training data file"
-                )
-            else:
-                SessionStateManager.append_message(
-                    "assistant", "⚠️ No train.csv file provided"
-                )
-            if test_files:
-                st.session_state.file_info["test"] = file_paths[test_files[0]]
-                SessionStateManager.append_message(
-                    "assistant", "✅ Found test data file"
-                )
-            else:
-                st.session_state.file_info["test"] = ""
-                SessionStateManager.append_message(
-                    "assistant", "ℹ️ No test file provided"
-                )
-
+            AutoMLTabularUI._store_file_paths(file_paths)
             st.session_state.aggregate_info = aggregate[:300]
             st.session_state.files_parsed = True
+
             SessionStateManager.append_message(
                 "assistant",
                 "📊 Files processed successfully. Please tell me about your target column.",
@@ -321,168 +133,210 @@ class AutoMLTabularPipelineHandler:
             )
 
     @staticmethod
-    def handle_user_input(user_input: str, uploaded_files):
-        if uploaded_files:
+    def _log_uploaded_files(file_paths, aggregate):
+        for path in file_paths:
             SessionStateManager.append_message(
-                "assistant", "🔍 Processing uploaded files..."
-            )
-            AutoMLTabularPipelineHandler.process_uploaded_files(
-                uploaded_files=uploaded_files
+                "user-hidden",
+                f"The user uploaded a file {path} with content like {aggregate}",
             )
 
-            user_text = SessionStateManager.get_conversation_text()
-            SessionStateManager.append_message(
-                "assistant", "🤔 Analyzing your input for target column..."
-            )
-            target_column = ChatHandler.detect_target_column(user_text=user_text)
-
-            if target_column.lower() == "no":
-                SessionStateManager.append_message(
-                    "assistant",
-                    "❓ I couldn't identify the target column. Please specify which column we should predict.",
-                )
+    @staticmethod
+    def _store_file_paths(file_paths):
+        def pick_file(file_list, key, success_msg, fallback_msg, fallback_value=""):
+            if file_list:
+                st.session_state.file_info[key] = file_paths[file_list[0]]
+                SessionStateManager.append_message("assistant", success_msg)
             else:
-                SessionStateManager.append_message(
-                    "assistant",
-                    f"🔎 Identified potential target column: {target_column}",
-                )
-                SessionStateManager.append_message(
-                    "assistant", "⚙️ Validating target column..."
-                )
+                st.session_state.file_info[key] = fallback_value
+                SessionStateManager.append_message("assistant", fallback_msg)
 
-                validated_column = DataValidator.validate_target_column(
-                    train_file=st.session_state.file_info["train"],
-                    target_col=target_column,
-                )
+        train_files = [f for f in file_paths if "train" in f.lower()]
+        test_files = [f for f in file_paths if "test" in f.lower()]
 
-                if not validated_column:
-                    SessionStateManager.append_message(
-                        "assistant",
-                        f"⚠️ Column '{target_column}' not found in data. Please specify a valid target column.",
-                    )
-                else:
-                    SessionStateManager.append_message(
-                        "assistant",
-                        f"✅ Target column '{target_column}' validated successfully!",
-                    )
-                    st.session_state.file_info["target_col"] = target_column
+        pick_file(
+            train_files,
+            "train",
+            "✅ Found training data file",
+            "⚠️ No train.csv file provided",
+        )
+        pick_file(
+            test_files, "test", "✅ Found test data file", "ℹ️ No test file provided"
+        )
 
-                    possible_tasks = [
-                        TabularSupervisedClassificationTask,
-                        TabularSupervisedRegressionTask,
-                        TabularSupervisedTimeSeriesTask,
-                    ]
+    @staticmethod
+    def handle_user_input(user_input: str, uploaded_files):
+        if not uploaded_files:
+            return
 
-                    possible_task_types = ", ".join(
-                        [t.__name__ for t in possible_tasks]
-                    )
-                    SessionStateManager.append_message(
-                        "assistant", "🤖 Determining the best task type..."
-                    )
-                    print(st.session_state.aggregate_info)
-                    task_type = ChatHandler.chat(
-                        f"Which task type do you think this is? Answer only with the task type from these options. From the file context, if it is a table or if the user mentions, try to identify if it could be a timeseries task instead of the usual classification/regression. Do not modify the names or add extra spaces: {possible_task_types}. File context {st.session_state.aggregate_info}"
-                    ).strip()
-                    SessionStateManager.append_message(
-                        "assistant", f"🔧 Creating {task_type} pipeline..."
-                    )
-                    if task_type == TabularSupervisedTimeSeriesTask:
-                        SessionStateManager.append_message(
-                            "assistant",
-                            "📊 Files processed successfully. Please tell me about your timestamp column.",
-                        )
-                        user_text = SessionStateManager.get_conversation_text()
-                        timestamp_col = ChatHandler.detect_timestamp_column(
-                            user_text=user_text
-                        )
+        SessionStateManager.append_message(
+            "assistant", "🔍 Processing uploaded files..."
+        )
+        AutoMLTabularUI.process_uploaded_files(uploaded_files)
 
-                        if timestamp_col.lower() == "no":
-                            SessionStateManager.append_message(
-                                "assistant",
-                                "❓ I couldn't identify the time stamp column. Please specify which column we should predict.",
-                            )
-                        else:
-                            SessionStateManager.append_message(
-                                "assistant",
-                                f"🔎 Identified potential time stamp column: {timestamp_col}",
-                            )
+        SessionStateManager.append_message(
+            "assistant", "🤔 Analyzing your input for target column..."
+        )
+        user_text = SessionStateManager.get_conversation_text()
+        target_column = ChatHandler.detect_target_column(user_text=user_text)
 
-                            validated_column = DataValidator.validate_target_column(
-                                train_file=st.session_state.file_info["train"],
-                                target_col=timestamp_col,
-                            )
-                            if not validated_column:
-                                SessionStateManager.append_message(
-                                    "assistant",
-                                    f"⚠️ Column '{timestamp_col}' not found in data. Please specify a valid target column.",
-                                )
-                            else:
-                                SessionStateManager.append_message(
-                                    "assistant",
-                                    f"✅ Timestamp column '{timestamp_col}' validated successfully!",
-                                )
-                                st.session_state.file_info["time_stamp_col"] = (
-                                    timestamp_col
-                                )
+        if target_column.lower() == "no":
+            SessionStateManager.append_message(
+                "assistant",
+                "❓ I couldn't identify the target column. Please specify which column we should predict.",
+            )
+            return
 
-                    pipeline = PipelineManager.create_pipeline(
-                        task_type, st.session_state.file_info
-                    )
-                    if type(pipeline) == AutoGluonTabularPipeline:
-                        time_limit_selection = st.selectbox(
-                            label="How fast do you want a model? (Longer might be better)",
-                            options=["20 seconds", "5 min", "10 min", "1 hour"],
-                        )
-                        if time_limit_selection:
-                            time_limit_selection_map = {
-                                "20 seconds": 20,
-                                "5 min": 5 * 60,
-                                "10 min": 10 * 60,
-                                "1 hour": 60 * 60,
-                            }
-                            SessionStateManager.append_message(
-                                "assistant",
-                                f"⚙️ Identified Task type: {task_type}. Training model... (this may take a few minutes)",
-                            )
-                            if st.session_state.get("stop_requested", False):
-                                SessionStateManager.append_message(
-                                    "assistant", "🛑 Processing stopped by user."
-                                )
-                                return
-                            with st.spinner("Training model..."):
-                                if not st.session_state.get("stop_requested", False):
-                                    pipeline.fit(
-                                        time_limit=time_limit_selection_map[
-                                            time_limit_selection
-                                        ]
-                                    )
+        AutoMLTabularUI._handle_target_column(target_column)
 
-                            SessionStateManager.append_message(
-                                "assistant",
-                                "📊 Model trained successfully! Evaluating results...",
-                            )
-                            leaderboard = pipeline.evaluate()
-                            if leaderboard is not None:
-                                SessionStateManager.append_message(
-                                    "assistant", "🏆 Model performance results:"
-                                )
-                                SessionStateManager.append_message(
-                                    "assistant", leaderboard.to_markdown()
-                                )
+    @staticmethod
+    def _handle_target_column(target_column):
+        SessionStateManager.append_message(
+            "assistant", f"🔎 Identified potential target column: {target_column}"
+        )
+        SessionStateManager.append_message("assistant", "⚙️ Validating target column...")
+
+        train_file = st.session_state.file_info.get("train")
+        validated_column = DataValidator.validate_target_column(
+            train_file, target_column
+        )
+
+        if not validated_column:
+            SessionStateManager.append_message(
+                "assistant",
+                f"⚠️ Column '{target_column}' not found in data. Please specify a valid target column.",
+            )
+            return
+
+        SessionStateManager.append_message(
+            "assistant", f"✅ Target column '{target_column}' validated successfully!"
+        )
+        st.session_state.file_info["target_col"] = target_column
+
+        AutoMLTabularUI._select_and_run_task_pipeline()
+
+    @staticmethod
+    def _select_and_run_task_pipeline():
+        task_classes = [
+            TabularSupervisedClassificationTask,
+            TabularSupervisedRegressionTask,
+            TabularSupervisedTimeSeriesTask,
+        ]
+        task_names = ", ".join(cls.__name__ for cls in task_classes)
+
+        SessionStateManager.append_message(
+            "assistant", "🤖 Determining the best task type..."
+        )
+        task_type = ChatHandler.chat(
+            f"Which task type do you think this is? Choose only from: {task_names}. File context: {st.session_state.aggregate_info}"
+        ).strip()
+
+        SessionStateManager.append_message(
+            "assistant", f"🔧 Creating {task_type} pipeline..."
+        )
+
+        if task_type == TabularSupervisedTimeSeriesTask:
+            AutoMLTabularUI._handle_timestamp_column()
+
+        pipeline = PipelineManager.create_pipeline(
+            task_type, st.session_state.file_info
+        )
+        AutoMLTabularUI._train_and_evaluate_pipeline(pipeline, task_type)
+
+    @staticmethod
+    def _handle_timestamp_column():
+        SessionStateManager.append_message(
+            "assistant",
+            "📊 Files processed successfully. Please tell me about your timestamp column.",
+        )
+        user_text = SessionStateManager.get_conversation_text()
+        timestamp_col = ChatHandler.detect_timestamp_column(user_text=user_text)
+
+        if timestamp_col.lower() == "no":
+            SessionStateManager.append_message(
+                "assistant",
+                "❓ I couldn't identify the time stamp column. Please specify which column we should use.",
+            )
+            return
+
+        SessionStateManager.append_message(
+            "assistant", f"🔎 Identified potential time stamp column: {timestamp_col}"
+        )
+        validated_column = DataValidator.validate_target_column(
+            st.session_state.file_info["train"], timestamp_col
+        )
+        if validated_column:
+            SessionStateManager.append_message(
+                "assistant",
+                f"✅ Timestamp column '{timestamp_col}' validated successfully!",
+            )
+            st.session_state.file_info["time_stamp_col"] = timestamp_col
+        else:
+            SessionStateManager.append_message(
+                "assistant",
+                f"⚠️ Column '{timestamp_col}' not found in data. Please specify a valid timestamp column.",
+            )
+
+    @staticmethod
+    def _train_and_evaluate_pipeline(pipeline, task_type):
+        if not isinstance(pipeline, AutoGluonTabularPipeline):
+            return
+
+        time_limit = AutoMLTabularUI._select_time_limit()
+        if time_limit is None:
+            return
+
+        SessionStateManager.append_message(
+            "assistant",
+            f"⚙️ Identified Task type: {task_type}. Training model... (this may take a few minutes)",
+        )
+
+        if st.session_state.get("stop_requested", False):
+            SessionStateManager.append_message(
+                "assistant", "🛑 Processing stopped by user."
+            )
+            return
+
+        with st.spinner("Training model..."):
+            if not st.session_state.get("stop_requested", False):
+                pipeline.fit(time_limit=time_limit)
+
+        SessionStateManager.append_message(
+            "assistant", "📊 Model trained successfully! Evaluating results..."
+        )
+        leaderboard = pipeline.evaluate()
+        if leaderboard is not None:
+            SessionStateManager.append_message(
+                "assistant", "🏆 Model performance results:"
+            )
+            SessionStateManager.append_message("assistant", leaderboard.to_markdown())
+
+    @staticmethod
+    def _select_time_limit():
+        selection = st.selectbox(
+            "How fast do you want a model? (Longer might be better)",
+            ["20 seconds", "5 min", "10 min", "1 hour"],
+        )
+        time_map = {
+            "20 seconds": 20,
+            "5 min": 5 * 60,
+            "10 min": 10 * 60,
+            "1 hour": 60 * 60,
+        }
+        return time_map.get(selection)
 
 
-class WCAGPipelineHandler:
+class WCAGPipelineUI:
+    pipeline = WCAGPipeline
+
     @staticmethod
     def process_uploaded_files(uploaded_files):
         try:
-            # Use the existing aggregate logic to preserve temp files
             _, file_paths = FileHandler.aggregate_file_content(uploaded_files)
-
             for path in file_paths:
                 SessionStateManager.append_message(
                     "user-hidden", f"The user uploaded a file {path}"
                 )
-            return file_paths  # Dict[str, str]
+            return file_paths
         except Exception as e:
             SessionStateManager.append_message(
                 "assistant", f"❌ Error processing files: {str(e)}"
@@ -499,118 +353,65 @@ class WCAGPipelineHandler:
         )
 
         try:
-            files = FileHandler.read_each_file(uploaded_files)  # {filename: content}
+            files = FileHandler.read_each_file(uploaded_files)
         except Exception as e:
             SessionStateManager.append_message(
-                "assistant", f"❌ Error processing files: {e}"
+                "assistant", f"❌ Error reading files: {e}"
             )
             return
 
         for filename, content in files.items():
-            try:
-                if st.session_state.get("stop_requested", False):
-                    SessionStateManager.append_message(
-                        "assistant", "🛑 Processing stopped by user."
-                    )
-                    return
-                chunk_size = 3000  # Adjust based on model/token limits
-
-                # Split the content into lines first
-                lines = content.splitlines()
-                line_offsets = [0]
-                for line in lines:
-                    line_offsets.append(
-                        line_offsets[-1] + len(line) + 1
-                    )  # +1 for newline
-
-                chunks = []
-                line_ranges = []
-
-                i = 0
-                while i < len(content):
-                    end = i + chunk_size
-                    chunks.append(content[i:end])
-
-                    # Find corresponding line numbers
-                    start_line = (
-                        next(j for j, offset in enumerate(line_offsets) if offset > i)
-                        - 1
-                    )
-                    end_line = (
-                        next(
-                            (
-                                j
-                                for j, offset in enumerate(line_offsets)
-                                if offset > end
-                            ),
-                            len(lines),
-                        )
-                        - 1
-                    )
-                    line_ranges.append(
-                        (start_line + 1, end_line + 1)
-                    )  # Line numbers are 1-based
-
-                    i = end
-
-                scores = []
-                chunk_outputs = []
-
+            if st.session_state.get("stop_requested", False):
                 SessionStateManager.append_message(
-                    "assistant",
-                    f"📂 Processing `{filename}` in {len(chunks)} chunk(s)...",
+                    "assistant", "🛑 Processing stopped by user."
                 )
+                return
 
-                for i, (chunk, (start_line, end_line)) in enumerate(
-                    zip(chunks, line_ranges)
-                ):
-                    chunk_prompt = f"""
-                You're a WCAG (Web Content Accessibility Guidelines) checker. Do not explain the code, your job is to only look at the guidelines.
-                Evaluate the following file named `{filename}` and give feedback as follows: If the file contains guidelines, ignore it of course. Do not explain the code.
+            WCAGPipelineUI._process_file(filename, content)
 
-                1. Score from 0–10 on how well it follows WCAG (0 = not at all, 10 = perfect). This regex will be used to parse it Score[:\\s]*([0-9](?:\\.\\d+)?), response, re.IGNORECASE
-                2. If score < 10, list specific improvements needed, with code suggestions in markdown.
-                3. Use the WCAG 2.1 guidelines unless a custom guideline file is provided.
-                4. Only evaluate the code below. Do not make assumptions beyond the content.
-                Always mention the score.
+    @staticmethod
+    def _process_file(filename, content, chunk_size=3000):
+        chunks, line_ranges = WCAGPipeline._split_into_chunks(
+            content, chunk_size
+        )
+        scores, outputs = [], []
 
-                ### Begin File Content (chunk {i+1} of {len(chunks)}, lines {start_line}–{end_line})
-                {chunk}
-                ### End File Content
-                """
+        SessionStateManager.append_message(
+            "assistant", f"📂 Processing `{filename}` in {len(chunks)} chunk(s)..."
+        )
 
-                    with st.spinner(
-                        f"🔎 Analyzing `{filename}` - chunk {i+1}/{len(chunks)}..."
-                    ):
-                        response = ChatHandler.chat(message=chunk_prompt)
-
-                    # Extract score
-                    import re
-
-                    score_match = re.search(
-                        r"\bScore[:\s]*([0-9](?:\.\d+)?)", response, re.IGNORECASE
-                    )
-                    score = float(score_match.group(1)) if score_match else None
-                    if score is not None:
-                        scores.append(score)
-
-                    chunk_feedback = f"""
-    📄 **Chunk {i+1}/{len(chunks)} of `{filename}` with approx line {start_line}-{end_line}**  
-    {response}
-                    """
-                    SessionStateManager.append_message("assistant", chunk_feedback)
-                    chunk_outputs.append(chunk_feedback)
-
-                # After all chunks processed
-                avg_score = round(sum(scores) / len(scores), 2) if scores else "N/A"
-                summary = f"✅ Finished analyzing `{filename}`.\n\n**Average WCAG Score:** {avg_score}/10"
-                SessionStateManager.append_message("assistant", summary)
-
-            except Exception as e:
+        for i, (chunk, (start_line, end_line)) in enumerate(zip(chunks, line_ranges)):
+            if st.session_state.get("stop_requested", False):
                 SessionStateManager.append_message(
-                    "assistant", f"❌ Failed to process `{filename}`: {e}"
+                    "assistant", "🛑 Processing stopped by user."
                 )
+                return
 
+            prompt = WCAGPipeline._build_chunk_prompt(
+                filename, chunk, i, len(chunks), start_line, end_line
+            )
+
+            with st.spinner(
+                f"🔎 Analyzing `{filename}` - chunk {i+1}/{len(chunks)}..."
+            ):
+                response = ChatHandler.chat(prompt)
+
+            score = WCAGPipeline._extract_wcag_score(response)
+            if score is not None:
+                scores.append(score)
+
+            feedback = f"""
+📄 **Chunk {i+1}/{len(chunks)} of `{filename}` (lines {start_line}-{end_line})**  
+{response}
+"""
+            SessionStateManager.append_message("assistant", feedback)
+            outputs.append(feedback)
+
+        avg_score = round(sum(scores) / len(scores), 2) if scores else "N/A"
+        summary = f"✅ Finished analyzing `{filename}`.\n\n**Average WCAG Score:** {avg_score}/10"
+        SessionStateManager.append_message("assistant", summary)
+
+    
 
 def main():
     SessionStateManager.initialize_state()
@@ -640,7 +441,7 @@ def main():
                 SessionStateManager.append_message("user", prompt)
 
                 # Process the input
-                AutoMLTabularPipelineHandler.handle_user_input(prompt, uploaded_files)
+                AutoMLTabularUI.handle_user_input(prompt, uploaded_files)
 
                 # Rerender chat after processing
                 st.rerun()
@@ -657,7 +458,7 @@ def main():
                 SessionStateManager.append_message("user", prompt)
 
                 # Process the input
-                WCAGPipelineHandler.handle_user_input(prompt, uploaded_files)
+                WCAGPipelineUI.handle_user_input(prompt, uploaded_files)
                 st.session_state.stop_requested = False
 
                 # Rerender chat after processing

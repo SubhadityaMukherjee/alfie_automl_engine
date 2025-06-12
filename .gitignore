@@ -2,7 +2,8 @@
 .webui_secret_key
 sample_data/
 AutogluonModels/
-autogluon_output
+autogluon_output/
+autogluon_output/*
 *.pkl
 *.drawio.bkp
 # Byte-compiled / optimized / DLL files
