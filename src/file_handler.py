@@ -2,8 +2,14 @@ import mimetypes
 import tempfile
 from pathlib import Path
 
+import nest_asyncio
 import pandas as pd
 from docx import Document
+from pydantic import BaseModel
+
+nest_asyncio.apply()
+
+from pydantic import BaseModel
 
 
 class FileHandler:
@@ -89,3 +95,10 @@ class FileHandler:
                 aggregated_context += f"\n{content[:100]}\n"
 
         return file_info + aggregated_context, file_paths
+
+
+class FileInfo(BaseModel):
+    train_file: Path = Path()
+    test_file: Path = Path()
+    target_col: Path = Path()
+    time_stamp_col: Path = Path()
