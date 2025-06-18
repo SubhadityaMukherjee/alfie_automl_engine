@@ -15,13 +15,13 @@ class FileHandler:
         except Exception as e:
             return f"⚠️ Error reading document: {e}"
 
-    # @staticmethod
-    # def csv_summary(path: Path) -> str:
-    #     try:
-    #         df = pd.read_csv(path)
-    #         return str(df.describe())
-    #     except Exception as e:
-    #         return f"⚠️ Error reading document: {e}"
+    @staticmethod
+    def csv_summary(path: Path) -> str:
+        try:
+            df = pd.read_csv(path)
+            return str(df.describe())
+        except Exception as e:
+            return f"⚠️ Error reading document: {e}"
 
     @staticmethod
     def read_file_content(file_path: Path, mime: str) -> str:

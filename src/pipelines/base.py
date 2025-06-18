@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 
 class BasePipeline(ABC):
+    
     def __init__(self, session_state, output_placeholder_ui_element) -> None:
         super().__init__()
         self.session_state = session_state
