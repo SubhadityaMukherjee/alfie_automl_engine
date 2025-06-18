@@ -1,4 +1,8 @@
 # alfie_automl_engine
 ALFIE AutoML Engine code
 
-- Python 3.12 is the max supported version for AutoGluon so we stick with that for now
+## Installation
+```bash
+pip install uv
+uv venv --seed --python 3.11 ~/.venvs/alfieautoml
+```
