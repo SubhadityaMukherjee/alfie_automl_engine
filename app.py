@@ -5,7 +5,7 @@ nest_asyncio.apply()
 
 
 from src.session_state_handler import SessionState
-from ui.ui_handler import build_ui_with_chat
+from src.ui.ui_handler import build_ui_with_chat
 
 
 def main():

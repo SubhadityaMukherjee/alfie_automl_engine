@@ -30,6 +30,12 @@ class SessionState(BaseModel):
 
     def add_message(self, role: str = "assistant", content: str = ""):
         self.messages.append(Message(role=role, content=content))
+    
+    def get_all_messages_by_role(self, roles:List[str] = ["user", "user-hidden"]) -> str:
+        if len(self.messages) > 0:
+            return "\n".join([message.content for message in self.messages if message.role in roles])
+        else:
+            return ""
 
     def generate_html_from_session(self) -> BytesIO:
         html_content: str = f"""
