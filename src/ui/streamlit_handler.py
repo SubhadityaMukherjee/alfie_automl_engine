@@ -6,8 +6,11 @@ import streamlit as st
 nest_asyncio.apply()
 
 from contextlib import contextmanager
+
 from streamlit.commands.page_config import Layout
+
 from src.ui.ui_template import BaseUITemplate
+
 
 class StreamlitUI(BaseUITemplate):
     def set_page_config(self, title: str, layout: Layout) -> None:
@@ -30,6 +33,12 @@ class StreamlitUI(BaseUITemplate):
 
     def chat_input(self, placeholder: str) -> str | None:
         return st.chat_input(placeholder)
+    
+    def form(self, key: str):
+        return st.form(key=key)
+    
+    def form_submit_button(self, label:str):
+        return st.form_submit_button(label=label)
 
     def selectbox(
         self, label: str, options: List[str], key: str, index: int = 0

@@ -5,11 +5,9 @@ import streamlit as st
 
 from old_src.chat_module.handler import ChatHandler
 from old_src.file_processing.reader import FileHandler
-from old_src.tabular_task.pipeline import (
-    AutoGluonTabularPipeline,
-    BaseTabularAutoMLPipeline,
-    DataValidator,
-)
+from old_src.tabular_task.pipeline import (AutoGluonTabularPipeline,
+                                           BaseTabularAutoMLPipeline,
+                                           DataValidator)
 from old_src.tabular_task.tasks import *
 from old_src.ui.tabular_automl_ui import AutoMLTabularUI
 from old_src.ui.ui_components import GeneralUIComponents, SessionStateManager

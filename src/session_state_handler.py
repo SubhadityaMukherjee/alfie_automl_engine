@@ -4,7 +4,9 @@ import nest_asyncio
 from markdown import markdown
 
 nest_asyncio.apply()
+from datetime import datetime
 from io import BytesIO
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -19,6 +21,8 @@ class SessionState(BaseModel):
     stop_requested: bool = False
     aggregate_info: str = ""
     file_info: FileInfo = Field(default_factory=FileInfo)
+    automloutputpath: str = str(Path("autogluon_output"))
+    pipeline_name:str = ""
 
     def reset(self) -> None:
         """Reset everything"""
@@ -27,13 +31,19 @@ class SessionState(BaseModel):
         self.aggregate_info = ""
         self.files_parsed = False
         self.stop_requested = False
+        self.pipeline_name = ""
+        self.automloutputpath = ""
 
     def add_message(self, role: str = "assistant", content: str = ""):
         self.messages.append(Message(role=role, content=content))
-    
-    def get_all_messages_by_role(self, roles:List[str] = ["user", "user-hidden"]) -> str:
+
+    def get_all_messages_by_role(
+        self, roles: List[str] = ["user", "user-hidden"]
+    ) -> str:
         if len(self.messages) > 0:
-            return "\n".join([message.content for message in self.messages if message.role in roles])
+            return "\n".join(
+                [message.content for message in self.messages if message.role in roles]
+            )
         else:
             return ""
 

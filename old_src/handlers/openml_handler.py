@@ -6,10 +6,8 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
-from old_src.tasks import (
-    TabularSupervisedClassificationTask,
-    TabularSupervisedRegressionTask,
-)
+from old_src.tasks import (TabularSupervisedClassificationTask,
+                           TabularSupervisedRegressionTask)
 
 
 class OpenMLDatasetHandler:
@@ -51,10 +49,6 @@ class OpenMLDatasetHandler:
             if target_col_type:
                 if target_col_type in ["nominal", "string", "categorical"]:
                     self.task_type = TabularSupervisedClassificationTask
-                    # try:
-                    #     self.class_labels = self.dataset.get_data()[0][target_col_name].unique()
-                    # except Exception as e:
-                    #     return "No class labels found"
 
                 elif target_col_type == "numeric":
                     # evaluation_measure = "mean_absolute_error"

@@ -6,7 +6,6 @@ import nest_asyncio
 nest_asyncio.apply()
 
 
-
 class BaseUITemplate(ABC):
     def __init__(self, session_state) -> None:
         self.session_state = session_state
@@ -63,6 +62,12 @@ class BaseUITemplate(ABC):
 
     @abstractmethod
     def markdown(self, text: str) -> None:
+        pass
+    @abstractmethod
+    def form(self, text: str) -> None:
+        pass
+    @abstractmethod
+    def form_submit_button(self, text: str) -> None:
         pass
 
     @abstractmethod

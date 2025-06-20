@@ -1,3 +1,4 @@
+import shutil
 from typing import List, Union
 
 import nest_asyncio
@@ -5,18 +6,15 @@ import nest_asyncio
 nest_asyncio.apply()
 
 from src.chat_handler import Message
-from src.pipelines import AutoMLTabularPipeline, WCAGPipeline
+from src.pipelines.base import PipelineRegistry
 from src.ui.streamlit_handler import StreamlitUI
+
 
 class build_ui_with_chat:
     def __init__(self, session_state) -> None:
         self.session_state = session_state
         self.ui = StreamlitUI(session_state=self.session_state)
-        self.PIPELINES = {
-            "-- Select a Pipeline --": None,
-            "WCAG Guidelines": WCAGPipeline,
-            "AutoML Tabular": AutoMLTabularPipeline,
-        }
+        self.PIPELINES = {"-- Select a Pipeline --": None, **PipelineRegistry.get_all()}
 
     def build_ui(self) -> None:
         self.ui.set_page_config(self.session_state.page_title, layout="wide")
@@ -49,12 +47,38 @@ class build_ui_with_chat:
         if prompt:
             self.session_state.add_message(role="user", content=prompt)
             if handler_class:
-                chosen_pipeline_class = handler_class(
-                    session_state=self.session_state,
-                    output_placeholder_ui_element=self.output_placeholder,
-                )
-                with self.ui.spinner("Analyzing files"):
-                    result = chosen_pipeline_class.main_flow(prompt, uploaded_files)
+                if pipeline_name != "Choose a Pipeline":
+                    chosen_pipeline_class = handler_class(
+                        session_state=self.session_state,
+                        output_placeholder_ui_element=self.output_placeholder,
+                    )
+                    self.session_state.add_message(
+                        role="Assistant",
+                        content=chosen_pipeline_class.initial_display_message,
+                    )
+                if pipeline_name == "AutoML Tabular":
+                    if self.ui.sidebar_button("📄 download models after leaderboard"):
+                        zip_filename = "best_model.zip"
+                        shutil.make_archive(
+                            "best_model", "zip", self.session_state.automloutputpath
+                        )
+
+                        # Streamlit download button
+                        with open(zip_filename, "rb") as f:
+                            self.ui.download_button(
+                                label="📥 Download Best Model",
+                                data=f,
+                                file_name=zip_filename,
+                                mime="application/zip",
+                            )
+
+                        self.session_state.add_message(
+                            role="assistant",
+                            content="✅ Model training complete. You can now download the best model.",
+                        )
+                if uploaded_files:
+                    with self.ui.spinner("Analyzing files"):
+                        result = chosen_pipeline_class.main_flow(prompt, uploaded_files)
             self.ui.rerun()
 
         self.generate_sidebar()

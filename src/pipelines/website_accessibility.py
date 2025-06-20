@@ -9,14 +9,18 @@ nest_asyncio.apply()
 
 from src.chat_handler import ChatHandler
 from src.file_handler import FileHandler
-from src.pipelines.base import BasePipeline
+from src.pipelines.base import BasePipeline, PipelineRegistry
 
 
-class WCAGPipeline(BasePipeline):
+@PipelineRegistry.register("Website Accessibility")
+class WebsiteAccesibilityPipeline(BasePipeline):
     def __init__(self, session_state, output_placeholder_ui_element) -> None:
         super().__init__(session_state, output_placeholder_ui_element)
         self.chunk_outputs: List[str] = []
         self.output_placeholder_ui_element = output_placeholder_ui_element
+        self.initial_display_message = (
+            "Hello, I will help you verify how accessible your website is"
+        )
 
     @staticmethod
     def return_basic_prompt() -> str:
@@ -71,7 +75,7 @@ Evaluate the following file named `{filename}`:
         return float(match.group(1)) if match else None
 
     def process_file(self, filename, content, chunk_size=3000):
-        chunks, line_ranges = WCAGPipeline._split_into_chunks(content, chunk_size)
+        chunks, line_ranges = WebsiteAccesibilityPipeline._split_into_chunks(content, chunk_size)
         scores = []
 
         for i, (chunk, (start_line, end_line)) in enumerate(zip(chunks, line_ranges)):
@@ -79,7 +83,7 @@ Evaluate the following file named `{filename}`:
                 filename, chunk, i, len(chunks), start_line, end_line
             )
             response = ChatHandler.chat(prompt)
-            score = WCAGPipeline._extract_wcag_score(response)
+            score = WebsiteAccesibilityPipeline._extract_wcag_score(response)
             if score is not None:
                 scores.append(score)
 

@@ -10,12 +10,9 @@ import old_src.tabular_task.tasks as tabular_task_modules
 from old_src.chat_module.handler import ChatHandler
 from old_src.file_processing.reader import FileHandler
 
-from .tasks import (
-    TabularChecks,
-    TabularSupervisedClassificationTask,
-    TabularSupervisedRegressionTask,
-    TabularSupervisedTimeSeriesTask,
-)
+from .tasks import (TabularChecks, TabularSupervisedClassificationTask,
+                    TabularSupervisedRegressionTask,
+                    TabularSupervisedTimeSeriesTask)
 
 
 def load_and_validate_df(
