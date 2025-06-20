@@ -100,5 +100,5 @@ class FileHandler:
 class FileInfo(BaseModel):
     train_file: Path = Path()
     test_file: Path = Path()
-    target_col: Path = Path()
-    time_stamp_col: Path = Path()
+    target_col: str = ''
+    time_stamp_col: str = ''

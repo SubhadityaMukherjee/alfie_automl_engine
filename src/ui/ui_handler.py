@@ -5,7 +5,7 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
-from src.chat_handler import Message
+from src.chat_handler import ChatHandler, Message
 from src.pipelines.base import PipelineRegistry
 from src.ui.streamlit_handler import StreamlitUI
 
@@ -41,47 +41,52 @@ class build_ui_with_chat:
             uploaded_files = self.ui.file_uploader(
                 "📂 Upload files", accept_multiple_files=True, key="file_uploader"
             )
-
             handler_class = self.PIPELINES.get(pipeline_name)
 
         if prompt:
             self.session_state.add_message(role="user", content=prompt)
-            if handler_class:
-                if pipeline_name != "Choose a Pipeline":
+            intent = self.classify_intent_with_chat(prompt)
+
+            if intent == "general":
+                response = ChatHandler.chat(prompt)
+                self.session_state.add_message(role="assistant", content=response)
+
+            elif intent == "pipeline" and handler_class:
+                if pipeline_name != "-- Select a Pipeline --":
                     chosen_pipeline_class = handler_class(
                         session_state=self.session_state,
                         output_placeholder_ui_element=self.output_placeholder,
                     )
                     self.session_state.add_message(
-                        role="Assistant",
+                        role="assistant",
                         content=chosen_pipeline_class.initial_display_message,
                     )
-                if pipeline_name == "AutoML Tabular":
-                    if self.ui.sidebar_button("📄 download models after leaderboard"):
-                        zip_filename = "best_model.zip"
-                        shutil.make_archive(
-                            "best_model", "zip", self.session_state.automloutputpath
-                        )
+                    if uploaded_files:
+                        with self.ui.spinner("Analyzing files"):
+                            result = chosen_pipeline_class.main_flow(prompt, uploaded_files)
 
-                        # Streamlit download button
-                        with open(zip_filename, "rb") as f:
-                            self.ui.download_button(
-                                label="📥 Download Best Model",
-                                data=f,
-                                file_name=zip_filename,
-                                mime="application/zip",
-                            )
+            else:
+                self.session_state.add_message(
+                    role="assistant",
+                    content="❓ I wasn't sure how to route this. Please try rephrasing or choose a pipeline.",
+                )
 
-                        self.session_state.add_message(
-                            role="assistant",
-                            content="✅ Model training complete. You can now download the best model.",
-                        )
-                if uploaded_files:
-                    with self.ui.spinner("Analyzing files"):
-                        result = chosen_pipeline_class.main_flow(prompt, uploaded_files)
             self.ui.rerun()
 
         self.generate_sidebar()
+
+    def classify_intent_with_chat(self, prompt: str) -> str:
+        query = (
+            f"The user said: '{prompt}'. "
+            "Should this be handled as a general question (like 'what is AutoML?' or 'how do I train a model?') "
+            "or as a pipeline-related task (e.g., involving dataset processing, file upload, or model training)? "
+            "Pipeline related could also be something like classify X column,"
+            "Regression on X"
+            "General question could be : How do I do X? How do I modify X to do Y"
+            "How do I do X better"
+            "Respond with exactly one word: 'general' or 'pipeline'."
+        )
+        return ChatHandler.chat(query).strip().lower()
 
     def generate_sidebar(self) -> None:
         if self.ui.sidebar_button("🧹clear"):
@@ -104,6 +109,22 @@ class build_ui_with_chat:
                 )
             except Exception as e:
                 self.ui.warning(str(e))
+                
+        #TODO Only enable this for automl task
+        if self.ui.sidebar_button("📄 download models after leaderboard"):
+            zip_filename = "best_model.zip"
+            shutil.make_archive(
+                "best_model", "zip", self.session_state.automloutputpath
+            )
+
+            # Streamlit download button
+            with open(zip_filename, "rb") as f:
+                self.ui.download_button(
+                    label="📥 Download Best Model",
+                    data=f,
+                    file_name=zip_filename,
+                    mime="application/zip",
+                )
 
     def append_message(self, role: str, content: str, display: bool = True) -> None:
         message = Message(role=role, content=content)

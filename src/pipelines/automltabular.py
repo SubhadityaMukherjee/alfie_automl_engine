@@ -6,7 +6,7 @@ from typing import Any, Dict, Tuple
 import pandas as pd
 from autogluon.tabular import TabularDataset, TabularPredictor
 
-from src.chat_handler import ChatHandler
+from src.chat_handler import ChatHandler, Message
 from src.file_handler import FileHandler
 from src.pipelines.base import BasePipeline, PipelineRegistry
 from src.pipelines.task_defs import (TabularSupervisedClassificationTask,
@@ -24,7 +24,7 @@ class AutoMLTabularPipeline(BasePipeline):
             "supervised regression": TabularSupervisedRegressionTask,
             "supervised time series": TabularSupervisedTimeSeriesTask,
         }
-        self.time_limit_for_automl = 10
+        self.time_limit_for_automl = 10 #TODO make this by user input loop
         self.initial_display_message = "Hello, I will help you with your tabular dataset. Please upload your training and testing files in the csv format"
         self.save_model_path = str(
             Path(self.session_state.automloutputpath) / str(time.time())
@@ -105,81 +105,189 @@ class AutoMLTabularPipeline(BasePipeline):
             self.session_state.add_message(
                 role="assistant", content=leaderboard.to_markdown()
             )
-
-    def main_flow(self, user_input: str, uploaded_files) -> Dict[str, Any] | None:
-        if not uploaded_files:
-            return
-
+    def process_uploaded_files(self, uploaded_files):
         self.session_state.add_message(
             role="assistant", content="Processing uploaded files"
         )
 
-        if self.session_state.stop_requested:
-            self.session_state.add_message(
-                role="assistant", content="Processing stopped"
-            )
-            return
+    def handle_stop(self):
+        self.session_state.add_message(
+            role="assistant", content="Processing stopped"
+        )
+        return
 
-        # get a concatenated version of the files and their paths
+    def handle_file_parsing(self, uploaded_files):
         aggregated_context, train_file_path, test_file_path = self.get_train_test_files(
             uploaded_files
         )
         self.session_state.aggregate_info = aggregated_context[:300]
         self.session_state.files_parsed = True
+        return train_file_path, test_file_path
 
-        user_text = self.session_state.get_all_messages_by_role(["user", "user-hidden"])
+    def detect_target_column(self, user_text: str, train_file_path: str) -> str | None:
         self.session_state.add_message(
             role="assistant", content="Analyzing your input for target column..."
         )
 
-        # Try to detect the target column
-        detected_target_column = ChatHandler.chat(
+        query = (
             "Did the user mention what you think could be a target column for the tabular data classification/regression? "
             "If yes, what is the column name? Only return the column name, nothing else. ignore the words column and similar in the output. "
             "Eg: Classify signature column -> signature, recognize different classes -> no, classify -> no, signature column -> signature "
             f"If no, return 'no'. User messages:\n{user_text}"
-        ).strip()
+        )
+        result = ChatHandler.chat(query).strip()
 
-        if detected_target_column.lower() == "no":
+        if result.lower() == "no":
             self.session_state.add_message(
                 role="assistant",
                 content="❓ I couldn't identify the target column. Please specify which column we should predict.",
             )
-            return
+            return None
 
-        if not self.validate_column_from_train(train_file_path, detected_target_column):
-            return
+        if not self.validate_column_from_train(train_file_path, result):
+            return None
 
         self.session_state.add_message(
             role="assistant",
-            content=f"Identified target column {detected_target_column}",
+            content=f"Identified target column {result}",
         )
         self.detected_col = True
+        return result
 
-        # Try to identify which task type it is
-
-        task_type_options = ", ".join(
-            task.__name__ for task in self.possible_tasks.values()
+    def detect_task_type(self) -> str:
+        task_type_options = ", ".join(task.__name__ for task in self.possible_tasks.values())
+        query = (
+            f"Which task type do you think this is? Answer only with the task type from these options. "
+            f"From the file context, if it is a table or if the user mentions, try to identify if it could be a timeseries task instead of the usual classification/regression. "
+            f"Do not modify the names or add extra spaces: {task_type_options}."
         )
-
-        task_type = (
-            ChatHandler.chat(
-                f"Which task type do you think this is? Answer only with the task type from these options. "
-                f"From the file context, if it is a table or if the user mentions, try to identify if it could be a timeseries task instead of the usual classification/regression. "
-                f"Do not modify the names or add extra spaces: {task_type_options}."
-            )
-            .strip()
-            .lower()
-        )
-
+        result = ChatHandler.chat(query).strip().lower()
         self.session_state.add_message(
-            role="assistant", content=f"Identified task type : {task_type}..."
+            role="assistant", content=f"Identified task type : {result}..."
         )
+        return result
+    
+    def detect_how_long_the_user_wants_to_wait(self) -> int:
+        self.time_limit_decided = False
+        self.session_state.add_message(
+            role="assistant", content="How long do you want to wait? Eg: 2 minutes"
+        )
+        last_message:Message = self.session_state.messages[-1]
+        if last_message == "user" and self.time_limit_decided:
+            answer = last_message.content
+            query = f"How long does the user want to wait? Return answer in seconds and add nothing else {answer}. If nothing was found return 20"
+            result = ChatHandler.chat(query).strip().lower() 
+            print(result)
+            if int(result)> 0:
+                self.time_limit_decided = True
+                return int(result)
 
-        if task_type == "supervised time series":
-            # TODO do this
+    def handle_time_series(self):
+        self.session_state.add_message(
+            role="assistant", content="📉 Time series task detection is not yet supported."
+        )
+        return
+
+    def main_flow(self, user_input: str, uploaded_files) -> Dict[str, Any] | None:
+        if not uploaded_files:
             return
 
-        self.train_and_evaluate_automl_using_autogluon(
-            train_file_path, test_file_path, detected_target_column
+        self.process_uploaded_files(uploaded_files)
+
+        if self.session_state.stop_requested:
+            return self.handle_stop()
+
+        train_file_path, test_file_path = self.handle_file_parsing(uploaded_files)
+
+        user_text = self.session_state.get_all_messages_by_role(["user", "user-hidden"])
+        target_column = self.detect_target_column(user_text, train_file_path)
+        if not target_column:
+            return
+
+        task_type = self.detect_task_type()
+        if task_type == "supervised time series":
+            return self.handle_time_series()  # stubbed
+        
+        self.time_limit_for_automl = self.detect_how_long_the_user_wants_to_wait()
+
+        return self.train_and_evaluate_automl_using_autogluon(
+            train_file_path, test_file_path, target_column
         )
+
+    # def main_flow(self, user_input: str, uploaded_files) -> Dict[str, Any] | None:
+    #     if not uploaded_files:
+    #         return
+
+    #     self.session_state.add_message(
+    #         role="assistant", content="Processing uploaded files"
+    #     )
+
+    #     if self.session_state.stop_requested:
+    #         self.session_state.add_message(
+    #             role="assistant", content="Processing stopped"
+    #         )
+    #         return
+
+    #     # get a concatenated version of the files and their paths
+    #     aggregated_context, train_file_path, test_file_path = self.get_train_test_files(
+    #         uploaded_files
+    #     )
+    #     self.session_state.aggregate_info = aggregated_context[:300]
+    #     self.session_state.files_parsed = True
+
+    #     user_text = self.session_state.get_all_messages_by_role(["user", "user-hidden"])
+    #     self.session_state.add_message(
+    #         role="assistant", content="Analyzing your input for target column..."
+    #     )
+
+    #     # Try to detect the target column
+    #     detected_target_column = ChatHandler.chat(
+    #         "Did the user mention what you think could be a target column for the tabular data classification/regression? "
+    #         "If yes, what is the column name? Only return the column name, nothing else. ignore the words column and similar in the output. "
+    #         "Eg: Classify signature column -> signature, recognize different classes -> no, classify -> no, signature column -> signature "
+    #         f"If no, return 'no'. User messages:\n{user_text}"
+    #     ).strip()
+
+    #     if detected_target_column.lower() == "no":
+    #         self.session_state.add_message(
+    #             role="assistant",
+    #             content="❓ I couldn't identify the target column. Please specify which column we should predict.",
+    #         )
+    #         return
+
+    #     if not self.validate_column_from_train(train_file_path, detected_target_column):
+    #         return
+
+    #     self.session_state.add_message(
+    #         role="assistant",
+    #         content=f"Identified target column {detected_target_column}",
+    #     )
+    #     self.detected_col = True
+
+    #     # Try to identify which task type it is
+
+    #     task_type_options = ", ".join(
+    #         task.__name__ for task in self.possible_tasks.values()
+    #     )
+
+    #     task_type = (
+    #         ChatHandler.chat(
+    #             f"Which task type do you think this is? Answer only with the task type from these options. "
+    #             f"From the file context, if it is a table or if the user mentions, try to identify if it could be a timeseries task instead of the usual classification/regression. "
+    #             f"Do not modify the names or add extra spaces: {task_type_options}."
+    #         )
+    #         .strip()
+    #         .lower()
+    #     )
+
+    #     self.session_state.add_message(
+    #         role="assistant", content=f"Identified task type : {task_type}..."
+    #     )
+
+    #     if task_type == "supervised time series":
+    #         # TODO do this
+    #         return
+
+    #     self.train_and_evaluate_automl_using_autogluon(
+    #         train_file_path, test_file_path, detected_target_column
+    #     )

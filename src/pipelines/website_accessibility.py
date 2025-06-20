@@ -7,9 +7,46 @@ import streamlit as st
 nest_asyncio.apply()
 
 
+import base64
+from io import BytesIO
+
+import requests
+from ollama import Client
+from PIL import Image
+
 from src.chat_handler import ChatHandler
 from src.file_handler import FileHandler
 from src.pipelines.base import BasePipeline, PipelineRegistry
+
+client = Client()
+
+
+def image_to_base64(image_path_or_url):
+    if image_path_or_url.startswith("http"):
+        image = Image.open(requests.get(image_path_or_url, stream=True).raw)
+    else:
+        image = Image.open(image_path_or_url)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
+def check_alt_text_with_ollama(image_url_or_path, alt_text, model="llava"):
+    image_b64 = image_to_base64(image_url_or_path)
+    messages = [
+        {
+            "role": "system",
+            "content": "You are a WCAG accessibility checker. Your job is to determine if the alt text meaningfully and accurately represents the image.",
+        },
+        {"role": "user", "content": f"Alt text: {alt_text}"},
+        {
+            "role": "user",
+            "content": "Does this alt text correctly describe the image? Respond with 'Yes' or 'No' and give a short justification.",
+            "image": image_b64,
+        },
+    ]
+    response = client.chat(model=model, messages=messages)
+    return response["message"]["content"]
 
 
 @PipelineRegistry.register("Website Accessibility")
@@ -21,6 +58,7 @@ class WebsiteAccesibilityPipeline(BasePipeline):
         self.initial_display_message = (
             "Hello, I will help you verify how accessible your website is"
         )
+        self.enable_image_alt_text_checker = False
 
     @staticmethod
     def return_basic_prompt() -> str:
@@ -75,7 +113,9 @@ Evaluate the following file named `{filename}`:
         return float(match.group(1)) if match else None
 
     def process_file(self, filename, content, chunk_size=3000):
-        chunks, line_ranges = WebsiteAccesibilityPipeline._split_into_chunks(content, chunk_size)
+        chunks, line_ranges = WebsiteAccesibilityPipeline._split_into_chunks(
+            content, chunk_size
+        )
         scores = []
 
         for i, (chunk, (start_line, end_line)) in enumerate(zip(chunks, line_ranges)):
@@ -87,6 +127,15 @@ Evaluate the following file named `{filename}`:
             if score is not None:
                 scores.append(score)
 
+            image_feedback = ""
+            if self.enable_image_alt_text_checker:
+                image_eval = self._evaluate_images_in_chunk_with_ollama(chunk)
+                if image_eval:
+                    image_feedback = "\n".join(
+                        f"- **Image**: {r['src']}\n  - **ALT**: `{r['alt_text']}`\n  - **Result**: {r.get('ollama_evaluation', r.get('error'))}"
+                        for r in image_eval
+                    )
+
             yield {
                 "chunk_index": i,
                 "start_line": start_line,
@@ -95,6 +144,7 @@ Evaluate the following file named `{filename}`:
                 "score": score,
                 "num_chunks": len(chunks),
                 "filename": filename,
+                "image_feedback": image_feedback,
             }
 
         # Final summary after all chunks
@@ -105,6 +155,29 @@ Evaluate the following file named `{filename}`:
             "num_chunks": len(chunks),
             "average_score": avg_score,
         }
+
+    def _evaluate_images_in_chunk_with_ollama(self, chunk: str) -> list[dict]:
+        matches = re.findall(r'<img[^>]+src="([^"]+)"[^>]*alt="([^"]+)"', chunk)
+        results = []
+        for src, alt_text in matches:
+            try:
+                evaluation = check_alt_text_with_ollama(src, alt_text)
+                results.append(
+                    {
+                        "src": src,
+                        "alt_text": alt_text,
+                        "ollama_evaluation": evaluation,
+                    }
+                )
+            except Exception as e:
+                results.append(
+                    {
+                        "src": src,
+                        "alt_text": alt_text,
+                        "error": str(e),
+                    }
+                )
+        return results
 
     def main_flow(self, user_input: str, uploaded_files) -> Dict[str, Any] | None:
         self.session_state.add_message(
@@ -142,7 +215,7 @@ Evaluate the following file named `{filename}`:
                 else:
                     feedback = f"""
 📄 **Chunk {chunk_result['chunk_index']+1}/{chunk_result['num_chunks']} of `{filename}` (lines {chunk_result['start_line']}-{chunk_result['end_line']})**  
-{chunk_result['response']}
+{chunk_result['response']} \n\n🖼️ **Image ALT Text Review**:\n{chunk_result['image_feedback']}
 """
 
                     self.session_state.add_message(role="assistant", content=feedback)
