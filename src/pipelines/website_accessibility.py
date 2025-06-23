@@ -31,7 +31,7 @@ def image_to_base64(image_path_or_url):
     return base64.b64encode(buffer.getvalue()).decode()
 
 
-def check_alt_text_with_ollama(image_url_or_path, alt_text, model="llava"):
+def check_alt_text_with_ollama(image_url_or_path, alt_text, model="llava-phi3"):
     image_b64 = image_to_base64(image_url_or_path)
     messages = [
         {
@@ -42,7 +42,7 @@ def check_alt_text_with_ollama(image_url_or_path, alt_text, model="llava"):
         {
             "role": "user",
             "content": "Does this alt text correctly describe the image? Respond with 'Yes' or 'No' and give a short justification.",
-            "image": image_b64,
+            "images": [image_b64],
         },
     ]
     response = client.chat(model=model, messages=messages)
@@ -58,7 +58,7 @@ class WebsiteAccesibilityPipeline(BasePipeline):
         self.initial_display_message = (
             "Hello, I will help you verify how accessible your website is"
         )
-        self.enable_image_alt_text_checker = False
+        self.enable_image_alt_text_checker = True
 
     @staticmethod
     def return_basic_prompt() -> str:
@@ -178,6 +178,7 @@ Evaluate the following file named `{filename}`:
                     }
                 )
         return results
+
 
     def main_flow(self, user_input: str, uploaded_files) -> Dict[str, Any] | None:
         self.session_state.add_message(

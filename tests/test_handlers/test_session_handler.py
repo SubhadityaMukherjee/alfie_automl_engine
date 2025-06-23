@@ -17,9 +17,9 @@ def test_session_state_with_values():
         files_parsed=True,
         stop_requested=True,
         aggregate_info="Summary",
+        pipeline_name = "AutoML",
         # file_info=file_info,
         automloutputpath="/tmp/test_output",
-        pipeline_name="AutoML",
     )
 
     assert state.page_title == "Test Page"
@@ -29,6 +29,7 @@ def test_session_state_with_values():
     assert state.aggregate_info == "Summary"
     assert state.automloutputpath == "/tmp/test_output"
     assert state.pipeline_name == "AutoML"
+    assert state.automloutputpath == "/tmp/test_output"
 
 
 @pytest.fixture
@@ -48,3 +49,4 @@ def test_get_all_messages_by_role(mock_session_state):
 
 def test_generate_html_from_session(mock_session_state):
     assert isinstance(mock_session_state.generate_html_from_session(), io.BytesIO)
+

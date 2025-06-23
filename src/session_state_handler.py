@@ -20,9 +20,18 @@ class SessionState(BaseModel):
     files_parsed: bool = False
     stop_requested: bool = False
     aggregate_info: str = ""
+    train_file_path: str = ""
+    test_file_path: str = ""
     file_info: FileInfo = Field(default_factory=FileInfo)
     automloutputpath: str = str(Path("autogluon_output"))
+    current_model_path: str = ""
     pipeline_name:str = ""
+    pipeline_state:dict = {
+        "stage": "start",
+        "target_column": None,
+        "task_type": None,
+    }
+
 
     def reset(self) -> None:
         """Reset everything"""
@@ -33,6 +42,7 @@ class SessionState(BaseModel):
         self.stop_requested = False
         self.pipeline_name = ""
         self.automloutputpath = ""
+        self.current_model_path = ""
 
     def add_message(self, role: str = "assistant", content: str = ""):
         self.messages.append(Message(role=role, content=content))

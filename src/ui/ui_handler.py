@@ -51,19 +51,20 @@ class build_ui_with_chat:
                 response = ChatHandler.chat(prompt)
                 self.session_state.add_message(role="assistant", content=response)
 
-            elif intent == "pipeline" and handler_class:
+            if intent == "pipeline" and handler_class:
                 if pipeline_name != "-- Select a Pipeline --":
                     chosen_pipeline_class = handler_class(
                         session_state=self.session_state,
                         output_placeholder_ui_element=self.output_placeholder,
                     )
-                    self.session_state.add_message(
-                        role="assistant",
-                        content=chosen_pipeline_class.initial_display_message,
-                    )
-                    if uploaded_files:
-                        with self.ui.spinner("Analyzing files"):
-                            result = chosen_pipeline_class.main_flow(prompt, uploaded_files)
+                    if not any(m.content == chosen_pipeline_class.initial_display_message for m in self.session_state.messages):
+                        self.session_state.add_message(
+                            role="assistant",
+                            content=chosen_pipeline_class.initial_display_message,
+                        )
+                    with self.ui.spinner("Processing..."):
+                        chosen_pipeline_class.main_flow(prompt, uploaded_files)
+
 
             else:
                 self.session_state.add_message(
