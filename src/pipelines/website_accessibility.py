@@ -19,6 +19,7 @@ import textstat
 from src.chat_handler import ChatHandler
 from src.file_handler import FileHandler
 from src.pipelines.base import BasePipeline, PipelineRegistry
+from src import render_template
 from bs4 import BeautifulSoup
 
 client = Client()
@@ -39,12 +40,12 @@ def check_alt_text_with_ollama(image_url_or_path, alt_text, model="qwen2.5vl"):
     messages = [
         {
             "role": "system",
-            "content": "You are a WCAG accessibility checker. Your job is to determine if the alt text meaningfully and accurately represents the image.",
+            "content": render_template(template_name="wcag_checker_default_prompt.txt"),
         },
         {"role": "user", "content": f"Alt text: {alt_text}"},
         {
             "role": "user",
-            "content": "Does this alt text correctly describe the image? Respond with 'Yes' or 'No' and give a short justification.",
+            "content": render_template(template_name="image_alt_checker_prompt.txt"),
             "images": [image_b64],
         },
     ]
@@ -61,7 +62,7 @@ class WebsiteAccesibilityPipeline(BasePipeline):
         self.initial_display_message = (
             "Hello, I will help you verify how accessible your website is"
         )
-        self.enable_image_alt_text_checker = False
+        self.enable_image_alt_text_checker = True
         self.dict_readability_metrics = {
             "Flesh Reading Ease": textstat.flesch_reading_ease,
             "Flesch Kincaid Grade": textstat.flesch_kincaid_grade,
@@ -72,10 +73,6 @@ class WebsiteAccesibilityPipeline(BasePipeline):
             "Lexicon Count": textstat.lexicon_count,
             "Avg Sentence Length": textstat.avg_sentence_length,
         }
-
-    @staticmethod
-    def return_basic_prompt() -> str:
-        return "You're a WCAG (Web Content Accessibility Guidelines) checker. Do not explain the code. Your job is only to evaluate the code against the most recent WCAG guidelines."
 
     @staticmethod
     def _split_into_chunks(content, chunk_size):
@@ -106,18 +103,14 @@ class WebsiteAccesibilityPipeline(BasePipeline):
         return chunks, line_ranges
 
     def _build_chunk_prompt(self, filename, chunk, idx, total, start_line, end_line):
-        return (
-            self.return_basic_prompt()
-            + f"""
-Evaluate the following file named `{filename}`:
-1. Score from 0–10 on how well it follows WCAG (0 = not at all, 10 = perfect). Use the format: Score: X (we will extract it using regex).
-2. If score < 10, list specific improvements needed, with code suggestions in markdown.
-3. Only evaluate the code below. Do not make assumptions beyond the content.
-
-### Begin File Content (chunk {idx+1} of {total}, lines {start_line}–{end_line})
-{chunk}
-### End File Content
-"""
+        return render_template(
+            "build_chunk_prompt.txt",
+            filename=filename,
+            chunk=chunk,
+            idx=idx,
+            total=total,
+            start_line=start_line,
+            end_line=end_line,
         )
 
     @staticmethod
@@ -212,7 +205,9 @@ Evaluate the following file named `{filename}`:
             )
         )
         self.chunk_outputs.append(readability_scores_string)
-        self.session_state.add_message(role="assistant", content=readability_scores_string)
+        self.session_state.add_message(
+            role="assistant", content=readability_scores_string
+        )
 
     def get_all_text_in_html(self, soup):
         text = soup.get_text()
@@ -228,7 +223,7 @@ Evaluate the following file named `{filename}`:
         self.session_state.add_message(
             role="assistant", content="Processing uploaded files"
         )
-        if self.session_state.stop_requested == True:
+        if self.session_state.stop_requested:
             self.session_state.add_message(
                 role="assistant", content="Processing stopped"
             )
@@ -259,22 +254,22 @@ Evaluate the following file named `{filename}`:
                     )
                     return
 
-                if "summary" in chunk_result:
-                    summary = f"✅ Finished analyzing `{chunk_result['filename']}`.\n\n**Average WCAG Score:** {chunk_result['average_score']}/10"
-                    self.session_state.add_message(role="assistant", content=summary)
-                    self.chunk_outputs.append(summary)
-                else:
-                    feedback = f"""
-📄 **Chunk {chunk_result['chunk_index']+1}/{chunk_result['num_chunks']} of `{filename}` (lines {chunk_result['start_line']}-{chunk_result['end_line']})**  
-{chunk_result['response']} \n\n
-"""
+                # Create message using Jinja2
+                message = render_template(
+                    template_name="chunk_result.txt",
+                    summary="summary" in chunk_result,
+                    filename=chunk_result.get("filename", filename),
+                    average_score=chunk_result.get("average_score"),
+                    chunk_index=chunk_result.get("chunk_index"),
+                    num_chunks=chunk_result.get("num_chunks"),
+                    start_line=chunk_result.get("start_line"),
+                    end_line=chunk_result.get("end_line"),
+                    response=chunk_result.get("response", ""),
+                    image_feedback=chunk_result.get("image_feedback", "")
+                )
 
-                    if chunk_result["image_feedback"]:
-                        feedback += f"🖼**Image ALT Text Review**:\n{chunk_result['image_feedback']}"
-
-                    self.session_state.add_message(role="assistant", content=feedback)
-                    self.chunk_outputs.append(feedback)
-                    self.output_placeholder_ui_element.markdown(
-                        "\n\n---\n\n".join(self.chunk_outputs)
-                    )
-
+                self.session_state.add_message(role="assistant", content=message.strip())
+                self.chunk_outputs.append(message.strip())
+                self.output_placeholder_ui_element.markdown(
+                    "\n\n---\n\n".join(self.chunk_outputs)
+                )

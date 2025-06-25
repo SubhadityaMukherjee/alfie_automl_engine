@@ -14,6 +14,7 @@ from src.pipelines.task_defs import (
     TabularSupervisedRegressionTask,
     TabularSupervisedTimeSeriesTask,
 )
+from src import render_template
 
 
 @PipelineRegistry.register("AutoML Tabular")
@@ -27,7 +28,9 @@ class AutoMLTabularPipeline(BasePipeline):
             # "supervised time series": TabularSupervisedTimeSeriesTask,
         }
         self.time_limit_for_automl = 10  # TODO make this by user input loop
-        self.initial_display_message = "Hello, I will help you with your tabular dataset. Please upload your training and testing files in the csv format"
+        self.initial_display_message = render_template(
+            template_name="automl_tabular_initial_message.txt"
+        )
         self.session_state.current_model_path = str(
             Path(self.session_state.automloutputpath) / str(time.time())
         )
@@ -131,12 +134,12 @@ class AutoMLTabularPipeline(BasePipeline):
             role="assistant", content="Analyzing your input for target column..."
         )
 
-        query = (
-            "Did the user mention what you think could be a target column for the tabular data classification/regression? "
-            "If yes, what is the column name? Only return the column name, nothing else. ignore the words column and similar in the output. "
-            "Eg: Classify X -> X, Classify signature column -> signature, recognize different classes -> no, classify -> no, signature column -> signature "
-            f"If no, return 'no'. User messages:\n{user_text} {self.session_state.get_all_messages_by_role(['user'])}"
+        query = render_template(
+            template_name="tabular_query_checker.txt",
+            user_text=user_text,
+            messages=self.session_state.get_all_messages_by_role(["user"]),
         )
+
         result = ChatHandler.chat(query).strip()
 
         if result.lower() == "no":
@@ -160,10 +163,10 @@ class AutoMLTabularPipeline(BasePipeline):
         task_type_options = ", ".join(
             task.__name__ for task in self.possible_tasks.values()
         )
-        query = (
-            f"Which task type do you think this is? Answer only with the task type from these options. "
-            f"From the file context, if it is a table or if the user mentions, try to identify if it could be a timeseries task instead of the usual classification/regression. "
-            f"Do not modify the names or add extra spaces: {task_type_options}."
+
+        query = render_template(
+            template_name="tabular_task_type_checker.txt",
+            task_type_options=task_type_options,
         )
         result = ChatHandler.chat(query).strip().lower()
         self.session_state.add_message(
@@ -172,7 +175,10 @@ class AutoMLTabularPipeline(BasePipeline):
         return result
 
     def detect_how_long_the_user_wants_to_wait(self, user_input: str) -> int | None:
-        query = f"How long does the user want to wait? Return answer in seconds only, if theysay it in minutes, convert it to seconds. If nothing was found, return 10. User: {user_input}"
+        query = render_template(
+            template_name="tabular_time_checker.txt",
+            user_input=user_input,
+        ) 
         result = ChatHandler.chat(query).strip()
         try:
             val = int(result)
@@ -215,7 +221,7 @@ class AutoMLTabularPipeline(BasePipeline):
             self.process_uploaded_files(uploaded_files)
             if self.session_state.stop_requested:
                 return self.handle_stop()
-            
+
             train_file_path, test_file_path = self.handle_file_parsing(uploaded_files)
             self.session_state.train_file_path = train_file_path
             self.session_state.test_file_path = test_file_path
@@ -224,7 +230,7 @@ class AutoMLTabularPipeline(BasePipeline):
             detected_target = self.detect_target_column(
                 user_text=user_input, train_file_path=train_file_path
             )
-            
+
             if detected_target:
                 state["target_column"] = detected_target
                 state["stage"] = "detect_task_type"
@@ -241,7 +247,6 @@ class AutoMLTabularPipeline(BasePipeline):
                     return  # still waiting for valid answer
                 state["target_column"] = target
             state["stage"] = "detect_task_type"
-
 
         if state["stage"] == "detect_task_type":
             if not state.get("task_type"):

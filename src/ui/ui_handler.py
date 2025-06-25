@@ -81,10 +81,12 @@ class build_ui_with_chat:
             f"The user said: '{prompt}'. "
             "Should this be handled as a general question (like 'what is AutoML?' or 'how do I train a model?') "
             "or as a pipeline-related task (e.g., involving dataset processing, file upload, or model training)? "
-            "Pipeline related could also be something like classify X column,"
-            "Regression on X"
+            "Pipeline related could also be something like classify X column, -> pipeline"
+            "Regression on X-> pipeline"
             "General question could be : How do I do X? How do I modify X to do Y"
-            "How do I do X better"
+            "How do I do X better -> general"
+            "Check -> pipeline"
+            "Check guidelines -> pipeline"
             "Respond with exactly one word: 'general' or 'pipeline'."
         )
         return ChatHandler.chat(query).strip().lower()

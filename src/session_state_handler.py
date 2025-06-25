@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from src.chat_handler import Message
 from src.file_handler import FileInfo
+from src import render_template
 
 
 class SessionState(BaseModel):
@@ -25,13 +26,12 @@ class SessionState(BaseModel):
     file_info: FileInfo = Field(default_factory=FileInfo)
     automloutputpath: str = str(Path("autogluon_output"))
     current_model_path: str = ""
-    pipeline_name:str = ""
-    pipeline_state:dict = {
+    pipeline_name: str = ""
+    pipeline_state: dict = {
         "stage": "start",
         "target_column": None,
         "task_type": None,
     }
-
 
     def reset(self) -> None:
         """Reset everything"""
@@ -58,36 +58,16 @@ class SessionState(BaseModel):
             return ""
 
     def generate_html_from_session(self) -> BytesIO:
-        html_content: str = f"""
-        <html>
-            <head>
-                <meta charset='UTF-8'>
-                <title>{self.page_title}</title>
-                <style>
-                    body {{ font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }}
-                    .message {{ margin-bottom: 20px; }}
-                    .user {{ font-weight: bold; color: #2a4d9b; }}
-                    .assistant {{ font-weight: bold; color: #228B22; }}
-                    hr {{ border: none; border-top: 1px solid #ccc; margin: 20px 0; }}
-                </style>
-            </head>
-            <body>
-                <h1>{self.page_title}</h1>
-        """
-
-        for message in self.messages:
-            if message.role != "user-hidden" and len(message.content) > 0:
-                role_label: str = message.role.capitalize()
-                content_html: str = markdown(message.content)
-                html_content += f"""
-                    <div class="message">
-                        <div class="{message.role}">{role_label}:</div>
-                        <div>{content_html}</div>
-                    </div>
-                    <hr>
-                """
-
-        html_content += "</body></html>"
+        rendered_messages = [
+            {"role": msg.role, "content": markdown(msg.content)}
+            for msg in self.messages
+            if msg.role != "user-hidden" and msg.content
+        ]
+        html_content = render_template(
+            template_name="session_html_export.html",
+            page_title=self.page_title,
+            messages=rendered_messages,
+        )
 
         # Convert to BytesIO for streaming
         html_bytes: BytesIO = BytesIO(html_content.encode("utf-8"))
