@@ -57,14 +57,16 @@ class build_ui_with_chat:
                         session_state=self.session_state,
                         output_placeholder_ui_element=self.output_placeholder,
                     )
-                    if not any(m.content == chosen_pipeline_class.initial_display_message for m in self.session_state.messages):
+                    if not any(
+                        m.content == chosen_pipeline_class.initial_display_message
+                        for m in self.session_state.messages
+                    ):
                         self.session_state.add_message(
                             role="assistant",
                             content=chosen_pipeline_class.initial_display_message,
                         )
                     with self.ui.spinner("Processing..."):
                         chosen_pipeline_class.main_flow(prompt, uploaded_files)
-
 
             else:
                 self.session_state.add_message(
@@ -112,8 +114,8 @@ class build_ui_with_chat:
                 )
             except Exception as e:
                 self.ui.warning(str(e))
-                
-        #TODO Only enable this for automl task
+
+        # TODO Only enable this for automl task
         if self.ui.sidebar_button("📄 download models after leaderboard"):
             zip_filename = "best_model.zip"
             shutil.make_archive(

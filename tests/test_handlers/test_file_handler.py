@@ -1,9 +1,12 @@
-import os
 import io
+import os
 import tempfile
 from pathlib import Path
-from file_handler import FileHandler
+
 import pytest
+
+from file_handler import FileHandler
+
 
 @pytest.fixture
 def txt_file():
@@ -12,6 +15,7 @@ def txt_file():
     file.name = "test.txt"
     return file
 
+
 @pytest.fixture
 def csv_file():
     content = b"name,age\nAlice,30\nBob,25"
@@ -19,9 +23,11 @@ def csv_file():
     file.name = "test.csv"
     return file
 
+
 @pytest.fixture
 def docx_file():
     from docx import Document
+
     with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as f:
         temp_path = f.name
     doc = Document()
@@ -33,11 +39,13 @@ def docx_file():
     file.close()
     Path(temp_path).unlink(missing_ok=True)
 
+
 def test_read_txt_file(txt_file):
     filename, mime, path = FileHandler.save_temp_file(txt_file)
     content = FileHandler.read_file_content(path, mime)
     assert "Hello" in content
     path.unlink(missing_ok=True)
+
 
 def test_read_csv_file(csv_file):
     filename, mime, path = FileHandler.save_temp_file(csv_file)
@@ -45,11 +53,13 @@ def test_read_csv_file(csv_file):
     assert content == "name,age\nAlice,30\nBob,25"
     path.unlink(missing_ok=True)
 
+
 def test_read_docx_file(docx_file):
     filename, mime, path = FileHandler.save_temp_file(docx_file)
     content = FileHandler.read_file_content(path, mime)
     assert "DOCX test" in content
     path.unlink(missing_ok=True)
+
 
 def test_unsupported_file_type():
     file = io.BytesIO(b"%PDF-1.4 fake content")
@@ -58,6 +68,7 @@ def test_unsupported_file_type():
     content = FileHandler.read_file_content(path, mime)
     assert "unsupported file type" in content
     path.unlink(missing_ok=True)
+
 
 def test_aggregate_file_content_and_paths(txt_file):
     content, paths = FileHandler.aggregate_file_content_and_paths([txt_file])

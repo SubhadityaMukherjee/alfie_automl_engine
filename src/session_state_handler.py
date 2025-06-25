@@ -10,9 +10,9 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from src import render_template
 from src.chat_handler import Message
 from src.file_handler import FileInfo
-from src import render_template
 
 
 class SessionState(BaseModel):

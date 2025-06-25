@@ -63,9 +63,11 @@ class BaseUITemplate(ABC):
     @abstractmethod
     def markdown(self, text: str) -> None:
         pass
+
     @abstractmethod
     def form(self, text: str) -> None:
         pass
+
     @abstractmethod
     def form_submit_button(self, text: str) -> None:
         pass

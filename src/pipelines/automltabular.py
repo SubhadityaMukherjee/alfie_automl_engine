@@ -6,38 +6,64 @@ from typing import Any, Dict, Tuple
 import pandas as pd
 from autogluon.tabular import TabularDataset, TabularPredictor
 
+from src import render_template
 from src.chat_handler import ChatHandler, Message
 from src.file_handler import FileHandler
 from src.pipelines.base import BasePipeline, PipelineRegistry
-from src.pipelines.task_defs import (
-    TabularSupervisedClassificationTask,
-    TabularSupervisedRegressionTask,
-    TabularSupervisedTimeSeriesTask,
-)
-from src import render_template
+from src.pipelines.task_defs import (TabularSupervisedClassificationTask,
+                                     TabularSupervisedRegressionTask,
+                                     TabularSupervisedTimeSeriesTask)
 
 
-@PipelineRegistry.register("AutoML Tabular")
-class AutoMLTabularPipeline(BasePipeline):
-    def __init__(self, session_state, output_placeholder_ui_element) -> None:
-        super().__init__(session_state, output_placeholder_ui_element)
-        self.detected_col = False
-        self.possible_tasks = {
-            "supervised classification": TabularSupervisedClassificationTask,
-            "supervised regression": TabularSupervisedRegressionTask,
-            # "supervised time series": TabularSupervisedTimeSeriesTask,
-        }
-        self.time_limit_for_automl = 10  # TODO make this by user input loop
-        self.initial_display_message = render_template(
-            template_name="automl_tabular_initial_message.txt"
+class FileProcessor:
+    def __init__(self, session_state):
+        self.session_state = session_state
+
+    def process_files(self, uploaded_files):
+        self.session_state.add_message(
+            role="assistant", content="Processing uploaded files"
         )
-        self.session_state.current_model_path = str(
-            Path(self.session_state.automloutputpath) / str(time.time())
-        )
-        self.save_model_path = str(Path(self.session_state.current_model_path))
-        os.makedirs(self.save_model_path, exist_ok=True)
 
-    def validate_target_column(self, train_file: str | Path, target_col: str) -> bool:
+    def parse_files(self, uploaded_files):
+        aggregated_context, file_paths = FileHandler.aggregate_file_content_and_paths(
+            uploaded_files
+        )
+        train_file_path, test_file_path = "", ""
+
+        for key, path in file_paths.items():
+            if "train" in key.lower():
+                train_file_path = path
+                self.session_state.file_info.train_file = path
+                self.session_state.add_message(
+                    role="assistant", content=f"Found a train file {key}"
+                )
+            elif "test" in key.lower():
+                test_file_path = path
+                self.session_state.file_info.test_file = path
+                self.session_state.add_message(
+                    role="assistant", content=f"Found a test file {key}"
+                )
+
+        if not train_file_path:
+            self.session_state.add_message(
+                role="assistant", content="No train file found"
+            )
+        if not test_file_path:
+            self.session_state.add_message(
+                role="assistant", content="No test file found"
+            )
+
+        self.session_state.aggregate_info = aggregated_context[:300]
+        self.session_state.files_parsed = True
+
+        return train_file_path, test_file_path
+
+
+class TargetColumnDetector:
+    def __init__(self, session_state):
+        self.session_state = session_state
+
+    def validate(self, train_file, target_col):
         try:
             df = pd.read_csv(train_file)
             return target_col.strip() in df.columns
@@ -45,101 +71,15 @@ class AutoMLTabularPipeline(BasePipeline):
             print(e)
             return False
 
-    def validate_column_from_train(
-        self, train_file_path, detected_target_column
-    ) -> bool:
-        if self.validate_target_column(train_file_path, detected_target_column):
-            self.session_state.add_message(
-                role="assistant",
-                content=f"Found and validated column {detected_target_column}...",
-            )
-            return True
-        self.session_state.add_message(
-            role="assistant",
-            content=f"Could not find the target column {detected_target_column}",
-        )
-        return False
-
-    def get_train_test_files(self, uploaded_files) -> Tuple[str, str, str]:
-        aggregated_context, file_paths = FileHandler.aggregate_file_content_and_paths(
-            uploaded_files=uploaded_files
-        )
-
-        train_file_path: str = ""
-        test_file_path: str = ""
-
-        try:
-            train_key = next(f for f in file_paths if "train" in f.lower())
-            train_file_path = file_paths[train_key]
-            self.session_state.file_info.train_file = train_file_path
-            self.session_state.add_message(
-                role="assistant", content=f"Found a train file {train_key}"
-            )
-        except StopIteration:
-            self.session_state.add_message(
-                role="assistant", content="No train file found"
-            )
-
-        try:
-            test_key = next(f for f in file_paths if "test" in f.lower())
-            test_file_path = file_paths[test_key]
-            self.session_state.file_info.test_file = test_file_path
-            self.session_state.add_message(
-                role="assistant", content=f"Found a test file {test_key}"
-            )
-        except StopIteration:
-            self.session_state.add_message(
-                role="assistant", content="No test file found"
-            )
-
-        return aggregated_context, train_file_path, test_file_path
-
-    def train_and_evaluate_automl_using_autogluon(
-        self, train_file_path, test_file_path, detect_target_column
-    ):
-        train_data = TabularDataset(pd.read_csv(train_file_path))
-        predictor = TabularPredictor(
-            label=detect_target_column,
-            path=self.save_model_path,
-        ).fit(train_data=train_data, time_limit=self.time_limit_for_automl)
-
-        test_data = TabularDataset(pd.read_csv(test_file_path))
-        leaderboard = predictor.leaderboard(test_data)
-
-        if leaderboard is not None:
-            self.session_state.add_message(role="assistant", content="Best models")
-            self.session_state.add_message(
-                role="assistant", content=leaderboard.to_markdown()
-            )
-
-    def process_uploaded_files(self, uploaded_files):
-        self.session_state.add_message(
-            role="assistant", content="Processing uploaded files"
-        )
-
-    def handle_stop(self):
-        self.session_state.add_message(role="assistant", content="Processing stopped")
-        return
-
-    def handle_file_parsing(self, uploaded_files):
-        aggregated_context, train_file_path, test_file_path = self.get_train_test_files(
-            uploaded_files
-        )
-        self.session_state.aggregate_info = aggregated_context[:300]
-        self.session_state.files_parsed = True
-        return train_file_path, test_file_path
-
-    def detect_target_column(self, user_text: str, train_file_path: str) -> str | None:
+    def detect(self, user_text, train_file):
         self.session_state.add_message(
             role="assistant", content="Analyzing your input for target column..."
         )
-
         query = render_template(
-            template_name="tabular_query_checker.txt",
+            "tabular_query_checker.txt",
             user_text=user_text,
             messages=self.session_state.get_all_messages_by_role(["user"]),
         )
-
         result = ChatHandler.chat(query).strip()
 
         if result.lower() == "no":
@@ -149,24 +89,27 @@ class AutoMLTabularPipeline(BasePipeline):
             )
             return None
 
-        if not self.validate_column_from_train(train_file_path, result):
+        if not self.validate(train_file, result):
+            self.session_state.add_message(
+                role="assistant", content=f"Could not find the target column {result}"
+            )
             return None
 
         self.session_state.add_message(
-            role="assistant",
-            content=f"Identified target column {result}",
+            role="assistant", content=f"Identified target column {result}"
         )
-        self.detected_col = True
         return result
 
-    def detect_task_type(self) -> str:
-        task_type_options = ", ".join(
-            task.__name__ for task in self.possible_tasks.values()
-        )
 
+class TaskTypeDetector:
+    def __init__(self, session_state, possible_tasks):
+        self.session_state = session_state
+        self.possible_tasks = possible_tasks
+
+    def detect(self):
+        options = ", ".join(task.__name__ for task in self.possible_tasks.values())
         query = render_template(
-            template_name="tabular_task_type_checker.txt",
-            task_type_options=task_type_options,
+            "tabular_task_type_checker.txt", task_type_options=options
         )
         result = ChatHandler.chat(query).strip().lower()
         self.session_state.add_message(
@@ -174,11 +117,13 @@ class AutoMLTabularPipeline(BasePipeline):
         )
         return result
 
-    def detect_how_long_the_user_wants_to_wait(self, user_input: str) -> int | None:
-        query = render_template(
-            template_name="tabular_time_checker.txt",
-            user_input=user_input,
-        ) 
+
+class TimeBudgetDetector:
+    def __init__(self, session_state):
+        self.session_state = session_state
+
+    def detect(self, user_input):
+        query = render_template("tabular_time_checker.txt", user_input=user_input)
         result = ChatHandler.chat(query).strip()
         try:
             val = int(result)
@@ -192,80 +137,118 @@ class AutoMLTabularPipeline(BasePipeline):
         )
         return None
 
-    def handle_time_series(self):
-        self.session_state.add_message(
-            role="assistant",
-            content="📉 Time series task detection is not yet supported.",
+
+class AutoMLTrainer:
+    def __init__(self, session_state, save_model_path):
+        self.session_state = session_state
+        self.save_model_path = save_model_path
+
+    def train(self, train_file, test_file, target_column, time_limit):
+        train_data = TabularDataset(pd.read_csv(train_file))
+        predictor = TabularPredictor(
+            label=target_column, path=self.save_model_path
+        ).fit(train_data=train_data, time_limit=time_limit)
+        test_data = TabularDataset(pd.read_csv(test_file))
+        leaderboard = predictor.leaderboard(test_data)
+
+        if leaderboard is not None:
+            self.session_state.add_message(role="assistant", content="Best models")
+            self.session_state.add_message(
+                role="assistant", content=leaderboard.to_markdown()
+            )
+
+
+@PipelineRegistry.register("AutoML Tabular")
+class AutoMLTabularPipeline(BasePipeline):
+    def __init__(self, session_state, output_placeholder_ui_element):
+        super().__init__(session_state, output_placeholder_ui_element)
+        self.detected_col = False
+        self.possible_tasks = {
+            "supervised classification": TabularSupervisedClassificationTask,
+            "supervised regression": TabularSupervisedRegressionTask,
+        }
+        self.time_limit_for_automl = 10
+        self.initial_display_message = render_template(
+            "automl_tabular_initial_message.txt"
         )
-        return
 
-    def ask_target_column(self):
-        self.session_state.add_message(
-            role="assistant",
-            content="❓ Please tell me which column you're trying to predict.",
+        self.session_state.current_model_path = str(
+            Path(self.session_state.automloutputpath) / str(time.time())
         )
+        self.save_model_path = str(Path(self.session_state.current_model_path))
+        os.makedirs(self.save_model_path, exist_ok=True)
 
-    def ask_time_limit(self):
-        self.session_state.add_message(
-            role="assistant",
-            content="⏱️ How long should I run the AutoML training? Eg: 1 minute, or 30 minutes",
-        )
+        self.file_processor = FileProcessor(session_state)
+        self.target_detector = TargetColumnDetector(session_state)
+        self.task_detector = TaskTypeDetector(session_state, self.possible_tasks)
+        self.time_detector = TimeBudgetDetector(session_state)
+        self.trainer = AutoMLTrainer(session_state, self.save_model_path)
 
-    def main_flow(self, user_input: str, uploaded_files) -> None:
-        state = self.session_state.pipeline_state
-
+    def main_flow(self, user_input: str, uploaded_files):
         if not uploaded_files:
             return
 
         if not self.session_state.files_parsed:
-            self.process_uploaded_files(uploaded_files)
+            self.file_processor.process_files(uploaded_files)
             if self.session_state.stop_requested:
-                return self.handle_stop()
-
-            train_file_path, test_file_path = self.handle_file_parsing(uploaded_files)
+                self.session_state.add_message(
+                    role="assistant", content="Processing stopped"
+                )
+                return
+            train_file_path, test_file_path = self.file_processor.parse_files(
+                uploaded_files
+            )
             self.session_state.train_file_path = train_file_path
             self.session_state.test_file_path = test_file_path
 
-            # Try auto-detecting target column
-            detected_target = self.detect_target_column(
-                user_text=user_input, train_file_path=train_file_path
-            )
-
+            detected_target = self.target_detector.detect(user_input, train_file_path)
             if detected_target:
-                state["target_column"] = detected_target
-                state["stage"] = "detect_task_type"
+                self.session_state.pipeline_state["target_column"] = detected_target
+                self.session_state.pipeline_state["stage"] = "detect_task_type"
             else:
-                state["stage"] = "detect_target_column"
-                return self.ask_target_column()
-
-        if state["stage"] == "detect_target_column":
-            if not state.get("target_column"):
-                target = self.detect_target_column(
-                    user_input, self.session_state.train_file_path
+                self.session_state.pipeline_state["stage"] = "detect_target_column"
+                self.session_state.add_message(
+                    role="assistant",
+                    content="❓ Please tell me which column you're trying to predict.",
                 )
-                if not target:
-                    return  # still waiting for valid answer
-                state["target_column"] = target
-            state["stage"] = "detect_task_type"
+                return
 
-        if state["stage"] == "detect_task_type":
-            if not state.get("task_type"):
-                state["task_type"] = self.detect_task_type()
-                if state["task_type"] == "supervised time series":
-                    return self.handle_time_series()
-            state["stage"] = "detect_time_limit"
-            return self.ask_time_limit()
+        stage = self.session_state.pipeline_state.get("stage")
 
-        if state["stage"] == "detect_time_limit":
-            time_limit = self.detect_how_long_the_user_wants_to_wait(user_input)
-            if time_limit is None:
-                return  # still waiting
-            self.time_limit_for_automl = time_limit
-            state["stage"] = "train_and_eval"
+        if stage == "detect_target_column":
+            target = self.target_detector.detect(
+                user_input, self.session_state.train_file_path
+            )
+            if target:
+                self.session_state.pipeline_state["target_column"] = target
+                self.session_state.pipeline_state["stage"] = "detect_task_type"
 
-        if state["stage"] == "train_and_eval":
-            return self.train_and_evaluate_automl_using_autogluon(
+        elif stage == "detect_task_type":
+            task_type = self.task_detector.detect()
+            if task_type == "supervised time series":
+                self.session_state.add_message(
+                    role="assistant",
+                    content="📉 Time series task detection is not yet supported.",
+                )
+                return
+            self.session_state.pipeline_state["task_type"] = task_type
+            self.session_state.pipeline_state["stage"] = "detect_time_limit"
+            self.session_state.add_message(
+                role="assistant",
+                content="⏱️ How long should I run the AutoML training? Eg: 1 minute, or 30 minutes",
+            )
+            # TODO: this does not move ahead without another message
+
+        elif stage == "detect_time_limit":
+            time_limit = self.time_detector.detect(user_input)
+            if time_limit:
+                self.time_limit_for_automl = time_limit
+                self.session_state.pipeline_state["stage"] = "train_and_eval"
+
+        elif stage == "train_and_eval":
+            self.trainer.train(
                 self.session_state.train_file_path,
                 self.session_state.test_file_path,
-                state["target_column"],
+                self.session_state.pipeline_state["target_column"],
+                self.time_limit_for_automl,
             )
