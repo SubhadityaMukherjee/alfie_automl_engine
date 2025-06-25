@@ -1,19 +1,18 @@
-from unittest.mock import patch
-from datetime import datetime
-from chat_handler import ChatHandler, Message  
 import time
+from datetime import datetime
+from unittest.mock import patch
+
+from chat_handler import ChatHandler, Message
+
 
 # Test: successful chat response
 @patch("ollama.chat")
 def test_chat_success(mock_chat):
-    mock_chat.return_value = {
-        "message": {
-            "content": "Hello there!"
-        }
-    }
+    mock_chat.return_value = {"message": {"content": "Hello there!"}}
     response = ChatHandler.chat("Hi!")
     assert response == "Hello there!"
     mock_chat.assert_called_once()
+
 
 # Test: model not found error handling
 @patch("ollama.chat")
@@ -22,6 +21,7 @@ def test_chat_model_not_found(mock_chat):
     response = ChatHandler.chat("Hi!")
     assert "Model 'gemma3:4b' not found" in response
 
+
 # Test: unexpected error handling
 @patch("ollama.chat")
 def test_chat_unexpected_error(mock_chat):
@@ -29,12 +29,14 @@ def test_chat_unexpected_error(mock_chat):
     response = ChatHandler.chat("Hi!")
     assert "An unexpected error occurred with model 'gemma3:4b'" in response
 
+
 # Test: Message model instantiation
 def test_message_model_defaults():
     msg = Message(role="user", content="Hello")
     assert msg.role == "user"
     assert msg.content == "Hello"
     assert msg.timestamp is None
+
 
 def test_message_model_with_timestamp():
     now = datetime.now()

@@ -33,11 +33,11 @@ class StreamlitUI(BaseUITemplate):
 
     def chat_input(self, placeholder: str) -> str | None:
         return st.chat_input(placeholder)
-    
+
     def form(self, key: str):
         return st.form(key=key)
-    
-    def form_submit_button(self, label:str):
+
+    def form_submit_button(self, label: str):
         return st.form_submit_button(label=label)
 
     def selectbox(
