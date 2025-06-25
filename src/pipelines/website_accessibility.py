@@ -13,10 +13,13 @@ from io import BytesIO
 import requests
 from ollama import Client
 from PIL import Image
+from textblob import TextBlob
+import textstat
 
 from src.chat_handler import ChatHandler
 from src.file_handler import FileHandler
 from src.pipelines.base import BasePipeline, PipelineRegistry
+from bs4 import BeautifulSoup
 
 client = Client()
 
@@ -31,7 +34,7 @@ def image_to_base64(image_path_or_url):
     return base64.b64encode(buffer.getvalue()).decode()
 
 
-def check_alt_text_with_ollama(image_url_or_path, alt_text, model="llava-phi3"):
+def check_alt_text_with_ollama(image_url_or_path, alt_text, model="qwen2.5vl"):
     image_b64 = image_to_base64(image_url_or_path)
     messages = [
         {
@@ -58,7 +61,17 @@ class WebsiteAccesibilityPipeline(BasePipeline):
         self.initial_display_message = (
             "Hello, I will help you verify how accessible your website is"
         )
-        self.enable_image_alt_text_checker = True
+        self.enable_image_alt_text_checker = False
+        self.dict_readability_metrics = {
+            "Flesh Reading Ease": textstat.flesch_reading_ease,
+            "Flesch Kincaid Grade": textstat.flesch_kincaid_grade,
+            "Smog Index": textstat.smog_index,
+            "Automated Readability Index": textstat.automated_readability_index,
+            "Dale Chall Readability Score": textstat.dale_chall_readability_score,
+            "Difficult Words": textstat.difficult_words,
+            "Lexicon Count": textstat.lexicon_count,
+            "Avg Sentence Length": textstat.avg_sentence_length,
+        }
 
     @staticmethod
     def return_basic_prompt() -> str:
@@ -179,6 +192,37 @@ Evaluate the following file named `{filename}`:
                 )
         return results
 
+    def apply_metric_to_text(self, metric, text):
+        try:
+            return metric(text)
+        except Exception as e:
+            return "N/A"
+
+    def process_text_and_add_readability_scores(self, content):
+        soup = BeautifulSoup(content, features="html.parser")
+        for script in soup(["script", "style"]):
+            script.extract()  # rip it out
+
+        all_text: str = self.get_all_text_in_html(soup)
+        readability_scores_string: str = (
+            "### Readability scores for all the text in your website:\n\n"
+            + "\n".join(
+                f"- **{name}**: {self.apply_metric_to_text(metric=metric, text=all_text)}"
+                for name, metric in self.dict_readability_metrics.items()
+            )
+        )
+        self.chunk_outputs.append(readability_scores_string)
+        self.session_state.add_message(role="assistant", content=readability_scores_string)
+
+    def get_all_text_in_html(self, soup):
+        text = soup.get_text()
+        # break into lines and remove leading and trailing space on each
+        lines = (line.strip() for line in text.splitlines())
+        # break multi-headlines into a line each
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        # drop blank lines
+        text = "\n".join(chunk for chunk in chunks if chunk)
+        return text
 
     def main_flow(self, user_input: str, uploaded_files) -> Dict[str, Any] | None:
         self.session_state.add_message(
@@ -202,8 +246,14 @@ Evaluate the following file named `{filename}`:
             self.session_state.add_message(
                 role="assistant", content=f"Processing: {filename}"
             )
+
+            self.process_text_and_add_readability_scores(content)
+
+            self.output_placeholder_ui_element.markdown(
+                "\n\n---\n\n".join(self.chunk_outputs)
+            )
             for chunk_result in self.process_file(filename, content):
-                if st.session_state.get("stop_requested", False):
+                if self.session_state.stop_requested:
                     self.session_state.add_message(
                         role="assistant", content="Processing stopped by user."
                     )
@@ -216,11 +266,15 @@ Evaluate the following file named `{filename}`:
                 else:
                     feedback = f"""
 📄 **Chunk {chunk_result['chunk_index']+1}/{chunk_result['num_chunks']} of `{filename}` (lines {chunk_result['start_line']}-{chunk_result['end_line']})**  
-{chunk_result['response']} \n\n🖼️ **Image ALT Text Review**:\n{chunk_result['image_feedback']}
+{chunk_result['response']} \n\n
 """
+
+                    if chunk_result["image_feedback"]:
+                        feedback += f"🖼**Image ALT Text Review**:\n{chunk_result['image_feedback']}"
 
                     self.session_state.add_message(role="assistant", content=feedback)
                     self.chunk_outputs.append(feedback)
                     self.output_placeholder_ui_element.markdown(
                         "\n\n---\n\n".join(self.chunk_outputs)
                     )
+
