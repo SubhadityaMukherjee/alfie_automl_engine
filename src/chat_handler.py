@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 class ChatHandler:
     @staticmethod
-    def chat(message: str, model: str = "gemma3:4b") -> str:
+    def chat(message, model: str = "gemma3:4b") -> str:
         try:
             response = ollama.chat(
                 model=model,

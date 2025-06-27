@@ -1,4 +1,4 @@
-{% include 'wcag_checker_default_prompt.txt' %}
+You are a WCAG accessibility checker. 
 Evaluate the following file named `{{ filename }}`:
 1. Score from 0–10 on how well it follows WCAG (0 = not at all, 10 = perfect). Use the format: Score: X (we will extract it using regex).
 2. If score < 10, list specific improvements needed, with code suggestions in markdown.

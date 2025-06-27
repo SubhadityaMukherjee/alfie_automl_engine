@@ -53,17 +53,17 @@ class AltTextChecker:
                 "images": [image_b64],
             },
         ]
-        response = ChatHandler.chat(model=model, message=messages)
+        response = client.chat(model=model, messages=messages)
         return response["message"]["content"]
 
 
 class ReadabilityAnalyzer:
     METRICS = {
         "Flesh Reading Ease": textstat.flesch_reading_ease,
-        "Flesch Kincaid Grade": textstat.flesch_kincaid_grade,
-        "Smog Index": textstat.smog_index,
-        "Automated Readability Index": textstat.automated_readability_index,
-        "Dale Chall Readability Score": textstat.dale_chall_readability_score,
+        # "Flesch Kincaid Grade": textstat.flesch_kincaid_grade,
+        # "Smog Index": textstat.smog_index,
+        # "Automated Readability Index": textstat.automated_readability_index,
+        # "Dale Chall Readability Score": textstat.dale_chall_readability_score,
         "Difficult Words": textstat.difficult_words,
         "Lexicon Count": textstat.lexicon_count,
         "Avg Sentence Length": textstat.avg_sentence_length,
@@ -112,7 +112,7 @@ class ChunkProcessor:
     @staticmethod
     def extract_score(response):
         match = re.search(
-            r"\\bScore[:\\s]*([0-9](?:\\.\\d+)?)", response, re.IGNORECASE
+            r"\bScore[:\s]*([0-9]+(?:\.[0-9]+)?)", response, re.IGNORECASE
         )
         return float(match.group(1)) if match else None
 
@@ -242,7 +242,7 @@ class WebsiteAccesibilityPipeline(BasePipeline):
                 message = render_template(
                     "chunk_result.txt",
                     **chunk_result,
-                    summary="summary" in chunk_result,
+                    # summary="summary" in chunk_result,
                 )
                 self.session_state.add_message(
                     role="assistant", content=message.strip()

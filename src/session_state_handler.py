@@ -14,7 +14,6 @@ from src import render_template
 from src.chat_handler import Message
 from src.file_handler import FileInfo
 
-
 class SessionState(BaseModel):
     page_title: str = "Project Assistant"
     messages: List[Message] = Field(default_factory=list)
