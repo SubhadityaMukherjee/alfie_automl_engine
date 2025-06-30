@@ -1,11 +1,5 @@
-from pathlib import Path
-
-from jinja2 import Environment, FileSystemLoader
-
-jinja_environment = Environment(loader=FileSystemLoader(Path("src/prompt_templates/")))
-
-
-def render_template(template_name: str, **kwargs) -> str:
+from jinja2 import Environment
+def render_template(jinja_environment:Environment, template_name: str, **kwargs) -> str:
     """
     Renders a Jinja2 template with the given arguments.
     """

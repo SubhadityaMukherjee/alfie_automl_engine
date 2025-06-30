@@ -20,4 +20,5 @@ dependencies = [
     "streamlit>=1.45.1",
     "textblob>=0.18.0.post0",
     "textstat>=0.7.7",
+    "uvicorn>=0.35.0",
 ]
