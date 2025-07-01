@@ -9,26 +9,31 @@ BACKEND = "http://localhost:8000"
 session_id = st.session_state.get("session_id") or str(uuid.uuid4())
 st.session_state["session_id"] = session_id
 
+
 def get_session():
     res = requests.get(f"{BACKEND}/session/{session_id}")
     return res.json()
 
-def send_chat(prompt:str, uploaded_files, context:str, handle_intent: bool):
+
+def send_chat(prompt: str, uploaded_files, context: str, handle_intent: bool):
     if uploaded_files is None:
-        files =[]
-    if len(uploaded_files)>0:
-        files = [("files", (f.name, f, f.type)) for f in uploaded_files] 
-    else: files = []
-    data = {"session_id": session_id, "prompt": prompt, "context":context}
+        files = []
+    if len(uploaded_files) > 0:
+        files = [("files", (f.name, f, f.type)) for f in uploaded_files]
+    else:
+        files = []
+    data = {"session_id": session_id, "prompt": prompt, "context": context}
     if handle_intent:
         res = requests.post(f"{BACKEND}/chat/intent_recog/", data=data, files=files)
     else:
         res = requests.post(f"{BACKEND}/chat/", data=data, files=files)
     return res.json()
 
+
 def reset_chat():
     # st.session_state["session_id"] = str(uuid.uuid4())
     ...
+
 
 def build_ui():
     if "session" not in st.session_state:
@@ -47,18 +52,63 @@ def build_ui():
         reset_chat()
 
     # uploaded_files = st.file_uploader("📂 Upload files", accept_multiple_files=True)
-    user_prompt = st.chat_input("What do you want to do? Eg: tabular classification...")
-    pipeline_with_prompt = "\n".join(f"pipeline: {pipeline}, possible_query: {PIPELINES.get(pipeline, '').__doc__}" for pipeline in PIPELINES)
+    chat_area = ui.container()
+    # prompt = ui.chat_input(
+    #         "What would you like help with? Upload your files for context"
+    #     )
+
+    user_prompt = ui.chat_input("What do you want to do? Eg: tabular classification...")
+    with chat_area:
+        output_placeholder = ui.container()
+
+    pipeline_with_prompt = "\n".join(
+        f"pipeline: {pipeline}, possible_query: {PIPELINES.get(pipeline, '').__doc__}"
+        for pipeline in PIPELINES
+    )
 
     stage = "intent recognition"
     if user_prompt:
         with st.spinner("Thinking..."):
-            intent_recog = send_chat(f"user query: {user_prompt}", uploaded_files=[], context = pipeline_with_prompt, handle_intent = True)
-            if intent_recog.get('verified'):
+            intent_recog = send_chat(
+                f"user query: {user_prompt}",
+                uploaded_files=[],
+                context=pipeline_with_prompt,
+                handle_intent=True,
+            )
+            if intent_recog.get("verified"):
                 stage = "pipeline"
-            
-        # if stage == "pipeline":
 
+        if stage == "pipeline":
+            form_components_to_show = requests.post(
+                f"{BACKEND}/get_pipeline_requirements/{intent_recog.get('reply','')}",
+            ).json()
+            reply = form_components_to_show["reply"]
+            if reply is not None:
+                with output_placeholder:
+                    for component in reply:
+                        type_of_component = reply.get(component)
+                        if type_of_component == "file_upload_multi":
+                            uploaded_files = ui.file_uploader(
+                                label=component,
+                                key=component,
+                                accept_multiple_files=True,
+                            )
+                        elif type_of_component == "file_upload_train":
+                            train_csv = ui.file_uploader(
+                                label=component,
+                                key=component,
+                                accept_multiple_files=False,
+                            )
+                        elif type_of_component == "file_upload_test":
+                            test_csv = ui.file_uploader(
+                                label=component,
+                                key=component,
+                                accept_multiple_files=False,
+                            )
+                        elif component == "target_col":
+                            target_col =ui.text_input(label=component, key=component)
+                        elif component == "timestamp_col":
+                            timestamp_col = ui.text_input(label=component, key=component)
 
     # After sending (or on first load), fetch updated session
     session = get_session()
@@ -67,6 +117,7 @@ def build_ui():
     for msg in session["messages"]:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+
 
 if __name__ == "__main__":
     build_ui()

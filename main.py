@@ -1,3 +1,4 @@
+import json
 from fastapi import FastAPI, UploadFile, Request
 from fastapi.middleware.cors import CORSMiddleware
 import ollama
@@ -8,6 +9,7 @@ from automl_engine.utils import render_template
 import requests
 from automl_engine.chat_handler import ChatHandler
 from automl_engine.pipelines import PIPELINES
+from collections import OrderedDict
 
 app = FastAPI()
 
@@ -43,19 +45,26 @@ def reset_session(session_id: str):
         sessions[session_id].reset()
     return {"status": "reset"}
 
-def classify_intent(session_id: str, query: str, context:str):
+
+def classify_intent(session_id: str, query: str, context: str):
     session = sessions.setdefault(session_id, SessionState())
     generate_reply = render_template(
-        jinja_environment=session.jinja_environment, template_name="classify_intent.txt", prompt = query
+        jinja_environment=session.jinja_environment,
+        template_name="classify_intent.txt",
+        prompt=query,
+        context=context,
     )
-    return {"response":ChatHandler.chat(message=generate_reply, context = context).strip()}
+    return {
+        "response": ChatHandler.chat(message=generate_reply, context=context).strip()
+    }
+
 
 @app.post("/chat/")
 async def handle_chat(
     session_id: str = Form(...),
     prompt: str = Form(...),
     files: List[UploadFile] = File(default_factory=list),
-    context: str = Form(...)
+    context: str = Form(...),
 ):
     session = sessions.setdefault(session_id, SessionState())
     session.add_message("user", prompt)
@@ -64,21 +73,36 @@ async def handle_chat(
     session.add_message("assistant", reply)
     return {"reply": reply}
 
+
 @app.post("/chat/intent_recog/")
 async def handle_intent(
     session_id: str = Form(...),
     prompt: str = Form(...),
     files: List[UploadFile] = File(default_factory=list),
-    context: str = Form(...)
+    context: str = Form(...),
 ):
     session = sessions.setdefault(session_id, SessionState())
     session.add_message("user", prompt)
 
-    intent = classify_intent(session_id=session_id, query=prompt, context = context)
+    intent = classify_intent(session_id=session_id, query=prompt, context=context)
     verified = False
-    print(intent['response'].strip(), PIPELINES.keys())
-    if PIPELINES.get(intent['response'].strip()):
+    if PIPELINES.get(intent["response"].strip()):
         verified = True
 
-    session.add_message("assistant", f"Recognized Intent {intent.get('response', 'generalllm')}")
-    return {"reply": intent, "verified":verified}
+    session.add_message(
+        "assistant", f"Recognized Intent {intent.get('response', 'GeneralLLMPipeline')}"
+    )
+    return {"reply": intent.get("response", "GeneralLLMPipeline"), "verified": verified}
+
+
+@app.post("/get_pipeline_requirements/{recognized_intent}")
+async def get_pipeline_requirements(recognized_intent: str):
+    recognized_intent = recognized_intent.strip()
+    if PIPELINES.get(recognized_intent, None) is not None:
+        return {
+            "reply": PIPELINES.get(
+                recognized_intent, "GeneralLLMPipeline"
+            ).get_required_files()
+        }
+    else:
+        return {"reply": None}

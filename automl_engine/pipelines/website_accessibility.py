@@ -134,7 +134,7 @@ class ImageChunkEvaluator:
 
 
 class WebsiteAccesibilityPipeline(BasePipeline):
-    """This pipeline is used for when the user wants to check the accessibility of a website. Eg queries: Check WCAG, Check website guidelines, Check website accessibility, Check alt text"""
+    """This pipeline is used for when the user wants to check the accessibility of a website. Eg queries: Check WCAG, Check website guidelines, Check website accessibility, Check alt text, check website, website accessibility"""
     def __init__(self, session_state, output_placeholder_ui_element):
         super().__init__(session_state, output_placeholder_ui_element)
         self.chunk_outputs = []
@@ -144,6 +144,10 @@ class WebsiteAccesibilityPipeline(BasePipeline):
         lines = (line.strip() for line in soup.get_text().splitlines())
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
         return "\n".join(chunk for chunk in chunks if chunk)
+    
+    @staticmethod
+    def get_required_files():
+        return {"sites": "file_upload_multi"}
 
     def analyze_readability(self, content):
         soup = BeautifulSoup(content, features="html.parser")

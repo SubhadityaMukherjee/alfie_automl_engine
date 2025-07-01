@@ -132,13 +132,13 @@ class ImageChunkEvaluator:
                 results.append({"src": src, "alt_text": alt, "error": str(e)})
         return results
 
-
 @PipelineRegistry.register("Website Accessibility")
 class WebsiteAccesibilityPipeline(BasePipeline):
     def __init__(self, session_state, output_placeholder_ui_element):
         super().__init__(session_state, output_placeholder_ui_element)
         self.chunk_outputs = []
         self.enable_image_alt_text_checker = True
+        self.requirements = ""
 
     def get_all_text(self, soup):
         lines = (line.strip() for line in soup.get_text().splitlines())

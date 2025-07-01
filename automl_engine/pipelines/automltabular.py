@@ -17,7 +17,9 @@ from automl_engine.pipelines.models import (
     TabularSupervisedRegressionTask,
     TabularSupervisedTimeSeriesTask,
 )
+from typing import Optional, Dict, Any, List
 
+from pydantic import BaseModel, FilePath, field_validator
 
 class FileProcessor:
     def __init__(self, session_state: SessionState):
@@ -85,7 +87,7 @@ class TargetColumnDetector:
             user_text=user_text,
             messages=self.session_state.get_all_messages_by_role(["user"]),
         )
-        result = ChatHandler.chat(query).strip()
+        result = ChatHandler.chat(query, context= "").strip()
 
         if result.lower() == "no":
             self.session_state.add_message(
@@ -168,7 +170,16 @@ class AutoMLTrainer:
                 role="assistant", content=leaderboard.to_markdown()
             )
 
+class TabularClassificationInput(BaseModel):
+    train_csv: FilePath
+    test_csv: Optional[FilePath] = None
+    target_col: str
 
+    @field_validator("train_csv", "test_csv", mode="before")
+    def check_csv_extension(cls, v):
+        if v is not None and Path(v).suffix.lower() != ".csv":
+            raise ValueError(f"Expected a .csv file, got: {v}")
+        return v
 class AutoMLTabularPipeline(BasePipeline):
     def __init__(self, session_state: SessionState, output_placeholder_ui_element):
         super().__init__(session_state, output_placeholder_ui_element)

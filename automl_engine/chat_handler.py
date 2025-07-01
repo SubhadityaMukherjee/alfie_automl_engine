@@ -14,7 +14,7 @@ class ChatHandler:
                     },
                     {
                         "role": "user-hidden",
-                        "context": context,
+                        "content": context,
                     }
 
                 ],

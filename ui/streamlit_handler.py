@@ -74,3 +74,6 @@ class StreamlitUI(BaseUITemplate):
 
     def rerun(self) -> None:
         st.rerun()
+
+    def text_input(self, label: str, key:str) -> str:
+        return st.text_input(label=label, key = key)
