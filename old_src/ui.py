@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import uuid
-from ui.streamlit_handler import StreamlitUI
+from ui_2.streamlit_handler import StreamlitUI
 from automl_engine.models import SessionState
 from automl_engine.pipelines import PIPELINES
 

@@ -1,5 +1,5 @@
 {% if summary %}
-✅ Finished analyzing `{{ filename }}`.
+ Finished analyzing `{{ filename }}`.
 
 **Average WCAG Score:** {{ average_score }}/10
 {% else %}

@@ -39,17 +39,21 @@ class ImageConverter:
 
 class AltTextChecker:
     @staticmethod
-    def check(image_url_or_path, alt_text, model="qwen2.5vl"):
+    def check(jinja_environment, image_url_or_path, alt_text, model="qwen2.5vl"):
         image_b64 = ImageConverter.to_base64(image_url_or_path)
         messages = [
             {
                 "role": "system",
-                "content": render_template("wcag_checker_default_prompt.txt"),
+                "content": render_template(
+                    jinja_environment, "wcag_checker_default_prompt.txt"
+                ),
             },
             {"role": "user", "content": f"Alt text: {alt_text}"},
             {
                 "role": "user",
-                "content": render_template("image_alt_checker_prompt.txt"),
+                "content": render_template(
+                    jinja_environment, "image_alt_checker_prompt.txt"
+                ),
                 "images": [image_b64],
             },
         ]
@@ -119,12 +123,12 @@ class ChunkProcessor:
 
 class ImageChunkEvaluator:
     @staticmethod
-    def evaluate(chunk):
+    def evaluate(jinja_environment, chunk):
         matches = re.findall(r'<img[^>]+src="([^"]+)"[^>]*alt="([^"]+)"', chunk)
         results = []
         for src, alt in matches:
             try:
-                result = AltTextChecker.check(src, alt)
+                result = AltTextChecker.check(jinja_environment, src, alt)
                 results.append(
                     {"src": src, "alt_text": alt, "ollama_evaluation": result}
                 )
@@ -135,6 +139,7 @@ class ImageChunkEvaluator:
 
 class WebsiteAccesibilityPipeline(BasePipeline):
     """This pipeline is used for when the user wants to check the accessibility of a website. Eg queries: Check WCAG, Check website guidelines, Check website accessibility, Check alt text, check website, website accessibility"""
+
     def __init__(self, session_state, output_placeholder_ui_element):
         super().__init__(session_state, output_placeholder_ui_element)
         self.chunk_outputs = []
@@ -144,7 +149,7 @@ class WebsiteAccesibilityPipeline(BasePipeline):
         lines = (line.strip() for line in soup.get_text().splitlines())
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
         return "\n".join(chunk for chunk in chunks if chunk)
-    
+
     @staticmethod
     def get_required_files():
         return {"sites": "file_upload_multi"}
@@ -184,7 +189,9 @@ class WebsiteAccesibilityPipeline(BasePipeline):
 
             image_feedback = ""
             if self.enable_image_alt_text_checker:
-                evaluations = ImageChunkEvaluator.evaluate(chunk)
+                evaluations = ImageChunkEvaluator.evaluate(
+                    self.session_state.jinja_environment, chunk
+                )
                 if evaluations:
                     image_feedback = "\n".join(
                         f"- **Image**: {r['src']}\n  - **ALT**: `{r['alt_text']}`\n  - **Result**: {r.get('ollama_evaluation', r.get('error'))}"

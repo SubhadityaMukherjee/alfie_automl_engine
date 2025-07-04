@@ -9,7 +9,7 @@ from contextlib import contextmanager
 
 from streamlit.commands.page_config import Layout
 
-from ui.ui_template import BaseUITemplate
+from ui_2.ui_template import BaseUITemplate
 
 
 class StreamlitUI(BaseUITemplate):
