@@ -30,12 +30,15 @@ class SessionState(BaseModel):
     file_info: FileInfo = Field(default_factory=FileInfo)
     automloutputpath: str = str(Path("autogluon_output"))
     current_model_path: str = ""
-    pipeline_name: str = ""
-    pipeline_state: dict = {
-        "stage": "start",
-        "target_column": None,
-        "task_type": None,
+    session_form: dict = {
+        "file_upload_multi" : [],
+        "file_upload_train" : [],
+        "file_upload_test" : [],
+        "target_col" : "",
+        "timestamp_col" : ""
     }
+
+    
     jinja_environment : ClassVar[Environment] = Environment(loader=FileSystemLoader(Path("automl_engine/prompt_templates/")))
 
     def reset(self) -> None:
@@ -44,7 +47,6 @@ class SessionState(BaseModel):
         self.aggregate_info = ""
         self.files_parsed = False
         self.stop_requested = False
-        self.pipeline_name = ""
         self.automloutputpath = ""
         self.current_model_path = ""
 
