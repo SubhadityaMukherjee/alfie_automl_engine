@@ -1,0 +1,31 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  website_accessibility:
+    build:
+      context: .
+      dockerfile: app/website_accessibility/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_HOST=ollama_host
+
+  # automl:
+  #   build:
+  #     context: .
+  #     dockerfile: app/automl/Dockerfile
+  #   ports:
+  #     - "8001:8001"
+  #   environment:
+  #     - OLLAMA_HOST=ollama_host
+
+  ollama_host:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ollama_data:

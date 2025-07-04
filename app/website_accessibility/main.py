@@ -13,10 +13,11 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from jinja2 import Environment, FileSystemLoader
-from modules import AltTextChecker, ReadabilityAnalyzer, split_chunks, ChatHandler
+from modules import AltTextChecker, ReadabilityAnalyzer, split_chunks
+from app.core.chat_handler import ChatHandler
 from ollama import Client
 from PIL import Image
-from utils import render_template
+from app.core.utils import render_template
 
 from fastapi.responses import StreamingResponse
 import json
