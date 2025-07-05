@@ -3,7 +3,7 @@ import ollama
 
 class ChatHandler:
     @staticmethod
-    def chat(message,context:str, model: str = "gemma3:4b") -> str:
+    def chat(message, context: str, model: str = "gemma3:4b") -> str:
         try:
             response = ollama.chat(
                 model=model,
@@ -15,8 +15,7 @@ class ChatHandler:
                     {
                         "role": "user-hidden",
                         "content": context,
-                    }
-
+                    },
                 ],
             )
             return response["message"]["content"].strip()

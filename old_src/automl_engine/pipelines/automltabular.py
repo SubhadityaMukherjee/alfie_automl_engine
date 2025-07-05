@@ -1,25 +1,20 @@
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 from autogluon.tabular import TabularDataset, TabularPredictor
-
-from automl_engine.utils import render_template
 from automl_engine.chat_handler import ChatHandler
-from automl_engine.models import Message, SessionState
 from automl_engine.file_handler import FileHandler
-
+from automl_engine.models import Message, SessionState
 from automl_engine.pipelines.base import BasePipeline
 from automl_engine.pipelines.models import (
-    TabularSupervisedClassificationTask,
-    TabularSupervisedRegressionTask,
-    TabularSupervisedTimeSeriesTask,
-)
-from typing import Optional, Dict, Any, List
-
+    TabularSupervisedClassificationTask, TabularSupervisedRegressionTask,
+    TabularSupervisedTimeSeriesTask)
+from automl_engine.utils import render_template
 from pydantic import BaseModel, FilePath, field_validator
+
 
 class FileProcessor:
     def __init__(self, session_state: SessionState):
@@ -87,7 +82,7 @@ class TargetColumnDetector:
             user_text=user_text,
             messages=self.session_state.get_all_messages_by_role(["user"]),
         )
-        result = ChatHandler.chat(query, context= "").strip()
+        result = ChatHandler.chat(query, context="").strip()
 
         if result.lower() == "no":
             self.session_state.add_message(
@@ -170,6 +165,7 @@ class AutoMLTrainer:
                 role="assistant", content=leaderboard.to_markdown()
             )
 
+
 class TabularClassificationInput(BaseModel):
     train_csv: FilePath
     test_csv: Optional[FilePath] = None
@@ -180,6 +176,8 @@ class TabularClassificationInput(BaseModel):
         if v is not None and Path(v).suffix.lower() != ".csv":
             raise ValueError(f"Expected a .csv file, got: {v}")
         return v
+
+
 class AutoMLTabularPipeline(BasePipeline):
     def __init__(self, session_state: SessionState, output_placeholder_ui_element):
         super().__init__(session_state, output_placeholder_ui_element)

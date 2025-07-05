@@ -26,12 +26,14 @@ class TabularSupervisedClassificationTask(TabularTask):
 
     task_type: str = "classification"
 
+
 class TabularSupervisedRegressionTask(TabularTask):
     """
     This pipeline is used when the user wants to predict a continuous numeric value from tabular data. Eg queries: Predict house prices, Estimate salary, Forecast sales numbers., tabular regreesion
     """
 
     task_type: str = "regression"
+
 
 class TabularSupervisedTimeSeriesTask(TabularTask):
     """

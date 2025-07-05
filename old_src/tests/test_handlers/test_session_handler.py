@@ -5,7 +5,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-
 from file_handler import FileInfo
 from session_state_handler import Message, SessionState
 

@@ -12,17 +12,17 @@ from io import BytesIO
 
 import requests
 import textstat
-from bs4 import BeautifulSoup
-from ollama import Client
-from PIL import Image
-from textblob import TextBlob
-
+from automl_engine.chat_handler import ChatHandler
 # from old_src import render_template
 # from old_src.chat_handler import ChatHandler
 # from old_src.file_handler import FileHandler
 # from old_src.pipelines.base import BasePipeline, PipelineRegistry
 from automl_engine.utils import render_template
-from automl_engine.chat_handler import ChatHandler
+from bs4 import BeautifulSoup
+from ollama import Client
+from PIL import Image
+from textblob import TextBlob
+
 # from automl_engine.file import File
 
 client = Client()
@@ -135,9 +135,11 @@ class ImageChunkEvaluator:
                 results.append({"src": src, "alt_text": alt, "error": str(e)})
         return results
 
+
 class WebsiteAccesibilityPipeline(BasePipeline):
     def __name__(self):
         return "Website Accessibility"
+
     def __init__(self, session_state, output_placeholder_ui_element):
         super().__init__(session_state, output_placeholder_ui_element)
         self.chunk_outputs = []

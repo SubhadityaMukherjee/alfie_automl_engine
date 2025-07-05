@@ -1,15 +1,15 @@
 import json
-from fastapi import FastAPI, UploadFile, Request
-from fastapi.middleware.cors import CORSMiddleware
-import ollama
-from automl_engine.models import SessionState
-from fastapi import FastAPI, UploadFile, File, Form
+from collections import OrderedDict
 from typing import List
-from automl_engine.utils import render_template
+
+import ollama
 import requests
 from automl_engine.chat_handler import ChatHandler
+from automl_engine.models import SessionState
 from automl_engine.pipelines import PIPELINES
-from collections import OrderedDict
+from automl_engine.utils import render_template
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 

@@ -3,25 +3,21 @@ import json
 import logging
 import os
 import re
+import time
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+import pandas as pd
+from autogluon.tabular import TabularDataset, TabularPredictor
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, FilePath, field_validator
 
 from app.core.chat_handler import ChatHandler
 from app.core.utils import render_template
-
-import os
-import time
-from pathlib import Path
-from typing import Optional, Dict, Any, List
-
-import pandas as pd
-from autogluon.tabular import TabularDataset, TabularPredictor
-
-from pydantic import BaseModel, FilePath, field_validator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,6 +38,7 @@ async def lifespan(app: FastAPI):
     pass
 
 
+# NOTE: I AM NOT SURE IF THE AUTODW WILL HANDLE THIS PART FIRST :/
 @app.post("/vision_automl/get_user_input/")
 async def get_user_input(
     train_folder: UploadFile = File(...),
@@ -60,11 +57,14 @@ async def get_user_input(
         description="Type of task - for now only classification)",
         examples=["classification"],
     ),
+    time_budget: int = Form(
+        ..., description="Time budget to train automl system in seconds"
+    ),
 ) -> JSONResponse: ...
 
 
 @app.post("/vision_automl/find_best_model/")
-async def find_best_model() -> JSONResponse:
+async def find_best_model(session_id: str) -> JSONResponse:
     """Output :
             - automl : Json {“leaderboard” with best models/metrics, best model as pkl/dataset id information on how to use them}
                     - Further complications : Might have to return the “model_id” that was uploaded to autodw instead of the actual model as a pkl

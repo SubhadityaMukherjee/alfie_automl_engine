@@ -13,11 +13,9 @@ from jinja2 import Environment, FileSystemLoader
 
 from app.core.chat_handler import ChatHandler
 from app.core.utils import render_template
-from app.website_accessibility.modules import (
-    AltTextChecker,
-    ReadabilityAnalyzer,
-    split_chunks,
-)
+from app.website_accessibility.modules import (AltTextChecker,
+                                               ReadabilityAnalyzer,
+                                               split_chunks)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

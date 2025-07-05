@@ -1,9 +1,10 @@
-import streamlit as st
-import requests
 import uuid
-from ui_2.streamlit_handler import StreamlitUI
+
+import requests
+import streamlit as st
 from automl_engine.models import SessionState
 from automl_engine.pipelines import PIPELINES
+from ui_2.streamlit_handler import StreamlitUI
 
 BACKEND = "http://localhost:8000"
 session_id = st.session_state.get("session_id") or str(uuid.uuid4())
@@ -34,6 +35,7 @@ def reset_chat():
     # st.session_state["session_id"] = str(uuid.uuid4())
     ...
 
+
 def build_ui():
     if "session" not in st.session_state:
         st.session_state.session = SessionState()
@@ -48,7 +50,9 @@ def build_ui():
     ui = StreamlitUI(session_state=session_state)
 
     ui.show_title("ALFIE AutoML Engine")
-    ui.show_subheader("Note that the AI can often make mistakes. Before doing anything important, please verify it.\nEg tasks include: tabular classification, website accessibility")
+    ui.show_subheader(
+        "Note that the AI can often make mistakes. Before doing anything important, please verify it.\nEg tasks include: tabular classification, website accessibility"
+    )
     ui.sidebar_header("Extras")
 
     if st.sidebar.button("🧹 Reset Session"):
@@ -90,7 +94,9 @@ def build_ui():
         form_components_to_show = requests.post(
             f"{BACKEND}/get_pipeline_requirements/{st.session_state.intent_reply}",
         ).json()
-        reply = form_components_to_show["reply"] #this gets all the required components needed to proceed further
+        reply = form_components_to_show[
+            "reply"
+        ]  # this gets all the required components needed to proceed further
         session_form = {}
 
         if reply is not None:
@@ -146,7 +152,6 @@ def build_ui():
     for msg in session["messages"]:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
-
 
 
 if __name__ == "__main__":

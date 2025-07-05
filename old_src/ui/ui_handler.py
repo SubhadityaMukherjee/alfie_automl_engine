@@ -5,9 +5,10 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
+from ui_2.streamlit_handler import StreamlitUI
+
 from old_src.chat_handler import ChatHandler, Message
 from old_src.pipelines.base import PipelineRegistry
-from ui_2.streamlit_handler import StreamlitUI
 
 
 class build_ui_with_chat:

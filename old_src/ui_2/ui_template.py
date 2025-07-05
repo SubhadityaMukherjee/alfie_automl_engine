@@ -37,8 +37,9 @@ class BaseUITemplate(ABC):
     @abstractmethod
     def chat_input(self, placeholder: str) -> str:
         pass
+
     @abstractmethod
-    def text_input(self, label: str, key:str) -> str:
+    def text_input(self, label: str, key: str) -> str:
         pass
 
     @abstractmethod

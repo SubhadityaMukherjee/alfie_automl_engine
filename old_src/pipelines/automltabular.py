@@ -11,8 +11,8 @@ from old_src.chat_handler import ChatHandler, Message
 from old_src.file_handler import FileHandler
 from old_src.pipelines.base import BasePipeline, PipelineRegistry
 from old_src.pipelines.task_defs import (TabularSupervisedClassificationTask,
-                                     TabularSupervisedRegressionTask,
-                                     TabularSupervisedTimeSeriesTask)
+                                         TabularSupervisedRegressionTask,
+                                         TabularSupervisedTimeSeriesTask)
 
 
 class FileProcessor:

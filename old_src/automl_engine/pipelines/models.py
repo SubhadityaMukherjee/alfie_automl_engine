@@ -1,15 +1,17 @@
+from abc import ABC
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
-from pydantic import BaseModel, FilePath, field_validator
 from automl_engine.models import SessionState
-from abc import ABC
+from pydantic import BaseModel, FilePath, field_validator
 
 
 class BasePipeline(ABC):
 
-    def __init__(self, session_state:SessionState, output_placeholder_ui_element) -> None:
+    def __init__(
+        self, session_state: SessionState, output_placeholder_ui_element
+    ) -> None:
         super().__init__()
         self.session_state = session_state
         self.output_placeholder_ui_element = output_placeholder_ui_element
@@ -45,9 +47,15 @@ class TabularSupervisedClassificationTask(TabularTask):
     """
 
     task_type: str = "classification"
+
     @staticmethod
     def get_required_files():
-        return {"train_csv": "file_upload_train", "test_csv": "file_upload_test", "target_col": "text"}
+        return {
+            "train_csv": "file_upload_train",
+            "test_csv": "file_upload_test",
+            "target_col": "text",
+        }
+
 
 class TabularSupervisedRegressionTask(TabularTask):
     """
@@ -55,10 +63,14 @@ class TabularSupervisedRegressionTask(TabularTask):
     """
 
     task_type: str = "regression"
+
     @staticmethod
     def get_required_files():
-        return {"train_csv": "file_upload_train", "test_csv": "file_upload_test", "target_col": "text"}
-
+        return {
+            "train_csv": "file_upload_train",
+            "test_csv": "file_upload_test",
+            "target_col": "text",
+        }
 
 
 class TabularSupervisedTimeSeriesTask(TabularTask):
@@ -71,7 +83,12 @@ class TabularSupervisedTimeSeriesTask(TabularTask):
 
     @staticmethod
     def get_required_files():
-        return {"train_csv": "file_upload_train", "test_csv": "file_upload_test", "target_col": "text", "timestamp_col": "text"}
+        return {
+            "train_csv": "file_upload_train",
+            "test_csv": "file_upload_test",
+            "target_col": "text",
+            "timestamp_col": "text",
+        }
 
 
 ALLOWED_WEB_FILE_TYPES = {".html", ".htm", ".js", ".css"}

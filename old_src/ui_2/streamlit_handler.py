@@ -8,7 +8,6 @@ nest_asyncio.apply()
 from contextlib import contextmanager
 
 from streamlit.commands.page_config import Layout
-
 from ui_2.ui_template import BaseUITemplate
 
 
@@ -75,5 +74,5 @@ class StreamlitUI(BaseUITemplate):
     def rerun(self) -> None:
         st.rerun()
 
-    def text_input(self, label: str, key:str) -> str:
-        return st.text_input(label=label, key = key)
+    def text_input(self, label: str, key: str) -> str:
+        return st.text_input(label=label, key=key)
