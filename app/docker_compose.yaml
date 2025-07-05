@@ -11,14 +11,23 @@ services:
     environment:
       - OLLAMA_HOST=ollama_host
 
-  # automl:
-  #   build:
-  #     context: .
-  #     dockerfile: app/automl/Dockerfile
-  #   ports:
-  #     - "8001:8001"
-  #   environment:
-  #     - OLLAMA_HOST=ollama_host
+  tabular_automl:
+    build:
+      context: .
+      dockerfile: app/tabular_automl/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - OLLAMA_HOST=ollama_host
+    
+  vision_automl:
+    build:
+      context: .
+      dockerfile: app/vision_automl/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - OLLAMA_HOST=ollama_host
 
   ollama_host:
     image: ollama/ollama

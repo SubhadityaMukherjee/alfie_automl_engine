@@ -45,7 +45,7 @@ async def lifespan(app: FastAPI):
     pass
 
 
-@app.post("/readability/")
+@app.post("/web_access/readability/")
 async def analyze_readability(file: UploadFile = File(...)) -> JSONResponse:
     """Get html, parse the text only, get readability scores"""
     logger.info("Received file for readability analysis: %s", file.filename)
@@ -66,7 +66,7 @@ async def analyze_readability(file: UploadFile = File(...)) -> JSONResponse:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@app.post("/check-alt-text/")
+@app.post("/web_access/check-alt-text/")
 async def check_alt_text(
     image_url: str = Form(...), alt_text: str = Form(...)
 ) -> JSONResponse:
@@ -83,7 +83,7 @@ async def check_alt_text(
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@app.post("/chat/")
+@app.post("/web_access/chat/")
 async def chat_endpoint(prompt: str):
     """Send prompts to a running LLM"""
     logger.info("Chat prompt received")
@@ -100,7 +100,7 @@ async def chat_endpoint(prompt: str):
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@app.post("/accessibility/")
+@app.post("/web_access/accessibility/")
 async def check_accessibility(file: UploadFile = File(...)):
     """Check accessibility given a html/css/js file based on WCAG guidelines ,
     readability scores and checking if the alt text in an image matches the actual image
