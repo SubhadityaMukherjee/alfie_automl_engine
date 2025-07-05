@@ -1,24 +1,18 @@
 import base64
+import logging
 import os
-import re
-import uuid
 from io import BytesIO
 from pathlib import Path
-from typing import List
+from typing import Dict, List, Tuple
 
 import requests
 import textstat
-from bs4 import BeautifulSoup
-from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import JSONResponse
 from jinja2 import Environment, FileSystemLoader
 from ollama import Client
 from PIL import Image
+from urllib3.response import HTTPResponse
+
 from app.core.utils import render_template
-import ollama
-import asyncio
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +22,19 @@ jinja_environment = Environment(loader=FileSystemLoader(Path(jinja_path)))
 
 
 class ImageConverter:
+    """Convert images to base64 from either string or downloading them first"""
+
     @staticmethod
-    def to_base64(image_path_or_url: str):
+    def to_base64(image_path_or_url: str) -> str:
         logger.info("Converting image to base64: %s", image_path_or_url)
         try:
+
             if image_path_or_url.startswith("http"):
-                image = Image.open(requests.get(image_path_or_url, stream=True).raw)
+                raw_image: HTTPResponse = requests.get(
+                    image_path_or_url, stream=True
+                ).raw
+                if raw_image is not None:
+                    image = Image.open(raw_image)
             else:
                 image = Image.open(image_path_or_url)
             buffer = BytesIO()
@@ -45,8 +46,15 @@ class ImageConverter:
 
 
 class AltTextChecker:
+    """Check alt text of an image using a model"""
+
     @staticmethod
-    def check(jinja_environment, image_url_or_path, alt_text, model="qwen2.5vl"):
+    def check(
+        jinja_environment: Environment,
+        image_url_or_path: str,
+        alt_text: str,
+        model: str = os.getenv("ALT_TEXT_CHECKER_MODEL", ""),
+    ) -> str:
         logger.info("Checking alt-text using model %s", model)
         try:
             image_b64 = ImageConverter.to_base64(image_url_or_path)
@@ -74,6 +82,8 @@ class AltTextChecker:
 
 
 class ReadabilityAnalyzer:
+    """Analyze readability from text given some metrics"""
+
     METRICS = {
         "Flesch Reading Ease": textstat.flesch_reading_ease,
         "Difficult Words": textstat.difficult_words,
@@ -82,7 +92,7 @@ class ReadabilityAnalyzer:
     }
 
     @staticmethod
-    def apply_metric(metric, text):
+    def apply_metric(metric, text: str) -> str:
         try:
             return metric(text)
         except Exception:
@@ -90,14 +100,15 @@ class ReadabilityAnalyzer:
             return "N/A"
 
     @classmethod
-    def analyze(cls, text):
+    def analyze(cls, text: str) -> Dict[str, str]:
         logger.info("Running readability metrics")
         return {
             name: cls.apply_metric(metric, text) for name, metric in cls.METRICS.items()
         }
 
 
-def split_chunks(content, chunk_size):
+def split_chunks(content: str, chunk_size: int) -> Tuple[List[str], List[int]]:
+    """For a long file, split it into chunks to prevent going out of LLM size limits"""
     lines = content.splitlines()
     line_offsets = [0]
     for line in lines:

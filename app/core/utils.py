@@ -2,7 +2,9 @@ import ollama
 from jinja2 import Environment
 
 
-def render_template(jinja_environment:Environment, template_name: str, **kwargs) -> str:
+def render_template(
+    jinja_environment: Environment, template_name: str, **kwargs
+) -> str:
     """
     Renders a Jinja2 template with the given arguments.
     """
@@ -12,4 +14,3 @@ def render_template(jinja_environment:Environment, template_name: str, **kwargs)
     except Exception as e:
         print(e)
         return ""
-

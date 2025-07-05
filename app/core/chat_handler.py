@@ -1,4 +1,6 @@
+import asyncio
 import base64
+import logging
 import os
 import re
 import uuid
@@ -6,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import List
 
+import ollama
 import requests
 import textstat
 from bs4 import BeautifulSoup
@@ -15,10 +18,9 @@ from fastapi.responses import JSONResponse
 from jinja2 import Environment, FileSystemLoader
 from ollama import Client
 from PIL import Image
-from utils import render_template
-import ollama
-import asyncio
-import logging
+
+from app.core.utils import render_template
+
 
 class ChatQueue:
     def __init__(self, num_workers=4):
