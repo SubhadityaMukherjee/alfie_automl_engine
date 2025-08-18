@@ -1,0 +1,130 @@
+import base64
+import logging
+import os
+from io import BytesIO
+from pathlib import Path
+from typing import Dict, List, Tuple
+
+import requests
+import textstat
+from jinja2 import Environment, FileSystemLoader
+from ollama import Client
+from PIL import Image
+from urllib3.response import HTTPResponse
+
+from app.core.utils import render_template
+
+logger = logging.getLogger(__name__)
+
+client = Client()
+jinja_path = os.getenv("JINJAPATH") or ""
+jinja_environment = Environment(loader=FileSystemLoader(Path(jinja_path)))
+
+
+class ImageConverter:
+    """Convert images to base64 from either string or downloading them first"""
+
+    @staticmethod
+    def to_base64(image_path_or_url: str) -> str:
+        logger.info("Converting image to base64: %s", image_path_or_url)
+        try:
+
+            if image_path_or_url.startswith("http"):
+                raw_image: HTTPResponse = requests.get(
+                    image_path_or_url, stream=True
+                ).raw
+                if raw_image is not None:
+                    image = Image.open(raw_image)
+            else:
+                image = Image.open(image_path_or_url)
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+            return base64.b64encode(buffer.getvalue()).decode()
+        except Exception as e:
+            logger.exception("Image conversion failed")
+            raise e
+
+
+class AltTextChecker:
+    """Check alt text of an image using a model"""
+
+    @staticmethod
+    def check(
+        jinja_environment: Environment,
+        image_url_or_path: str,
+        alt_text: str,
+        model: str = os.getenv("ALT_TEXT_CHECKER_MODEL", ""),
+    ) -> str:
+        logger.info("Checking alt-text using model %s", model)
+        try:
+            image_b64 = ImageConverter.to_base64(image_url_or_path)
+            messages = [
+                {
+                    "role": "system",
+                    "content": render_template(
+                        jinja_environment, "wcag_checker_default_prompt.txt"
+                    ),
+                },
+                {"role": "user", "content": f"Alt text: {alt_text}"},
+                {
+                    "role": "user",
+                    "content": render_template(
+                        jinja_environment, "image_alt_checker_prompt.txt"
+                    ),
+                    "images": [image_b64],
+                },
+            ]
+            response = client.chat(model=model, messages=messages)
+            return response["message"]["content"]
+        except Exception as e:
+            logger.exception("AltTextChecker failed")
+            raise e
+
+
+class ReadabilityAnalyzer:
+    """Analyze readability from text given some metrics"""
+
+    METRICS = {
+        "Flesch Reading Ease": textstat.flesch_reading_ease,
+        "Difficult Words": textstat.difficult_words,
+        "Lexicon Count": textstat.lexicon_count,
+        "Avg Sentence Length": textstat.avg_sentence_length,
+    }
+
+    @staticmethod
+    def apply_metric(metric, text: str) -> str:
+        try:
+            return metric(text)
+        except Exception:
+            logger.warning("Metric failed: %s", metric.__name__)
+            return "N/A"
+
+    @classmethod
+    def analyze(cls, text: str) -> Dict[str, str]:
+        logger.info("Running readability metrics")
+        return {
+            name: cls.apply_metric(metric, text) for name, metric in cls.METRICS.items()
+        }
+
+
+def split_chunks(content: str, chunk_size: int) -> Tuple[List[str], List[int]]:
+    """For a long file, split it into chunks to prevent going out of LLM size limits"""
+    lines = content.splitlines()
+    line_offsets = [0]
+    for line in lines:
+        line_offsets.append(line_offsets[-1] + len(line) + 1)
+
+    chunks, line_ranges, i = [], [], 0
+    while i < len(content):
+        end = i + chunk_size
+        chunks.append(content[i:end])
+        start_line = next(j for j, offset in enumerate(line_offsets) if offset > i) - 1
+        end_line = (
+            next(
+                (j for j, offset in enumerate(line_offsets) if offset > end), len(lines)
+            )
+            - 1
+        )
+        line_ranges.append((start_line + 1, end_line + 1))
+        i = end
+    return chunks, line_ranges

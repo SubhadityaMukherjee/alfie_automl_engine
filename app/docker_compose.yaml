@@ -1,0 +1,40 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  website_accessibility:
+    build:
+      context: .
+      dockerfile: app/website_accessibility/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_HOST=ollama_host
+
+  tabular_automl:
+    build:
+      context: .
+      dockerfile: app/tabular_automl/Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      - OLLAMA_HOST=ollama_host
+    
+  vision_automl:
+    build:
+      context: .
+      dockerfile: app/vision_automl/Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - OLLAMA_HOST=ollama_host
+
+  ollama_host:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ollama_data:

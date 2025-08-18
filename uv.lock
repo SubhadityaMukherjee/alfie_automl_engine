@@ -181,9 +181,11 @@ dependencies = [
     { name = "python-docx" },
     { name = "ruff" },
     { name = "scikit-learn" },
+    { name = "sqlalchemy" },
     { name = "streamlit" },
     { name = "textblob" },
     { name = "textstat" },
+    { name = "uvicorn" },
 ]
 
 [package.metadata]
@@ -200,9 +202,11 @@ requires-dist = [
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "ruff", specifier = ">=0.12.0" },
     { name = "scikit-learn", specifier = ">=1.6.1" },
+    { name = "sqlalchemy", specifier = ">=2.0.41" },
     { name = "streamlit", specifier = ">=1.45.1" },
     { name = "textblob", specifier = ">=0.18.0.post0" },
     { name = "textstat", specifier = ">=0.7.7" },
+    { name = "uvicorn", specifier = ">=0.35.0" },
 ]
 
 [[package]]
@@ -4637,6 +4641,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a3/24/b6f8c2b022e41fbe48d166680fff9fb29d7bb97a68ed5ed1faecf2b11b46/utilsforecast-0.2.10.tar.gz", hash = "sha256:6058ca1a00b7e9dc02346a071a8e3f4dabe2a01f6f6b5a563c6c849754a86d3e", size = 40927, upload-time = "2024-11-29T17:28:32.585Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/c7/d90715b5cc1ab5b6cb04349b1b9aeba910cd3335877b95fa67a981145755/utilsforecast-0.2.10-py3-none-any.whl", hash = "sha256:ee7860f18a6df5dd695b51e603f3866a00dd0da0eb6c12d07f052e54390cf1a7", size = 41658, upload-time = "2024-11-29T17:28:28.274Z" },
+]
+
+[[package]]
+name = "uvicorn"
+version = "0.35.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "h11" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5e/42/e0e305207bb88c6b8d3061399c6a961ffe5fbb7e2aa63c9234df7259e9cd/uvicorn-0.35.0.tar.gz", hash = "sha256:bc662f087f7cf2ce11a1d7fd70b90c9f98ef2e2831556dd078d131b96cc94a01", size = 78473, upload-time = "2025-06-28T16:15:46.058Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d2/e2/dc81b1bd1dcfe91735810265e9d26bc8ec5da45b4c0f6237e286819194c3/uvicorn-0.35.0-py3-none-any.whl", hash = "sha256:197535216b25ff9b785e29a0b79199f55222193d47f820816e7da751e9bc8d4a", size = 66406, upload-time = "2025-06-28T16:15:44.816Z" },
 ]
 
 [[package]]
