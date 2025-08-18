@@ -1,8 +1,11 @@
+processes.pid
 .DS_store
 .webui_secret_key
 sample_data/
 AutogluonModels/
+*.db
 autogluon_output/
+uploaded_data/
 *.pkl
 *.drawio.bkp
 # Byte-compiled / optimized / DLL files
