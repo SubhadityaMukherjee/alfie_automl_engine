@@ -5,6 +5,7 @@ sample_data/
 AutogluonModels/
 *.db
 autogluon_output/
+lightning_logs/
 uploaded_data/
 *.pkl
 *.drawio.bkp

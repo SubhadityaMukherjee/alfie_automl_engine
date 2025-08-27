@@ -173,6 +173,7 @@ dependencies = [
     { name = "black" },
     { name = "isort" },
     { name = "jinja2" },
+    { name = "lightning" },
     { name = "nest-asyncio" },
     { name = "ollama" },
     { name = "pandas" },
@@ -185,6 +186,7 @@ dependencies = [
     { name = "streamlit" },
     { name = "textblob" },
     { name = "textstat" },
+    { name = "timm" },
     { name = "uvicorn" },
 ]
 
@@ -194,6 +196,7 @@ requires-dist = [
     { name = "black", specifier = ">=25.1.0" },
     { name = "isort", specifier = ">=6.0.1" },
     { name = "jinja2", specifier = ">=3.1.6" },
+    { name = "lightning", specifier = ">=2.5.1.post0" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },
     { name = "ollama", specifier = ">=0.5.1" },
     { name = "pandas", specifier = ">=2.2.3" },
@@ -206,6 +209,7 @@ requires-dist = [
     { name = "streamlit", specifier = ">=1.45.1" },
     { name = "textblob", specifier = ">=0.18.0.post0" },
     { name = "textstat", specifier = ">=0.7.7" },
+    { name = "timm", specifier = ">=1.0.3" },
     { name = "uvicorn", specifier = ">=0.35.0" },
 ]
 
