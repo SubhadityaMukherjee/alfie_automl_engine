@@ -1,6 +1,5 @@
 from typing import Optional
 
-import lightning as L
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
@@ -8,7 +7,7 @@ from torch.utils.data import DataLoader
 from .dataset import ImageClassificationFromCSVDataset
 
 
-class ClassificationData(L.LightningDataModule):
+class ClassificationData:
     def __init__(
         self,
         csv_file: str,
@@ -23,7 +22,6 @@ class ClassificationData(L.LightningDataModule):
         test_split: float = 0.1,
         seed: int = 42,
     ) -> None:
-        super().__init__()
         self.csv_file = csv_file
         self.root_dir = root_dir
         self.img_col = img_col
@@ -41,7 +39,9 @@ class ClassificationData(L.LightningDataModule):
         self.val_dataset: Optional[ImageClassificationFromCSVDataset] = None
         self.test_dataset: Optional[ImageClassificationFromCSVDataset] = None
 
-    def setup(self, stage: Optional[str] = None) -> None:
+        self.setup()
+
+    def setup(self) -> None:
         df = pd.read_csv(self.csv_file)
 
         train_df, temp_df = train_test_split(

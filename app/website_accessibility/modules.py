@@ -17,8 +17,9 @@ from app.core.utils import render_template
 logger = logging.getLogger(__name__)
 
 client = Client()
-jinja_path = os.getenv("JINJAPATH") or ""
-jinja_environment = Environment(loader=FileSystemLoader(Path(jinja_path)))
+# Remove duplicate jinja environment creation - it will be passed from main.py
+# jinja_path = os.getenv("JINJAPATH") or ""
+# jinja_environment = Environment(loader=FileSystemLoader(Path(jinja_path)))
 
 
 class ImageConverter:
@@ -53,9 +54,15 @@ class AltTextChecker:
         jinja_environment: Environment,
         image_url_or_path: str,
         alt_text: str,
-        model: str = os.getenv("ALT_TEXT_CHECKER_MODEL", ""),
+        model: str = os.getenv("ALT_TEXT_CHECKER_MODEL", "qwen2.5vl"),
     ) -> str:
         logger.info("Checking alt-text using model %s", model)
+        
+        # Validate model parameter
+        if not model or model.strip() == "":
+            logger.error("Model parameter is empty or None, using default 'qwen2.5vl'")
+            model = "qwen2.5vl"
+        
         try:
             image_b64 = ImageConverter.to_base64(image_url_or_path)
             messages = [
@@ -67,17 +74,22 @@ class AltTextChecker:
                 },
                 {"role": "user", "content": f"Alt text: {alt_text}"},
                 {
-                    "role": "user",
-                    "content": render_template(
+                    "role": "user", "content": render_template(
                         jinja_environment, "image_alt_checker_prompt.txt"
                     ),
                     "images": [image_b64],
                 },
             ]
+            
+            logger.info("Sending request to ollama with model: %s", model)
+            logger.info("Messages structure: %s", messages)
+            
             response = client.chat(model=model, messages=messages)
             return response["message"]["content"]
         except Exception as e:
-            logger.exception("AltTextChecker failed")
+            logger.exception("AltTextChecker failed with error: %s", str(e))
+            logger.error("Model used: %s", model)
+            logger.error("Messages sent: %s", messages)
             raise e
 
 

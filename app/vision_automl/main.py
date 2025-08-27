@@ -20,7 +20,13 @@ import datetime
 import uuid
 
 from app.core.chat_handler import ChatHandler
-from autogluon.multimodal import MultiModalPredictor
+from torch import nn, optim
+from typing import cast
+from app.vision_automl.ml_engine import (
+    ClassificationData,
+    ClassificationModel,
+    FabricTrainer,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,6 +40,9 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///automl_sessions.db")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
 
 # NOTE: replace with autodw path later
 UPLOAD_ROOT = Path("uploaded_data")
@@ -64,6 +73,9 @@ class AutoMLVisionSession(Base):
     task_type = Column(String, nullable=False)  # e.g., classification
     time_budget = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+# Create database tables after all models are defined
+Base.metadata.create_all(bind=engine)
 
 @app.post("/automl_vision/get_user_input/")
 async def get_vision_user_input(
@@ -105,10 +117,15 @@ async def get_vision_user_input(
         shutil.unpack_archive(images_zip_path, images_dir)
 
         # Ensure all files listed in CSV exist
-        missing_files = [
-            fname for fname in df[filename_column]
-            if not (images_dir / fname).exists()
-        ]
+        missing_files = []
+        for _, row in df.iterrows():
+            filename = row[filename_column]
+            label = row[label_column]
+            # Check if file exists in label subdirectory
+            file_path = images_dir / label / filename
+            if not file_path.exists():
+                missing_files.append(filename)
+        
         if missing_files:
             return JSONResponse(
                 status_code=400,
@@ -139,7 +156,7 @@ async def get_vision_user_input(
     finally:
         db.close()
 
-@app.post("/automl_tabular/find_best_model/")
+@app.post("/automl_vision/find_best_model/")
 def find_best_model(request: SessionRequest):
     db = SessionLocal()
     session_record = (
@@ -150,16 +167,43 @@ def find_best_model(request: SessionRequest):
     if not session_record:
         return JSONResponse(status_code=404, content={"error": "Session not found"})
 
-    save_model_path = Path(session_record.train_file_path).parent / "automl_data_path"
-    os.makedirs(save_model_path, exist_ok=True)
-    
-    # split intro train and test
+    # Build data module
+    datamodule = ClassificationData(
+        csv_file=str(session_record.csv_file_path),
+        root_dir=str(session_record.images_dir_path),
+        img_col=str(session_record.filename_column),
+        label_col=str(session_record.label_column),
+        batch_size=64,
+    )
 
-    trainer = MultiModalPredictor(label=str(session_record.label_column), path=str(save_model_path))
+    # Train with FabricTrainer under a time budget
+    # ensure proper type for time limit
+    time_limit: float = float(cast(int, session_record.time_budget))
 
-    predictor = trainer.fit(
-        train_data= str(session_record.csv_file_path), 
-        time_limit= session_record.time_budget
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=ClassificationModel,
+        model_kwargs={
+            "model_name": "resnet34",
+            "num_classes": datamodule.num_classes,
+            "pretrained": True,
+        },
+        optimizer_class=optim.AdamW,
+        optimizer_kwargs={"lr": 0.001},
+        loss_fn=nn.CrossEntropyLoss(),
+        epochs=50,  # upper bound; time_limit will cut earlier
+        time_limit=time_limit,
+    )
+    test_loss, test_acc = trainer.fit()
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "message": "Training completed",
+            "test_loss": test_loss,
+            "test_accuracy": test_acc,
+            "num_classes": datamodule.num_classes,
+        },
     )
 
     # return JSONResponse(

@@ -164,7 +164,7 @@ def find_best_model(request: SessionRequest):
 
     leaderboard = trainer.train(
         train_file=str(session_record.train_file_path),
-        test_file=str(session_record.test_file_path) or str(session_record.train_file_path),
+        test_file=str(session_record.test_file_path) if session_record.test_file_path else str(session_record.train_file_path),
         target_column=str(session_record.target_column),
         time_limit=session_record.time_budget,
     )

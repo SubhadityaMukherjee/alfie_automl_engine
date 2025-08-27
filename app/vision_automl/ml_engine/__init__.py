@@ -1,11 +1,14 @@
 from .dataset import ImageClassificationFromCSVDataset
 from .datamodule import ClassificationData
-from .lit_module import LitClassification
+from .model import ClassificationModel
+from .trainer import FabricTrainer, EarlyStopping
 
 __all__ = [
     "ImageClassificationFromCSVDataset",
     "ClassificationData",
-    "LitClassification",
+    "ClassificationModel",
+    "FabricTrainer",
+    "EarlyStopping",
 ]
 
 
