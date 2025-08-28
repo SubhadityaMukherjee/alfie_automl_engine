@@ -2,12 +2,12 @@ import base64
 import logging
 import os
 from io import BytesIO
-from pathlib import Path
+
 from typing import Dict, List, Tuple
 
 import requests
 import textstat
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment
 from ollama import Client
 from PIL import Image
 from urllib3.response import HTTPResponse
@@ -100,7 +100,7 @@ class ReadabilityAnalyzer:
         "Flesch Reading Ease": textstat.flesch_reading_ease,
         "Difficult Words": textstat.difficult_words,
         "Lexicon Count": textstat.lexicon_count,
-        "Avg Sentence Length": textstat.avg_sentence_length,
+        "Avg Sentence Length": textstat.words_per_sentence,
     }
 
     @staticmethod

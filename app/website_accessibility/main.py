@@ -49,12 +49,18 @@ async def analyze_readability(file: UploadFile = File(...)) -> JSONResponse:
     logger.info("Received file for readability analysis: %s", file.filename)
     try:
         content = await file.read()
+        # Validate non-empty content
+        if not content or not content.strip():
+            raise ValueError("Uploaded file is empty")
         soup = BeautifulSoup(content, features="html.parser")
         for script in soup(["script", "style"]):
             script.extract()
         lines = (line.strip() for line in soup.get_text().splitlines())
         chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
         text = "\n".join(chunk for chunk in chunks if chunk)
+        # Validate extracted text is non-empty
+        if not text.strip():
+            raise ValueError("No readable text found in uploaded file")
 
         scores = ReadabilityAnalyzer.analyze(text)
         logger.info("Readability scores computed successfully.")

@@ -205,11 +205,3 @@ def find_best_model(request: SessionRequest):
             "num_classes": datamodule.num_classes,
         },
     )
-
-    # return JSONResponse(
-    #     content=(
-    #         leaderboard.to_markdown()
-    #         if isinstance(leaderboard, pd.DataFrame)
-    #         else leaderboard
-    #     )
-    # )
