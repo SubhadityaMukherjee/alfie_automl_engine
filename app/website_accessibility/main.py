@@ -1,21 +1,19 @@
-import asyncio
-import json
 import logging
 import os
-import re
 from contextlib import asynccontextmanager
 
-from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
 from app.core.chat_handler import ChatHandler
-from app.core.utils import render_template
-from app.website_accessibility.modules import (AltTextChecker,
-                                               ReadabilityAnalyzer,
-                                               split_chunks)
+from app.website_accessibility.modules import AltTextChecker, ReadabilityAnalyzer
+from app.website_accessibility.services import (
+    extract_text_from_html_bytes,
+    run_accessibility_pipeline,
+    stream_accessibility_results,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -52,12 +50,7 @@ async def analyze_readability(file: UploadFile = File(...)) -> JSONResponse:
         # Validate non-empty content
         if not content or not content.strip():
             raise ValueError("Uploaded file is empty")
-        soup = BeautifulSoup(content, features="html.parser")
-        for script in soup(["script", "style"]):
-            script.extract()
-        lines = (line.strip() for line in soup.get_text().splitlines())
-        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-        text = "\n".join(chunk for chunk in chunks if chunk)
+        text = extract_text_from_html_bytes(content)
         # Validate extracted text is non-empty
         if not text.strip():
             raise ValueError("No readable text found in uploaded file")
@@ -115,83 +108,13 @@ async def check_accessibility(file: UploadFile = File(...)):
         await file.close()
 
     chunk_size: int = int(os.getenv("CHUNK_SIZE_FOR_ACCESSIBILITY", 3000))
-    chunks, ranges = split_chunks(content, chunk_size)
-
-    sem = asyncio.Semaphore(4)  # Concurrency control
-
-    async def process_chunk(i, chunk, start, end):
-        async with sem:
-            logger.info(f"[Chunk {i}] Processing lines {start}-{end}")
-            try:
-                prompt = render_template(
-                    jinja_environment=jinja_environment,
-                    template_name="build_chunk_prompt.txt",
-                    filename=file.filename,
-                    chunk=chunk,
-                    idx=i,
-                    total=len(chunks),
-                    start_line=start,
-                    end_line=end,
-                )
-
-                # Get response
-                response = await ChatHandler.chat(prompt, context="", stream=False)
-
-                # Parse score
-                score_match = re.search(
-                    r"\bScore[:\s]*([0-9]+(?:\.[0-9]+)?)", response, re.IGNORECASE
-                )
-                score = float(score_match.group(1)) if score_match else None
-
-                # Alt text checks
-                images = re.findall(r'<img[^>]+src="([^"]+)"[^>]*alt="([^"]+)"', chunk)
-                image_feedback = []
-                for src, alt in images:
-                    try:
-                        result = AltTextChecker.check(jinja_environment, src, alt)
-                        image_feedback.append(
-                            {"src": src, "alt_text": alt, "result": result}
-                        )
-                    except Exception as e:
-                        error_msg = str(e)
-                        image_feedback.append(
-                            {"src": src, "alt_text": alt, "error": error_msg}
-                        )
-
-                return {
-                    "chunk": i,
-                    "start_line": start,
-                    "end_line": end,
-                    "score": score,
-                    "image_feedback": image_feedback,
-                    "llm_response": response,
-                }
-            except Exception as e:
-                logger.exception(f"[Chunk {i}] Error during chunk processing")
-                return {
-                    "chunk": i,
-                    "start_line": start,
-                    "end_line": end,
-                    "score": None,
-                    "error": str(e),
-                    "image_feedback": [],
-                    "llm_response": None,
-                }
-
-    # Run all chunk tasks in parallel
-    tasks = [
-        process_chunk(i, chunk, start, end)
-        for i, (chunk, (start, end)) in enumerate(zip(chunks, ranges))
-    ]
-    logger.info(f"Spawning {len(tasks)} chunk tasks")
-    results = await asyncio.gather(*tasks)
-
-    async def accessibility_stream():
-        scores = [r["score"] for r in results if r.get("score") is not None]
-        for r in results:
-            yield json.dumps(r) + "\n"
-        avg_score = round(sum(scores) / len(scores), 2) if scores else None
-        logger.info(f"Average score: {avg_score}")
-        yield json.dumps({"average_score": avg_score}) + "\n"
-
-    return StreamingResponse(accessibility_stream(), media_type="application/jsonlines")
+    results = await run_accessibility_pipeline(
+        content=content,
+        filename=file.filename or "uploaded.html",
+        jinja_environment=jinja_environment,
+        chunk_size=chunk_size,
+        concurrency=4,
+    )
+    return StreamingResponse(
+        stream_accessibility_results(results), media_type="application/jsonlines"
+    )
