@@ -6,9 +6,7 @@ from pydantic import BaseModel
 
 
 class TabularTask(BaseModel):
-    """
-    Tabular task format
-    """
+    """Base Pydantic model describing common tabular task inputs."""
 
     target_feature: str
     time_stamp_col: Optional[pd.DataFrame] = None
@@ -20,25 +18,25 @@ class TabularTask(BaseModel):
 
 
 class TabularSupervisedClassificationTask(TabularTask):
-    """
-    This pipeline is used when the user wants to classify tabular data into categories or classes. Eg queries: Predict disease type, Classify customer churn, Determine loan approval status, classify tabular, tabular classification. This is the default tabular class
+    """Tabular classification task configuration.
+
+    Typical use-cases: churn prediction, loan approval, disease type, etc.
     """
 
     task_type: str = "classification"
 
 
 class TabularSupervisedRegressionTask(TabularTask):
-    """
-    This pipeline is used when the user wants to predict a continuous numeric value from tabular data. Eg queries: Predict house prices, Estimate salary, Forecast sales numbers., tabular regreesion
+    """Tabular regression task configuration.
+
+    Predicts continuous numeric values (e.g., price, salary, demand).
     """
 
     task_type: str = "regression"
 
 
 class TabularSupervisedTimeSeriesTask(TabularTask):
-    """
-    This pipeline is used when the user wants to make predictions over time from sequential tabular data. Eg queries: Forecast stock prices, Predict electricity consumption, Model time-dependent behavior., tabular time series
-    """
+    """Time-series forecasting task configuration for tabular data."""
 
     task_type: str = "time_series"
     time_stamp_col: str = "timestamp"

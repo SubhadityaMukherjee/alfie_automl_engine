@@ -2,12 +2,11 @@ import base64
 import logging
 import os
 from io import BytesIO
-from pathlib import Path
 from typing import Dict, List, Tuple
 
 import requests
 import textstat
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment
 from ollama import Client
 from PIL import Image
 from urllib3.response import HTTPResponse
@@ -17,12 +16,13 @@ from app.core.utils import render_template
 logger = logging.getLogger(__name__)
 
 client = Client()
-jinja_path = os.getenv("JINJAPATH") or ""
-jinja_environment = Environment(loader=FileSystemLoader(Path(jinja_path)))
+# Remove duplicate jinja environment creation - it will be passed from main.py
+# jinja_path = os.getenv("JINJAPATH") or ""
+# jinja_environment = Environment(loader=FileSystemLoader(Path(jinja_path)))
 
 
 class ImageConverter:
-    """Convert images to base64 from either string or downloading them first"""
+    """Convert images to base64 from local paths or URLs."""
 
     @staticmethod
     def to_base64(image_path_or_url: str) -> str:
@@ -46,16 +46,22 @@ class ImageConverter:
 
 
 class AltTextChecker:
-    """Check alt text of an image using a model"""
+    """Check whether provided alt text matches an image using an LLM/VLM."""
 
     @staticmethod
     def check(
         jinja_environment: Environment,
         image_url_or_path: str,
         alt_text: str,
-        model: str = os.getenv("ALT_TEXT_CHECKER_MODEL", ""),
+        model: str = os.getenv("ALT_TEXT_CHECKER_MODEL", "qwen2.5vl"),
     ) -> str:
         logger.info("Checking alt-text using model %s", model)
+
+        # Validate model parameter
+        if not model or model.strip() == "":
+            logger.error("Model parameter is empty or None, using default 'qwen2.5vl'")
+            model = "qwen2.5vl"
+
         try:
             image_b64 = ImageConverter.to_base64(image_url_or_path)
             messages = [
@@ -74,21 +80,27 @@ class AltTextChecker:
                     "images": [image_b64],
                 },
             ]
+
+            logger.info("Sending request to ollama with model: %s", model)
+            logger.info("Messages structure: %s", messages)
+
             response = client.chat(model=model, messages=messages)
             return response["message"]["content"]
         except Exception as e:
-            logger.exception("AltTextChecker failed")
+            logger.exception("AltTextChecker failed with error: %s", str(e))
+            logger.error("Model used: %s", model)
+            logger.error("Messages sent: %s", messages)
             raise e
 
 
 class ReadabilityAnalyzer:
-    """Analyze readability from text given some metrics"""
+    """Compute readability metrics for a piece of text."""
 
     METRICS = {
         "Flesch Reading Ease": textstat.flesch_reading_ease,
         "Difficult Words": textstat.difficult_words,
         "Lexicon Count": textstat.lexicon_count,
-        "Avg Sentence Length": textstat.avg_sentence_length,
+        "Avg Sentence Length": textstat.words_per_sentence,
     }
 
     @staticmethod
@@ -108,7 +120,7 @@ class ReadabilityAnalyzer:
 
 
 def split_chunks(content: str, chunk_size: int) -> Tuple[List[str], List[int]]:
-    """For a long file, split it into chunks to prevent going out of LLM size limits"""
+    """Split long content into chunks and track line ranges for each chunk."""
     lines = content.splitlines()
     line_offsets = [0]
     for line in lines:

@@ -1,8 +1,11 @@
-# alfie_automl_engine
-ALFIE AutoML Engine code
+# ALFIE AutoML Engine
 
-## Installation
+This project's documentation has moved to the MkDocs site.
+
+- Start a local docs server:
 ```bash
-pip install uv
-uv venv --seed --python 3.11 ~/.venvs/alfieautoml
+pip install mkdocs mkdocs-material mkdocstrings[python]
+mkdocs serve
 ```
+
+- Or view the rendered docs entrypoint at `docs/index.md`.

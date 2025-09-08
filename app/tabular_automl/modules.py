@@ -5,20 +5,27 @@ from autogluon.tabular import TabularDataset, TabularPredictor
 
 
 class AutoMLTrainer:
+    """Wrapper around AutoGluon Tabular training routines."""
+
     def __init__(self, save_model_path):
         self.save_model_path = save_model_path
 
     def train(
         self,
-        train_file: str,
-        test_file: Optional[str],
+        train_df: pd.DataFrame,
+        test_df: Optional[pd.DataFrame],
         target_column: str,
         time_limit: int,
     ) -> pd.DataFrame | str:
-        """Trains a tabular automl pipeline on the data, splits if splits dont exist, returns a leaderboard of best models"""
+        """Train AutoGluon Tabular and return leaderboard or error.
 
-        train_df = pd.read_csv(train_file)
-        final_train_df, final_test_df = self._train_test_split(test_file, train_df)
+        If `test_df` is None, performs an 80/20 split on `train_df`.
+        Returns a leaderboard DataFrame or an error string.
+        """
+
+        final_train_df, final_test_df = self.train_test_split(
+            test_df=test_df, train_df=train_df
+        )
 
         train_dataset = TabularDataset(final_train_df)
         test_dataset = TabularDataset(final_test_df)
@@ -33,12 +40,12 @@ class AutoMLTrainer:
             return str(e)
         return leaderboard
 
-    def _train_test_split(self, test_file, train_df):
-        """Split data if test file doesnt exist"""
-        if test_file is None:
-            final_train_df = train_df.sample(frac=0.8)
-            final_test_df = train_df.drop(final_train_df.index)
+    def train_test_split(self, test_df: Optional[pd.DataFrame], train_df: pd.DataFrame):
+        """Split data if `test_df` is None, else return provided splits."""
+        if test_df is None:
+            final_train_df = train_df.sample(frac=0.8, random_state=42)
+            final_test_df = train_df.drop(index=final_train_df.index.tolist())
         else:
             final_train_df = train_df
-            final_test_df = pd.read_csv(test_file)
-        return final_train_df,final_test_df
+            final_test_df = test_df
+        return final_train_df, final_test_df
