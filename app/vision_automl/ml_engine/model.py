@@ -25,5 +25,3 @@ class ClassificationModel(nn.Module):
     def forward(self, pixel_values):
         outputs = self.model(pixel_values=pixel_values)
         return outputs.logits
-
-

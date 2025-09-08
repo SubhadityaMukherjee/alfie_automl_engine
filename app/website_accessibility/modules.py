@@ -2,7 +2,6 @@ import base64
 import logging
 import os
 from io import BytesIO
-
 from typing import Dict, List, Tuple
 
 import requests
@@ -57,12 +56,12 @@ class AltTextChecker:
         model: str = os.getenv("ALT_TEXT_CHECKER_MODEL", "qwen2.5vl"),
     ) -> str:
         logger.info("Checking alt-text using model %s", model)
-        
+
         # Validate model parameter
         if not model or model.strip() == "":
             logger.error("Model parameter is empty or None, using default 'qwen2.5vl'")
             model = "qwen2.5vl"
-        
+
         try:
             image_b64 = ImageConverter.to_base64(image_url_or_path)
             messages = [
@@ -74,16 +73,17 @@ class AltTextChecker:
                 },
                 {"role": "user", "content": f"Alt text: {alt_text}"},
                 {
-                    "role": "user", "content": render_template(
+                    "role": "user",
+                    "content": render_template(
                         jinja_environment, "image_alt_checker_prompt.txt"
                     ),
                     "images": [image_b64],
                 },
             ]
-            
+
             logger.info("Sending request to ollama with model: %s", model)
             logger.info("Messages structure: %s", messages)
-            
+
             response = client.chat(model=model, messages=messages)
             return response["message"]["content"]
         except Exception as e:

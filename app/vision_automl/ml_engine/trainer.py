@@ -8,14 +8,18 @@ from tqdm import tqdm
 
 
 class EarlyStopping:
-    def __init__(self, monitor: str = "val_loss", patience: int = 3, min_delta: float = 0.0):
+    def __init__(
+        self, monitor: str = "val_loss", patience: int = 3, min_delta: float = 0.0
+    ):
         self.monitor = monitor
         self.patience = patience
         self.min_delta = min_delta
         self.best = float("inf")
         self.counter = 0
 
-    def on_epoch_end(self, trainer: "FabricTrainer", epoch: int, logs: Dict[str, float]):
+    def on_epoch_end(
+        self, trainer: "FabricTrainer", epoch: int, logs: Dict[str, float]
+    ):
         current = logs.get(self.monitor)
         if current is None:
             return
@@ -24,7 +28,9 @@ class EarlyStopping:
             self.counter = 0
         else:
             self.counter += 1
-            trainer.fabric.print(f"EarlyStopping counter: {self.counter}/{self.patience}")
+            trainer.fabric.print(
+                f"EarlyStopping counter: {self.counter}/{self.patience}"
+            )
             if self.counter >= self.patience:
                 trainer.fabric.print("Early stopping triggered!")
                 trainer.epochs = epoch + 1
@@ -65,18 +71,22 @@ class FabricTrainer:
 
     def _setup_model_optimizer(self):
         self.model = self.model_class(**self.model_kwargs)
-        self.optimizer = self.optimizer_class(self.model.parameters(), **self.optimizer_kwargs)
+        self.optimizer = self.optimizer_class(
+            self.model.parameters(), **self.optimizer_kwargs
+        )
 
         train_loader = self.datamodule.train_dataloader()
         val_loader = self.datamodule.val_dataloader()
-        self.model, self.optimizer, self.train_loader, self.val_loader = self.fabric.setup(
-            self.model, self.optimizer, train_loader, val_loader
+        self.model, self.optimizer, self.train_loader, self.val_loader = (
+            self.fabric.setup(self.model, self.optimizer, train_loader, val_loader)
         )
         self.test_loader = self.datamodule.test_dataloader()
 
     def _move_batch(self, batch):
         if isinstance(batch, dict):
-            pixel_values = batch["pixel_values"].to(self.fabric.device, dtype=self.input_dtype)
+            pixel_values = batch["pixel_values"].to(
+                self.fabric.device, dtype=self.input_dtype
+            )
             labels = batch["labels"].to(self.fabric.device, dtype=self.target_dtype)
             return {"pixel_values": pixel_values, "labels": labels}
         imgs, labels = batch
@@ -93,7 +103,9 @@ class FabricTrainer:
     def train_epoch(self, epoch: int, start_time: float) -> float:
         self.model.train()
         running_loss = 0.0
-        for batch in tqdm(self.train_loader, desc=f"Epoch {epoch+1} Training", leave=False):
+        for batch in tqdm(
+            self.train_loader, desc=f"Epoch {epoch+1} Training", leave=False
+        ):
             if self._check_time_limit(start_time):
                 return running_loss / max(1, len(self.train_loader))
             moved = self._move_batch(batch)
@@ -152,5 +164,3 @@ class FabricTrainer:
             if self._check_time_limit(start_time):
                 break
         return self.test()
-
-

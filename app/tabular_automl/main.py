@@ -12,14 +12,10 @@ from pydantic import BaseModel
 
 from app.core.chat_handler import ChatHandler
 from app.tabular_automl.modules import AutoMLTrainer
-from app.tabular_automl.services import (
-    create_session_directory,
-    save_upload,
-    validate_tabular_inputs,
-    store_session_in_db,
-    get_session,
-    load_table,
-)
+from app.tabular_automl.services import (create_session_directory, get_session,
+                                         load_table, save_upload,
+                                         store_session_in_db,
+                                         validate_tabular_inputs)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -62,7 +58,12 @@ async def get_user_input(
     # Prefer 'train_file' but fallback to legacy 'train_csv'
     provided_train: Optional[UploadFile] = train_file or train_csv
     if provided_train is None:
-        return JSONResponse(status_code=422, content={"error": "Field 'train_file' is required (or legacy 'train_csv')."})
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "Field 'train_file' is required (or legacy 'train_csv')."
+            },
+        )
 
     try:
         provided_filename = provided_train.filename or "train.csv"
@@ -111,14 +112,20 @@ def find_best_model(request: SessionRequest):
     if not session_record:
         return JSONResponse(status_code=404, content={"error": "Session not found"})
 
-    save_model_path = Path(str(session_record.train_file_path)).parent / "automl_data_path"
+    save_model_path = (
+        Path(str(session_record.train_file_path)).parent / "automl_data_path"
+    )
     os.makedirs(save_model_path, exist_ok=True)
 
     trainer = AutoMLTrainer(save_model_path=save_model_path)
 
     # Load dataframes
     train_df = load_table(Path(session_record.train_file_path))
-    test_df = load_table(Path(session_record.test_file_path)) if session_record.test_file_path else None
+    test_df = (
+        load_table(Path(session_record.test_file_path))
+        if session_record.test_file_path
+        else None
+    )
 
     leaderboard = trainer.train(
         train_df=train_df,

@@ -58,7 +58,9 @@ async def _process_single_chunk(
             response_raw = await ChatHandler.chat(prompt, context="", stream=False)
             response_text = response_raw if isinstance(response_raw, str) else ""
 
-            score_match = re.search(r"\bScore[:\s]*([0-9]+(?:\.[0-9]+)?)", response_text, re.IGNORECASE)
+            score_match = re.search(
+                r"\bScore[:\s]*([0-9]+(?:\.[0-9]+)?)", response_text, re.IGNORECASE
+            )
             score = float(score_match.group(1)) if score_match else None
 
             images = re.findall(r'<img[^>]+src="([^"]+)"[^>]*alt="([^"]+)"', chunk)
@@ -66,9 +68,13 @@ async def _process_single_chunk(
             for src, alt in images:
                 try:
                     result = AltTextChecker.check(jinja_environment, src, alt)
-                    image_feedback.append({"src": src, "alt_text": alt, "result": result})
+                    image_feedback.append(
+                        {"src": src, "alt_text": alt, "result": result}
+                    )
                 except Exception as e:  # noqa: BLE001 - surface image-level errors
-                    image_feedback.append({"src": src, "alt_text": alt, "error": str(e)})
+                    image_feedback.append(
+                        {"src": src, "alt_text": alt, "error": str(e)}
+                    )
 
             return ChunkResult(
                 chunk=i,
@@ -101,18 +107,20 @@ async def run_accessibility_pipeline(
     chunks, ranges = split_chunks(content, chunk_size)
     sem = asyncio.Semaphore(concurrency)
     tasks = [
-        _process_single_chunk(i, chunk, start, end, len(chunks), filename, jinja_environment, sem)
+        _process_single_chunk(
+            i, chunk, start, end, len(chunks), filename, jinja_environment, sem
+        )
         for i, (chunk, (start, end)) in enumerate(zip(chunks, ranges))
     ]
     results: List[ChunkResult] = await asyncio.gather(*tasks)
     return results
 
 
-async def stream_accessibility_results(results: List[ChunkResult]) -> AsyncGenerator[bytes, None]:
+async def stream_accessibility_results(
+    results: List[ChunkResult],
+) -> AsyncGenerator[bytes, None]:
     scores = [r.score for r in results if r.score is not None]
     for r in results:
         yield (json.dumps(r.__dict__) + "\n").encode("utf-8")
     avg_score = round(sum(scores) / len(scores), 2) if scores else None
     yield (json.dumps({"average_score": avg_score}) + "\n").encode("utf-8")
-
-

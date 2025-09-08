@@ -1,7 +1,7 @@
-from .dataset import ImageClassificationFromCSVDataset
 from .datamodule import ClassificationData
+from .dataset import ImageClassificationFromCSVDataset
 from .model import ClassificationModel
-from .trainer import FabricTrainer, EarlyStopping
+from .trainer import EarlyStopping, FabricTrainer
 
 __all__ = [
     "ImageClassificationFromCSVDataset",
@@ -10,5 +10,3 @@ __all__ = [
     "FabricTrainer",
     "EarlyStopping",
 ]
-
-

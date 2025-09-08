@@ -1,14 +1,13 @@
 import shutil
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Tuple
 
 import pandas as pd
 from fastapi import UploadFile
 
-from .db import SessionLocal, AutoMLSession
-from dataclasses import dataclass
-
+from .db import AutoMLSession, SessionLocal
 
 UPLOAD_ROOT = Path("uploaded_data")
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
@@ -41,7 +40,12 @@ def load_table(file_path: Path) -> pd.DataFrame:
     return pd.read_csv(file_path)
 
 
-def validate_tabular_inputs(train_path: Path, target_column_name: str, time_stamp_column_name: Optional[str], task_type: str) -> Optional[str]:
+def validate_tabular_inputs(
+    train_path: Path,
+    target_column_name: str,
+    time_stamp_column_name: Optional[str],
+    task_type: str,
+) -> Optional[str]:
     try:
         train_df = load_table(train_path)
     except Exception as e:
@@ -109,13 +113,17 @@ def get_session(session_id: str) -> Optional[SessionData]:
         return SessionData(
             session_id=str(rec.session_id),
             train_file_path=str(rec.train_file_path),
-            test_file_path=str(rec.test_file_path) if rec.test_file_path is not None else None,
+            test_file_path=(
+                str(rec.test_file_path) if rec.test_file_path is not None else None
+            ),
             target_column=str(rec.target_column),
-            time_stamp_column_name=str(rec.time_stamp_column_name) if rec.time_stamp_column_name is not None else None,
+            time_stamp_column_name=(
+                str(rec.time_stamp_column_name)
+                if rec.time_stamp_column_name is not None
+                else None
+            ),
             task_type=str(rec.task_type),
             time_budget=int(tb_raw) if tb_raw is not None else 0,
         )
     finally:
         db.close()
-
-

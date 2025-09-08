@@ -1,9 +1,9 @@
-from typing import Optional, Dict, Any, List, Tuple, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import pandas as pd
+import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
-import torch
 from transformers import AutoImageProcessor
 
 from .dataset import ImageClassificationFromCSVDataset
@@ -103,7 +103,10 @@ class ClassificationData:
             raise RuntimeError("Processor not initialized. Call setup() first.")
         processor = cast(Any, self.processor)
         pixel_values = processor(images=list(images), return_tensors="pt").pixel_values
-        return {"pixel_values": pixel_values, "labels": torch.tensor(labels, dtype=torch.long)}
+        return {
+            "pixel_values": pixel_values,
+            "labels": torch.tensor(labels, dtype=torch.long),
+        }
 
     def train_dataloader(self) -> DataLoader:
         assert self.train_dataset is not None
@@ -134,5 +137,3 @@ class ClassificationData:
             num_workers=self.num_workers,
             collate_fn=self._collate_fn,
         )
-
-

@@ -33,9 +33,15 @@ class ImageClassificationFromCSVDataset(Dataset):
 
         if self.label_csv[self.label_col].dtype not in [int, float]:
             self.classes = sorted(self.label_csv[self.label_col].unique().tolist())
-            self.class_to_idx = {cls_name: idx for idx, cls_name in enumerate(self.classes)}
-            self.idx_to_class = {idx: cls_name for cls_name, idx in self.class_to_idx.items()}
-            self.label_csv[self.label_col] = self.label_csv[self.label_col].map(self.class_to_idx)
+            self.class_to_idx = {
+                cls_name: idx for idx, cls_name in enumerate(self.classes)
+            }
+            self.idx_to_class = {
+                idx: cls_name for cls_name, idx in self.class_to_idx.items()
+            }
+            self.label_csv[self.label_col] = self.label_csv[self.label_col].map(
+                self.class_to_idx
+            )
         else:
             self.classes = sorted(self.label_csv[self.label_col].unique().tolist())
             self.class_to_idx = {cls: cls for cls in self.classes}
@@ -48,18 +54,18 @@ class ImageClassificationFromCSVDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.item()
         label = int(self.label_csv.iloc[idx][self.label_col])
-        
+
         # Handle both flat and hierarchical directory structures
         filename = self.label_csv.iloc[idx][self.img_col]
         label_name = self.idx_to_class[label]
-        
+
         # First try: images are in subdirectories by label (e.g., root_dir/label/filename)
         img_path = os.path.join(self.root_dir, label_name, filename)
-        
+
         # If that doesn't exist, try flat structure (e.g., root_dir/filename)
         if not os.path.exists(img_path):
             img_path = os.path.join(self.root_dir, filename)
-        
+
         img = Image.open(img_path).convert("RGB")
         if self.transform:
             img = self.transform(img)

@@ -50,18 +50,24 @@ def test_load_table_csv_and_json(tmp_path):
 def test_validate_tabular_inputs_success_and_errors(tmp_path):
     # success
     path_ok = tmp_path / "train.csv"
-    pd.DataFrame({"target": [0, 1], "ts": [1, 2], "f": [3, 4]}).to_csv(path_ok, index=False)
+    pd.DataFrame({"target": [0, 1], "ts": [1, 2], "f": [3, 4]}).to_csv(
+        path_ok, index=False
+    )
     err = services.validate_tabular_inputs(path_ok, "target", "ts", "classification")
     assert err is None
 
     # missing target
     path_missing_target = tmp_path / "train2.csv"
     pd.DataFrame({"x": [1], "y": [2]}).to_csv(path_missing_target, index=False)
-    err = services.validate_tabular_inputs(path_missing_target, "target", None, "regression")
+    err = services.validate_tabular_inputs(
+        path_missing_target, "target", None, "regression"
+    )
     assert err and "Target column" in err
 
     # missing timestamp
-    err = services.validate_tabular_inputs(path_ok, "target", "missing_ts", "time series")
+    err = services.validate_tabular_inputs(
+        path_ok, "target", "missing_ts", "time series"
+    )
     assert err and "Timestamp column" in err
 
     # invalid task type
@@ -69,13 +75,17 @@ def test_validate_tabular_inputs_success_and_errors(tmp_path):
     assert err and "Invalid task_type" in err
 
     # unreadable file
-    err = services.validate_tabular_inputs(path_ok.with_suffix(".doesnotexist"), "target", None, "classification")
+    err = services.validate_tabular_inputs(
+        path_ok.with_suffix(".doesnotexist"), "target", None, "classification"
+    )
     assert err and "Could not read" in err
 
 
 def test_store_and_get_session_with_in_memory_db(tmp_path, monkeypatch):
     # Prepare in-memory database and bind to services.SessionLocal
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}
+    )
     Base.metadata.create_all(bind=engine)
     TestSessionLocal = sessionmaker(bind=engine)
     monkeypatch.setattr(services, "SessionLocal", TestSessionLocal)
@@ -112,4 +122,3 @@ def test_store_and_get_session_with_in_memory_db(tmp_path, monkeypatch):
 
     # Missing record should return None
     assert services.get_session("nonexistent") is None
-

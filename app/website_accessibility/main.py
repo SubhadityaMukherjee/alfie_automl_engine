@@ -8,12 +8,11 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
 from app.core.chat_handler import ChatHandler
-from app.website_accessibility.modules import AltTextChecker, ReadabilityAnalyzer
-from app.website_accessibility.services import (
-    extract_text_from_html_bytes,
-    run_accessibility_pipeline,
-    stream_accessibility_results,
-)
+from app.website_accessibility.modules import (AltTextChecker,
+                                               ReadabilityAnalyzer)
+from app.website_accessibility.services import (extract_text_from_html_bytes,
+                                                run_accessibility_pipeline,
+                                                stream_accessibility_results)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

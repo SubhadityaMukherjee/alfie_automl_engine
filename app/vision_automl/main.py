@@ -1,37 +1,33 @@
+import datetime
 import logging
 import os
 import shutil
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Generator, cast
 
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import Depends, FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
+from huggingface_hub import HfApi
 from pydantic import BaseModel
-
-from sqlalchemy import Column, String, Integer, DateTime, create_engine
+from sqlalchemy import Column, DateTime, Integer, String, create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-import datetime
-import uuid
+from sqlalchemy.orm import Session, sessionmaker
+from torch import nn, optim
 
 from app.core.chat_handler import ChatHandler
-from torch import nn, optim
-from typing import cast
-from app.vision_automl.ml_engine import (
-    ClassificationData,
-    ClassificationModel,
-    FabricTrainer,
-)
-from huggingface_hub import HfApi
+from app.vision_automl.ml_engine import (ClassificationData,
+                                         ClassificationModel, FabricTrainer)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-app = FastAPI()
+# app initialized after lifespan definition below
 
 BACKEND = os.getenv("BACKEND_URL", "http://localhost:8002")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///automl_sessions.db")
@@ -40,12 +36,12 @@ engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
-# Create database tables
-Base.metadata.create_all(bind=engine)
+# NOTE: Tables are created after all models are declared further below
 
 # NOTE: replace with autodw path later
 UPLOAD_ROOT = Path("uploaded_data")
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -54,6 +50,10 @@ async def lifespan(app: FastAPI):
     yield
     # Cleanup resources
     pass
+
+
+# Initialize FastAPI app after lifespan function is defined
+app = FastAPI(lifespan=lifespan)
 
 
 # NOTE: I AM NOT SURE IF THE AUTODW WILL HANDLE THIS PART FIRST :/
@@ -73,8 +73,89 @@ class AutoMLVisionSession(Base):
     time_budget = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+
 # Create database tables after all models are defined
 Base.metadata.create_all(bind=engine)
+
+
+# -----------------------------
+# Database dependency
+# -----------------------------
+def get_db() -> Generator[Session, None, None]:
+    db: Session = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+# -----------------------------
+# Helpers
+# -----------------------------
+def normalize_dataframe_filenames(
+    df: pd.DataFrame, filename_column: str, csv_path: Path
+) -> pd.DataFrame:
+    if filename_column in df.columns:
+        df[filename_column] = (
+            df[filename_column]
+            .astype(str)
+            .map(lambda s: os.path.basename(str(s).replace("\\", "/")))
+        )
+        df.to_csv(csv_path, index=False)
+    return df
+
+
+def resolve_images_root(images_dir: Path) -> Path:
+    # Handle common zip packaging patterns
+    nested_images_dir = images_dir / "images"
+    if nested_images_dir.exists() and nested_images_dir.is_dir():
+        images_dir = nested_images_dir
+
+    try:
+        top_level_entries = [p for p in images_dir.iterdir()]
+        only_dirs = [p for p in top_level_entries if p.is_dir()]
+        only_files = [p for p in top_level_entries if p.is_file()]
+        if len(only_files) == 0 and len(only_dirs) == 1:
+            images_dir = only_dirs[0]
+    except Exception:
+        pass
+
+    return images_dir
+
+
+def collect_missing_files(
+    df: pd.DataFrame,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+) -> list[str]:
+    missing_files: list[str] = []
+    for _, row in df.iterrows():
+        raw_filename = str(row[filename_column])
+        label = str(row[label_column])
+
+        normalized = raw_filename.replace("\\", "/")
+        basename = os.path.basename(normalized)
+
+        candidates = [
+            images_dir / label / basename,
+            images_dir / basename,
+            images_dir / normalized,
+        ]
+
+        if any(path.exists() for path in candidates):
+            continue
+
+        try:
+            found_any = next(images_dir.rglob(basename), None) is not None
+        except Exception:
+            found_any = False
+
+        if not found_any:
+            missing_files.append(raw_filename)
+
+    return missing_files
+
 
 @app.post("/automl_vision/get_user_input/")
 async def get_vision_user_input(
@@ -83,13 +164,12 @@ async def get_vision_user_input(
     filename_column: str = Form(...),
     label_column: str = Form(...),
     task_type: str = Form(..., examples=["classification"]),
-    time_budget: int = Form(...)
+    time_budget: int = Form(...),
+    db: Session = Depends(get_db),
 ) -> JSONResponse:
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_ROOT / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
-
-    db = SessionLocal()
 
     try:
         # Save CSV file
@@ -100,10 +180,16 @@ async def get_vision_user_input(
 
         # Validate CSV columns
         if filename_column not in df.columns:
-            return JSONResponse(status_code=400, content={"error": f"Filename column '{filename_column}' not found"})
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Filename column '{filename_column}' not found"},
+            )
         if label_column not in df.columns:
-            return JSONResponse(status_code=400, content={"error": f"Label column '{label_column}' not found"})
-        
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Label column '{label_column}' not found"},
+            )
+
         # add a new filename column with absolute file paths
 
         # Save and extract images
@@ -115,66 +201,29 @@ async def get_vision_user_input(
         images_dir.mkdir(exist_ok=True)
         shutil.unpack_archive(images_zip_path, images_dir)
 
-        # If the zip contains a top-level 'images/' folder, descend into it
-        nested_images_dir = images_dir / "images"
-        if nested_images_dir.exists() and nested_images_dir.is_dir():
-            images_dir = nested_images_dir
+        # Resolve common top-level folder patterns in zips
+        images_dir = resolve_images_root(images_dir)
 
-        # If there is exactly one top-level directory inside and no images at root, descend into it
-        try:
-            top_level_entries = [p for p in images_dir.iterdir()]
-            only_dirs = [p for p in top_level_entries if p.is_dir()]
-            only_files = [p for p in top_level_entries if p.is_file()]
-            if len(only_files) == 0 and len(only_dirs) == 1:
-                images_dir = only_dirs[0]
-        except Exception:
-            pass
-
-        # Normalize filename column to just basenames (strip any leading directories like 'images/')
-        if filename_column in df.columns:
-            df[filename_column] = (
-                df[filename_column]
-                .astype(str)
-                .map(lambda s: os.path.basename(str(s).replace("\\", "/")))
-            )
-            # Persist the normalized CSV for downstream components
-            df.to_csv(csv_path, index=False)
+        # Normalize filename column to just basenames
+        df = normalize_dataframe_filenames(df, filename_column, csv_path)
 
         # Ensure all files listed in CSV exist
-        missing_files = []
-        for _, row in df.iterrows():
-            raw_filename = str(row[filename_column])
-            label = str(row[label_column])
+        missing_files = collect_missing_files(
+            df=df,
+            images_dir=images_dir,
+            filename_column=filename_column,
+            label_column=label_column,
+        )
 
-            # Normalize possible path separators and get basename
-            normalized = raw_filename.replace("\\", "/")
-            basename = os.path.basename(normalized)
-
-            # Candidate paths to try
-            candidates = [
-                images_dir / label / basename,          # images/<label>/<file>
-                images_dir / basename,                   # images/<file>
-                images_dir / normalized,                 # images/<possibly/sub/dirs>/<file>
-            ]
-
-            if any(path.exists() for path in candidates):
-                continue
-
-            # Final fallback: search anywhere under images_dir for the basename
-            try:
-                found_any = next(images_dir.rglob(basename), None) is not None
-            except Exception:
-                found_any = False
-
-            if not found_any:
-                missing_files.append(raw_filename)
-        
         if missing_files:
             preview = missing_files[:5]
             suffix = "..." if len(missing_files) > 5 else ""
             return JSONResponse(
                 status_code=400,
-                content={"error": f"Missing image files: {preview}{suffix}", "missing_count": len(missing_files)},
+                content={
+                    "error": f"Missing image files: {preview}{suffix}",
+                    "missing_count": len(missing_files),
+                },
             )
 
         # Save to DB
@@ -192,22 +241,22 @@ async def get_vision_user_input(
 
         return JSONResponse(
             status_code=200,
-            content={"message": "Vision session stored in DB", "session_id": session_id}
+            content={
+                "message": "Vision session stored in DB",
+                "session_id": session_id,
+            },
         )
 
     except Exception as e:
         db.rollback()
         return JSONResponse(status_code=500, content={"error": str(e)})
-    finally:
-        db.close()
+
 
 @app.post("/automl_vision/find_best_model/")
-def find_best_model(request: SessionRequest):
-    db = SessionLocal()
+def find_best_model(request: SessionRequest, db: Session = Depends(get_db)):
     session_record = (
         db.query(AutoMLVisionSession).filter_by(session_id=request.session_id).first()
     )
-    db.close()
 
     if not session_record:
         return JSONResponse(status_code=404, content={"error": "Session not found"})
@@ -215,7 +264,15 @@ def find_best_model(request: SessionRequest):
     # Build data module
     # choose a candidate HF model
     api = HfApi()
-    models = list(api.list_models(filter="image-classification", library="pytorch", sort="downloads", direction=-1, limit=MAX_MODELS_HF))
+    models = list(
+        api.list_models(
+            filter="image-classification",
+            library="pytorch",
+            sort="downloads",
+            direction=-1,
+            limit=MAX_MODELS_HF,
+        )
+    )
     model_id = models[0].id if len(models) > 0 else "google/vit-base-patch16-224"
 
     datamodule = ClassificationData(

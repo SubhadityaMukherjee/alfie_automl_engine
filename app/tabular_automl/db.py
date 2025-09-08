@@ -1,7 +1,8 @@
-import os
 import datetime
+import os
+
 from dotenv import load_dotenv
-from sqlalchemy import Column, String, Integer, DateTime, create_engine
+from sqlalchemy import Column, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv()
@@ -26,5 +27,3 @@ class AutoMLSession(Base):
 
 
 Base.metadata.create_all(bind=engine)
-
-
