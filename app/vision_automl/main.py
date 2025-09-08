@@ -1,11 +1,8 @@
-import json
 import logging
 import os
 import shutil
-import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -13,7 +10,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from sqlalchemy import Column, String, Integer, DateTime, Text, create_engine
+from sqlalchemy import Column, String, Integer, DateTime, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import datetime
@@ -27,6 +24,7 @@ from app.vision_automl.ml_engine import (
     ClassificationModel,
     FabricTrainer,
 )
+from huggingface_hub import HfApi
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,6 +35,7 @@ app = FastAPI()
 
 BACKEND = os.getenv("BACKEND_URL", "http://localhost:8002")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///automl_sessions.db")
+MAX_MODELS_HF = int(os.getenv("MAX_MODELS_HF", 1))
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
@@ -119,17 +118,38 @@ async def get_vision_user_input(
         # Ensure all files listed in CSV exist
         missing_files = []
         for _, row in df.iterrows():
-            filename = row[filename_column]
-            label = row[label_column]
-            # Check if file exists in label subdirectory
-            file_path = images_dir / label / filename
-            if not file_path.exists():
-                missing_files.append(filename)
+            raw_filename = str(row[filename_column])
+            label = str(row[label_column])
+
+            # Normalize possible path separators and get basename
+            normalized = raw_filename.replace("\\", "/")
+            basename = os.path.basename(normalized)
+
+            # Candidate paths to try
+            candidates = [
+                images_dir / label / basename,          # images/<label>/<file>
+                images_dir / basename,                   # images/<file>
+                images_dir / normalized,                 # images/<possibly/sub/dirs>/<file>
+            ]
+
+            if any(path.exists() for path in candidates):
+                continue
+
+            # Final fallback: search anywhere under images_dir for the basename
+            try:
+                found_any = next(images_dir.rglob(basename), None) is not None
+            except Exception:
+                found_any = False
+
+            if not found_any:
+                missing_files.append(raw_filename)
         
         if missing_files:
+            preview = missing_files[:5]
+            suffix = "..." if len(missing_files) > 5 else ""
             return JSONResponse(
                 status_code=400,
-                content={"error": f"Missing image files: {missing_files[:5]}{'...' if len(missing_files) > 5 else ''}"}
+                content={"error": f"Missing image files: {preview}{suffix}", "missing_count": len(missing_files)},
             )
 
         # Save to DB
@@ -168,12 +188,18 @@ def find_best_model(request: SessionRequest):
         return JSONResponse(status_code=404, content={"error": "Session not found"})
 
     # Build data module
+    # choose a candidate HF model
+    api = HfApi()
+    models = list(api.list_models(filter="image-classification", library="pytorch", sort="downloads", direction=-1, limit=MAX_MODELS_HF))
+    model_id = models[0].id if len(models) > 0 else "google/vit-base-patch16-224"
+
     datamodule = ClassificationData(
         csv_file=str(session_record.csv_file_path),
         root_dir=str(session_record.images_dir_path),
         img_col=str(session_record.filename_column),
         label_col=str(session_record.label_column),
         batch_size=64,
+        hf_model_id=model_id,
     )
 
     # Train with FabricTrainer under a time budget
@@ -184,9 +210,10 @@ def find_best_model(request: SessionRequest):
         datamodule=datamodule,
         model_class=ClassificationModel,
         model_kwargs={
-            "model_name": "resnet34",
+            "model_id": model_id,
             "num_classes": datamodule.num_classes,
-            "pretrained": True,
+            "id2label": datamodule.id2label,
+            "label2id": datamodule.label2id,
         },
         optimizer_class=optim.AdamW,
         optimizer_kwargs={"lr": 0.001},

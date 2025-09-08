@@ -1,13 +1,29 @@
 from torch import nn
-from timm import create_model as create_model_timm
+from transformers import AutoModelForImageClassification
 
 
 class ClassificationModel(nn.Module):
-    def __init__(self, model_name: str = "resnet34", num_classes: int = 2, pretrained: bool = True):
+    def __init__(
+        self,
+        model_id: str = "google/vit-base-patch16-224",
+        num_classes: int = 2,
+        id2label: dict | None = None,
+        label2id: dict | None = None,
+    ):
         super().__init__()
-        self.model = create_model_timm(model_name, pretrained=pretrained, num_classes=num_classes)
+        config_kwargs = {
+            "num_labels": num_classes,
+            "id2label": id2label or {i: str(i) for i in range(num_classes)},
+            "label2id": label2id or {str(i): i for i in range(num_classes)},
+        }
+        self.model = AutoModelForImageClassification.from_pretrained(
+            model_id,
+            ignore_mismatched_sizes=True,
+            **config_kwargs,
+        )
 
-    def forward(self, x):
-        return self.model(x)
+    def forward(self, pixel_values):
+        outputs = self.model(pixel_values=pixel_values)
+        return outputs.logits
 
 

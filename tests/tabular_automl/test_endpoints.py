@@ -7,4 +7,4 @@
 # find_best_model no session: when get_session returns None, respond 404.
 # find_best_model happy path: creates automl_data_path folder, calls AutoMLTrainer.train with DataFrames and correct target_column/time_limit, returns markdown string or raw object based on return type.
 # find_best_model load_table calls: load_table invoked with correct paths for train and optional test.
-# find_best_model response formatting: when leaderboard is DataFrame, to_markdown() is used; otherwise returned as-is.
+# find_best_model response formatting: when leaderboard is DataFrame, to_markdown() is used; otherwise returned as-is.cj

@@ -47,7 +47,8 @@ class SessionRequest(BaseModel):
 
 @app.post("/automl_tabular/get_user_input/")
 async def get_user_input(
-    train_file: UploadFile = File(...),
+    train_file: Optional[UploadFile] = File(None),
+    train_csv: Optional[UploadFile] = File(None),
     test_file: Optional[UploadFile] = None,
     target_column_name: str = Form(...),
     time_stamp_column_name: Optional[str] = None,
@@ -58,14 +59,21 @@ async def get_user_input(
 ) -> JSONResponse:
     session_id, session_dir = create_session_directory()
 
+    # Prefer 'train_file' but fallback to legacy 'train_csv'
+    provided_train: Optional[UploadFile] = train_file or train_csv
+    if provided_train is None:
+        return JSONResponse(status_code=422, content={"error": "Field 'train_file' is required (or legacy 'train_csv')."})
+
     try:
-        train_suffix = Path(train_file.filename).suffix or ".csv"
+        provided_filename = provided_train.filename or "train.csv"
+        train_suffix = Path(provided_filename).suffix or ".csv"
         train_path = session_dir / f"train{train_suffix}"
-        save_upload(train_file, train_path)
+        save_upload(provided_train, train_path)
 
         test_path = None
         if test_file:
-            test_suffix = Path(test_file.filename).suffix or ".csv"
+            test_filename = test_file.filename or "test.csv"
+            test_suffix = Path(test_filename).suffix or ".csv"
             test_path = session_dir / f"test{test_suffix}"
             save_upload(test_file, test_path)
 
