@@ -1,7 +1,17 @@
 #!/bin/bash
 
+set -euo pipefail
+
 PID_FILE="processes.pid"
 declare -a PIDS=()
+
+# Kill any existing servers on expected ports to avoid hitting old instances
+for PORT in 8001 8002; do
+  if lsof -ti tcp:$PORT >/dev/null 2>&1; then
+    echo "Killing process on port $PORT"
+    kill -9 $(lsof -ti tcp:$PORT) || true
+  fi
+done
 
 # Start FastAPI apps in background and save their PIDs
 # uv run uvicorn app.website_accessibility.main:app --reload --host 0.0.0.0 --port 8000 &

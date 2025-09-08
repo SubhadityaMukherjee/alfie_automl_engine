@@ -115,6 +115,31 @@ async def get_vision_user_input(
         images_dir.mkdir(exist_ok=True)
         shutil.unpack_archive(images_zip_path, images_dir)
 
+        # If the zip contains a top-level 'images/' folder, descend into it
+        nested_images_dir = images_dir / "images"
+        if nested_images_dir.exists() and nested_images_dir.is_dir():
+            images_dir = nested_images_dir
+
+        # If there is exactly one top-level directory inside and no images at root, descend into it
+        try:
+            top_level_entries = [p for p in images_dir.iterdir()]
+            only_dirs = [p for p in top_level_entries if p.is_dir()]
+            only_files = [p for p in top_level_entries if p.is_file()]
+            if len(only_files) == 0 and len(only_dirs) == 1:
+                images_dir = only_dirs[0]
+        except Exception:
+            pass
+
+        # Normalize filename column to just basenames (strip any leading directories like 'images/')
+        if filename_column in df.columns:
+            df[filename_column] = (
+                df[filename_column]
+                .astype(str)
+                .map(lambda s: os.path.basename(str(s).replace("\\", "/")))
+            )
+            # Persist the normalized CSV for downstream components
+            df.to_csv(csv_path, index=False)
+
         # Ensure all files listed in CSV exist
         missing_files = []
         for _, row in df.iterrows():

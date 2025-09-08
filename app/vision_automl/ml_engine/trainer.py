@@ -121,24 +121,24 @@ class FabricTrainer:
                 total += moved["labels"].size(0)
         avg_loss = val_loss / max(1, len(self.val_loader))
         acc = correct / max(1, total)
-        self.fabric.print(f"Val Loss: {avg_loss:.4f}, Val Acc: {acc:.4f}")
+        # self.fabric.print(f"Val Loss: {avg_loss:.4f}, Val Acc: {acc:.4f}")
         return avg_loss, acc
 
     def test(self):
         self.model.eval()
         test_loss, correct, total = 0.0, 0, 0
         with torch.no_grad():
-            for imgs, labels in tqdm(self.test_loader, desc="Testing"):
-                imgs, labels = self._move_batch(imgs, labels)
-                outputs = self.model(imgs)
-                loss = self.loss_fn(outputs, labels)
+            for batch in tqdm(self.test_loader, desc="Testing"):
+                moved = self._move_batch(batch)
+                outputs = self.model(moved["pixel_values"])
+                loss = self.loss_fn(outputs, moved["labels"])
                 test_loss += loss.item()
                 preds = outputs.argmax(dim=1)
-                correct += (preds == labels).sum().item()
-                total += labels.size(0)
+                correct += (preds == moved["labels"]).sum().item()
+                total += moved["labels"].size(0)
         avg_loss = test_loss / len(self.test_loader)
         acc = correct / total
-        self.fabric.print(f"\nTest Loss: {avg_loss:.4f}, Test Acc: {acc:.4f}")
+        # self.fabric.print(f"\nTest Loss: {avg_loss:.4f}, Test Acc: {acc:.4f}")
         return avg_loss, acc
 
     def fit(self):
