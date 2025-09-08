@@ -72,6 +72,7 @@ class AutoMLVisionSession(Base):
     task_type = Column(String, nullable=False)  # e.g., classification
     time_budget = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    model_size = Column(String, nullable=False)
 
 
 # Create database tables after all models are defined
@@ -157,6 +158,79 @@ def collect_missing_files(
     return missing_files
 
 
+def get_num_params_if_available(repo_id: str, revision: str | None = None):
+    api = HfApi()
+    info = api.model_info(repo_id, revision=revision, files_metadata=True)
+    num_params = getattr(info, "safetensors", None)
+    if num_params is not None:
+        return num_params.total
+    else:
+        return None
+
+
+def search_hf_for_pytorch_models_with_estimated_parameters(filter = "image-classification",limit: int = 3, sort = "downloads"):
+    api = HfApi()
+    models = api.list_models(
+        filter=filter,
+        library="pytorch",
+        sort=sort, 
+        direction=-1,        
+        limit=limit,
+    )
+    
+    model_list_pass_one = [
+        {
+            "model_id": m.id,
+            "downloads": getattr(m, "downloads", None),
+            "likes": getattr(m, "likes", None),
+            "last_modified": getattr(m, "lastModified", None),
+            "private": getattr(m, "private", None),
+            "num_params" : get_num_params_if_available(m.id)
+        }
+        for m in models
+    ]
+
+    # cleaned_up_list_iff_params
+    return [model for model in model_list_pass_one if model["num_params"] is not None]
+
+
+def sort_models_by_size(models: list[dict], size_tier: str) -> list[dict]:
+    """
+    Filter and sort models by size tier based on estimated parameter counts.
+
+    Size tiers (params are counts of parameters):
+    - small: 0 to 50M
+    - medium: >50M to 200M
+    - large: >200M
+
+    Returns models sorted ascending by num_params within the selected tier.
+    If the tier is unrecognized, returns the input list sorted ascending by num_params.
+    """
+    tier = str(size_tier).strip().lower()
+
+    SMALL_MAX = 50_000_000
+    MEDIUM_MIN = SMALL_MAX + 1
+    MEDIUM_MAX = 200_000_000
+    LARGE_MIN = MEDIUM_MAX + 1
+
+    def in_tier(m: dict) -> bool:
+        n = m.get("num_params")
+        if n is None:
+            return False
+        if tier == "small":
+            return 0 <= n <= SMALL_MAX
+        if tier == "medium":
+            return MEDIUM_MIN <= n <= MEDIUM_MAX
+        if tier == "large":
+            return n >= LARGE_MIN
+        return True  # fallback: accept all if tier unknown
+
+    filtered = [m for m in models if in_tier(m)]
+    # If filtering eliminated all, fall back to original set
+    target = filtered if filtered else models
+
+    return sorted(target, key=lambda m: (m.get("num_params") is None, m.get("num_params", 0)))
+
 @app.post("/automl_vision/get_user_input/")
 async def get_vision_user_input(
     csv_file: UploadFile = File(...),
@@ -165,6 +239,7 @@ async def get_vision_user_input(
     label_column: str = Form(...),
     task_type: str = Form(..., examples=["classification"]),
     time_budget: int = Form(...),
+    model_size: str = Form(...),
     db: Session = Depends(get_db),
 ) -> JSONResponse:
     session_id = str(uuid.uuid4())
@@ -189,8 +264,6 @@ async def get_vision_user_input(
                 status_code=400,
                 content={"error": f"Label column '{label_column}' not found"},
             )
-
-        # add a new filename column with absolute file paths
 
         # Save and extract images
         images_zip_path = session_dir / "images.zip"
@@ -235,6 +308,7 @@ async def get_vision_user_input(
             label_column=label_column,
             task_type=task_type,
             time_budget=time_budget,
+            model_size= model_size
         )
         db.add(new_session)
         db.commit()
@@ -261,19 +335,14 @@ def find_best_model(request: SessionRequest, db: Session = Depends(get_db)):
     if not session_record:
         return JSONResponse(status_code=404, content={"error": "Session not found"})
 
-    # Build data module
-    # choose a candidate HF model
-    api = HfApi()
-    models = list(
-        api.list_models(
-            filter="image-classification",
-            library="pytorch",
-            sort="downloads",
-            direction=-1,
-            limit=MAX_MODELS_HF,
-        )
-    )
-    model_id = models[0].id if len(models) > 0 else "google/vit-base-patch16-224"
+    candidate_models = search_hf_for_pytorch_models_with_estimated_parameters(filter = "image-classification", limit = MAX_MODELS_HF)
+
+    # choose model based on size
+    model_size_threshold = getattr(session_record, "model_size", "medium")
+    sorted_candidates = sort_models_by_size(candidate_models, model_size_threshold)
+    chosen = sorted_candidates[0] if sorted_candidates else None
+
+    model_id = chosen["model_id"] if chosen else "google/vit-base-patch16-224"
 
     datamodule = ClassificationData(
         csv_file=str(session_record.csv_file_path),
