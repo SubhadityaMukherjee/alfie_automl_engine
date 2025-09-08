@@ -10,6 +10,7 @@ from .dataset import ImageClassificationFromCSVDataset
 
 
 class ClassificationData:
+    """Data module handling splits, datasets, and dataloaders for classification."""
     def __init__(
         self,
         csv_file: str,
@@ -49,6 +50,7 @@ class ClassificationData:
         self.setup()
 
     def setup(self) -> None:
+        """Create train/val/test splits, datasets, label maps, and processor."""
         df: pd.DataFrame = pd.read_csv(self.csv_file)
 
         train_df_raw, temp_df_raw = train_test_split(
@@ -98,6 +100,7 @@ class ClassificationData:
         self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
 
     def _collate_fn(self, batch: List[Tuple[Any, Any]]) -> Dict[str, Any]:
+        """Collate batch using HF processor to produce pixel values and labels."""
         images, labels = zip(*batch)
         if self.processor is None:
             raise RuntimeError("Processor not initialized. Call setup() first.")
@@ -109,6 +112,7 @@ class ClassificationData:
         }
 
     def train_dataloader(self) -> DataLoader:
+        """Return training dataloader."""
         assert self.train_dataset is not None
         return DataLoader(
             self.train_dataset,
@@ -119,6 +123,7 @@ class ClassificationData:
         )
 
     def val_dataloader(self) -> DataLoader:
+        """Return validation dataloader."""
         assert self.val_dataset is not None
         return DataLoader(
             self.val_dataset,
@@ -129,6 +134,7 @@ class ClassificationData:
         )
 
     def test_dataloader(self) -> DataLoader:
+        """Return test dataloader."""
         assert self.test_dataset is not None
         return DataLoader(
             self.test_dataset,

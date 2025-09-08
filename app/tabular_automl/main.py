@@ -1,3 +1,8 @@
+"""FastAPI endpoints for tabular AutoML workflows.
+
+Provides endpoints to accept user data/config, validate inputs, store
+session metadata, and trigger AutoML training using AutoGluon.
+"""
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -38,6 +43,7 @@ async def lifespan(app: FastAPI):
 
 # # NOTE : I AM NOT SURE IF THE AUTODW WILL HANDLE THIS PART FIRST :/
 class SessionRequest(BaseModel):
+    """Payload for initiating model search/training for a session."""
     session_id: str
 
 
@@ -53,6 +59,7 @@ async def get_user_input(
     ),
     time_budget: int = Form(...),
 ) -> JSONResponse:
+    """Create a session, upload data, validate inputs, and store metadata."""
     session_id, session_dir = create_session_directory()
 
     # Prefer 'train_file' but fallback to legacy 'train_csv'
@@ -107,6 +114,7 @@ async def get_user_input(
 
 @app.post("/automl_tabular/find_best_model/")
 def find_best_model(request: SessionRequest):
+    """Train AutoML on stored session data and return leaderboard."""
     session_record = get_session(request.session_id)
 
     if not session_record:

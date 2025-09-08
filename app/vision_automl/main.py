@@ -1,3 +1,8 @@
+"""FastAPI endpoints for vision AutoML workflows.
+
+Handles session intake (CSV + images), validation, storage, model
+selection from Hugging Face Hub, and time-budgeted training.
+"""
 import datetime
 import logging
 import os
@@ -58,10 +63,12 @@ app = FastAPI(lifespan=lifespan)
 
 # NOTE: I AM NOT SURE IF THE AUTODW WILL HANDLE THIS PART FIRST :/
 class SessionRequest(BaseModel):
+    """Payload for initiating model search/training for a vision session."""
     session_id: str
 
 
 class AutoMLVisionSession(Base):
+    """SQLAlchemy model for vision AutoML session metadata."""
     __tablename__ = "automl_vision_sessions"
 
     session_id = Column(String, primary_key=True, index=True)
@@ -83,6 +90,7 @@ Base.metadata.create_all(bind=engine)
 # Database dependency
 # -----------------------------
 def get_db() -> Generator[Session, None, None]:
+    """Provide a SQLAlchemy session scoped to the request lifespan."""
     db: Session = SessionLocal()
     try:
         yield db
@@ -96,6 +104,7 @@ def get_db() -> Generator[Session, None, None]:
 def normalize_dataframe_filenames(
     df: pd.DataFrame, filename_column: str, csv_path: Path
 ) -> pd.DataFrame:
+    """Normalize filenames to basenames and persist CSV back to disk."""
     if filename_column in df.columns:
         df[filename_column] = (
             df[filename_column]
@@ -107,6 +116,7 @@ def normalize_dataframe_filenames(
 
 
 def resolve_images_root(images_dir: Path) -> Path:
+    """Resolve common nested packaging patterns inside uploaded image zips."""
     # Handle common zip packaging patterns
     nested_images_dir = images_dir / "images"
     if nested_images_dir.exists() and nested_images_dir.is_dir():
@@ -130,6 +140,7 @@ def collect_missing_files(
     filename_column: str,
     label_column: str,
 ) -> list[str]:
+    """Return list of filenames that do not exist in the extracted images."""
     missing_files: list[str] = []
     for _, row in df.iterrows():
         raw_filename = str(row[filename_column])
@@ -159,6 +170,7 @@ def collect_missing_files(
 
 
 def get_num_params_if_available(repo_id: str, revision: str | None = None):
+    """Try to retrieve number of parameters for a HF model, if available."""
     api = HfApi()
     info = api.model_info(repo_id, revision=revision, files_metadata=True)
     num_params = getattr(info, "safetensors", None)
@@ -169,6 +181,7 @@ def get_num_params_if_available(repo_id: str, revision: str | None = None):
 
 
 def search_hf_for_pytorch_models_with_estimated_parameters(filter = "image-classification",limit: int = 3, sort = "downloads"):
+    """Search HF for PyTorch models and annotate with estimated parameters."""
     api = HfApi()
     models = api.list_models(
         filter=filter,
@@ -242,6 +255,7 @@ async def get_vision_user_input(
     model_size: str = Form(...),
     db: Session = Depends(get_db),
 ) -> JSONResponse:
+    """Create vision session, persist inputs, validate, and store metadata."""
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_ROOT / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -328,6 +342,7 @@ async def get_vision_user_input(
 
 @app.post("/automl_vision/find_best_model/")
 def find_best_model(request: SessionRequest, db: Session = Depends(get_db)):
+    """Select model candidate and train within the time budget; report metrics."""
     session_record = (
         db.query(AutoMLVisionSession).filter_by(session_id=request.session_id).first()
     )

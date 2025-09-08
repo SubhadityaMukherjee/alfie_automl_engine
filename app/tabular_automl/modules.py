@@ -5,6 +5,8 @@ from autogluon.tabular import TabularDataset, TabularPredictor
 
 
 class AutoMLTrainer:
+    """Wrapper around AutoGluon Tabular training routines."""
+
     def __init__(self, save_model_path):
         self.save_model_path = save_model_path
 
@@ -15,9 +17,10 @@ class AutoMLTrainer:
         target_column: str,
         time_limit: int,
     ) -> pd.DataFrame | str:
-        """Trains a tabular AutoML pipeline on provided DataFrames. If test_df is None, performs an 80/20 split.
+        """Train AutoGluon Tabular and return leaderboard or error.
 
-        Returns a leaderboard of best models or error string.
+        If `test_df` is None, performs an 80/20 split on `train_df`.
+        Returns a leaderboard DataFrame or an error string.
         """
 
         final_train_df, final_test_df = self.train_test_split(
@@ -38,7 +41,7 @@ class AutoMLTrainer:
         return leaderboard
 
     def train_test_split(self, test_df: Optional[pd.DataFrame], train_df: pd.DataFrame):
-        """Split data if test_df doesn't exist, otherwise return provided splits."""
+        """Split data if `test_df` is None, else return provided splits."""
         if test_df is None:
             final_train_df = train_df.sample(frac=0.8, random_state=42)
             final_test_df = train_df.drop(index=final_train_df.index.tolist())

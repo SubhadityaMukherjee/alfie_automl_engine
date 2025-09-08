@@ -1,3 +1,4 @@
+"""FastAPI endpoints for website accessibility analysis and chat utilities."""
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -42,7 +43,7 @@ async def lifespan(app: FastAPI):
 
 @app.post("/web_access/readability/")
 async def analyze_readability(file: UploadFile = File(...)) -> JSONResponse:
-    """Get html, parse the text only, get readability scores"""
+    """Parse uploaded HTML and return readability scores."""
     logger.info("Received file for readability analysis: %s", file.filename)
     try:
         content = await file.read()
@@ -66,7 +67,7 @@ async def analyze_readability(file: UploadFile = File(...)) -> JSONResponse:
 async def check_alt_text(
     image_url: str = Form(...), alt_text: str = Form(...)
 ) -> JSONResponse:
-    """Given a base64 encoded image or a url to an image, check for alt text"""
+    """Evaluate provided alt text against the referenced image using an LLM."""
     logger.info("Checking alt-text for image: %s", image_url)
     try:
         result = AltTextChecker.check(jinja_environment, image_url, alt_text)
@@ -81,7 +82,7 @@ async def check_alt_text(
 
 @app.post("/web_access/chat/")
 async def chat_endpoint(prompt: str):
-    """Send prompts to a running LLM"""
+    """Stream chat completions from the configured LLM for a prompt."""
     logger.info("Chat prompt received")
     try:
         stream = await ChatHandler.chat(prompt, context="", stream=True)
@@ -98,9 +99,7 @@ async def chat_endpoint(prompt: str):
 
 @app.post("/web_access/accessibility/")
 async def check_accessibility(file: UploadFile = File(...)):
-    """Check accessibility given a html/css/js file based on WCAG guidelines ,
-    readability scores and checking if the alt text in an image matches the actual image
-    """
+    """Run WCAG-inspired checks, readability, and alt-text validation on HTML."""
     try:
         content = (await file.read()).decode("utf-8")
     finally:

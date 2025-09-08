@@ -3,6 +3,7 @@ from transformers import AutoModelForImageClassification
 
 
 class ClassificationModel(nn.Module):
+    """Thin wrapper over HF image classification model for logits output."""
     def __init__(
         self,
         model_id: str = "google/vit-base-patch16-224",
@@ -23,5 +24,6 @@ class ClassificationModel(nn.Module):
         )
 
     def forward(self, pixel_values):
+        """Forward pass returning raw classification logits."""
         outputs = self.model(pixel_values=pixel_values)
         return outputs.logits

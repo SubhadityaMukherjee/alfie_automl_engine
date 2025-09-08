@@ -1,3 +1,4 @@
+"""Database models and engine setup for tabular AutoML sessions."""
 import datetime
 import os
 
@@ -14,6 +15,10 @@ Base = declarative_base()
 
 
 class AutoMLSession(Base):
+    """SQLAlchemy model representing a tabular AutoML session.
+
+    Stores file paths, task configuration, and creation time for a session.
+    """
     __tablename__ = "automl_sessions"
 
     session_id = Column(String, primary_key=True, index=True)

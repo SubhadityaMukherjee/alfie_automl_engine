@@ -1,0 +1,31 @@
+site_name: ALFIE AutoML Engine Docs
+site_description: API and developer documentation for the ALFIE AutoML Engine
+repo_url: https://github.com/SubhadityaMukherjee/alfie_automl_engine
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - content.code.copy
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_source: true
+            show_signature: true
+            separate_signature: true
+            members_order: source
+            inherited_members: true
+            filters: ["!^__.*__$"]
+nav:
+  - Home: index.md
+  - API Reference:
+      - Core: api/core.md
+      - Tabular AutoML: api/tabular_automl.md
+      - Vision AutoML: api/vision_automl.md
+      - Website Accessibility: api/website_accessibility.md
+

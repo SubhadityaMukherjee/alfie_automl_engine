@@ -9,6 +9,7 @@ from torchvision import transforms as T
 
 
 class ImageClassificationFromCSVDataset(Dataset):
+    """Torch dataset that reads image paths and labels from a CSV/DataFrame."""
     def __init__(
         self,
         csv_file: Union[str, pd.DataFrame],
@@ -48,9 +49,11 @@ class ImageClassificationFromCSVDataset(Dataset):
             self.idx_to_class = {idx: cls for cls in self.classes}
 
     def __len__(self):
+        """Return number of samples."""
         return len(self.label_csv)
 
     def __getitem__(self, idx):
+        """Return a single sample as (image, label)."""
         if torch.is_tensor(idx):
             idx = idx.item()
         label = int(self.label_csv.iloc[idx][self.label_col])

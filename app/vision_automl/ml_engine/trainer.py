@@ -8,6 +8,7 @@ from tqdm import tqdm
 
 
 class EarlyStopping:
+    """Simple early stopping callback based on monitored metric."""
     def __init__(
         self, monitor: str = "val_loss", patience: int = 3, min_delta: float = 0.0
     ):
@@ -20,6 +21,7 @@ class EarlyStopping:
     def on_epoch_end(
         self, trainer: "FabricTrainer", epoch: int, logs: Dict[str, float]
     ):
+        """Update state after epoch; may signal stopping on trainer."""
         current = logs.get(self.monitor)
         if current is None:
             return
@@ -37,6 +39,7 @@ class EarlyStopping:
 
 
 class FabricTrainer:
+    """Minimal trainer using Lightning Fabric for classification tasks."""
     def __init__(
         self,
         datamodule,
@@ -70,6 +73,7 @@ class FabricTrainer:
         self._setup_model_optimizer()
 
     def _setup_model_optimizer(self):
+        """Instantiate model and optimizer and prepare loaders with Fabric."""
         self.model = self.model_class(**self.model_kwargs)
         self.optimizer = self.optimizer_class(
             self.model.parameters(), **self.optimizer_kwargs
@@ -83,6 +87,7 @@ class FabricTrainer:
         self.test_loader = self.datamodule.test_dataloader()
 
     def _move_batch(self, batch):
+        """Move batch tensors to device and standardize batch dict."""
         if isinstance(batch, dict):
             pixel_values = batch["pixel_values"].to(
                 self.fabric.device, dtype=self.input_dtype
@@ -95,12 +100,14 @@ class FabricTrainer:
         return {"pixel_values": imgs, "labels": labels}
 
     def _check_time_limit(self, start_time: float) -> bool:
+        """Return True if configured time limit has been exceeded."""
         if self.time_limit and (time.time() - start_time) > self.time_limit:
             self.fabric.print("Time limit reached. Stopping training.")
             return True
         return False
 
     def train_epoch(self, epoch: int, start_time: float) -> float:
+        """Train for a single epoch and return average training loss."""
         self.model.train()
         running_loss = 0.0
         for batch in tqdm(
@@ -118,6 +125,7 @@ class FabricTrainer:
         return running_loss / len(self.train_loader)
 
     def validate(self, start_time: float):
+        """Evaluate on validation set; return (avg_loss, accuracy)."""
         self.model.eval()
         val_loss, correct, total = 0.0, 0, 0
         with torch.no_grad():
@@ -137,6 +145,7 @@ class FabricTrainer:
         return avg_loss, acc
 
     def test(self):
+        """Evaluate on test set; return (avg_loss, accuracy)."""
         self.model.eval()
         test_loss, correct, total = 0.0, 0, 0
         with torch.no_grad():
@@ -154,6 +163,7 @@ class FabricTrainer:
         return avg_loss, acc
 
     def fit(self):
+        """Run the full training loop and return test metrics."""
         start_time = time.time()
         for epoch in range(self.epochs):
             train_loss = self.train_epoch(epoch, start_time)

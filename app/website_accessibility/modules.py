@@ -22,7 +22,7 @@ client = Client()
 
 
 class ImageConverter:
-    """Convert images to base64 from either string or downloading them first"""
+    """Convert images to base64 from local paths or URLs."""
 
     @staticmethod
     def to_base64(image_path_or_url: str) -> str:
@@ -46,7 +46,7 @@ class ImageConverter:
 
 
 class AltTextChecker:
-    """Check alt text of an image using a model"""
+    """Check whether provided alt text matches an image using an LLM/VLM."""
 
     @staticmethod
     def check(
@@ -94,7 +94,7 @@ class AltTextChecker:
 
 
 class ReadabilityAnalyzer:
-    """Analyze readability from text given some metrics"""
+    """Compute readability metrics for a piece of text."""
 
     METRICS = {
         "Flesch Reading Ease": textstat.flesch_reading_ease,
@@ -120,7 +120,7 @@ class ReadabilityAnalyzer:
 
 
 def split_chunks(content: str, chunk_size: int) -> Tuple[List[str], List[int]]:
-    """For a long file, split it into chunks to prevent going out of LLM size limits"""
+    """Split long content into chunks and track line ranges for each chunk."""
     lines = content.splitlines()
     line_offsets = [0]
     for line in lines:

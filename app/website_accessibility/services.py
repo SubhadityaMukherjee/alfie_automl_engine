@@ -13,6 +13,7 @@ from app.website_accessibility.modules import AltTextChecker, split_chunks
 
 @dataclass
 class ChunkResult:
+    """Result for processing a single chunk of an HTML file."""
     chunk: int
     start_line: int
     end_line: int
@@ -23,6 +24,7 @@ class ChunkResult:
 
 
 def extract_text_from_html_bytes(content: bytes) -> str:
+    """Extract readable text from raw HTML bytes."""
     soup = BeautifulSoup(content, features="html.parser")
     for script in soup(["script", "style"]):
         script.extract()
@@ -42,6 +44,7 @@ async def _process_single_chunk(
     jinja_environment,
     sem: asyncio.Semaphore,
 ) -> ChunkResult:
+    """Process a single chunk: prompt LLM and validate image alt texts."""
     async with sem:
         try:
             prompt = render_template(
@@ -104,6 +107,7 @@ async def run_accessibility_pipeline(
     chunk_size: int,
     concurrency: int = 4,
 ) -> List[ChunkResult]:
+    """Split HTML into chunks and process them concurrently with a semaphore."""
     chunks, ranges = split_chunks(content, chunk_size)
     sem = asyncio.Semaphore(concurrency)
     tasks = [
@@ -119,6 +123,7 @@ async def run_accessibility_pipeline(
 async def stream_accessibility_results(
     results: List[ChunkResult],
 ) -> AsyncGenerator[bytes, None]:
+    """Yield JSON lines for each chunk result followed by an average score."""
     scores = [r.score for r in results if r.score is not None]
     for r in results:
         yield (json.dumps(r.__dict__) + "\n").encode("utf-8")

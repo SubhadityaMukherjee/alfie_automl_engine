@@ -1,3 +1,9 @@
+"""Chat handling utilities for async LLM requests.
+
+Provides a simple queued interface (`ChatQueue`) and a static facade
+(`ChatHandler`) to interact with local Ollama models, supporting both
+regular and streaming responses.
+"""
 import asyncio
 import base64
 import logging
@@ -23,6 +29,18 @@ from app.core.utils import render_template
 
 
 class ChatQueue:
+    """A lightweight async work queue for LLM chat requests.
+
+    Tasks submitted here are processed by background workers to avoid
+    blocking the main event loop. Supports both streaming and non-streaming
+    chat calls.
+
+    Parameters
+    ----------
+    num_workers: int
+        Number of concurrent workers processing chat requests.
+    """
+
     def __init__(self, num_workers=4):
         self.queue = asyncio.Queue()
         self.tasks = []
@@ -30,11 +48,13 @@ class ChatQueue:
         self.semaphore = asyncio.Semaphore(num_workers)
 
     async def start(self):
+        """Start background worker tasks."""
         self.tasks = [
             asyncio.create_task(self.worker()) for _ in range(self.num_workers)
         ]
 
     async def worker(self):
+        """Continuously pull requests off the queue and process them."""
         while True:
             fut, message, context, model, stream, stream_queue = await self.queue.get()
             try:
@@ -57,6 +77,19 @@ class ChatQueue:
                 self.queue.task_done()
 
     async def submit(self, message, context="", model="gemma3:4b", stream=False):
+        """Submit a chat request.
+
+        Parameters
+        ----------
+        message: str
+            The user message to send to the model.
+        context: str
+            Optional hidden context to include for the model.
+        model: str
+            Ollama model name to use.
+        stream: bool
+            If True, returns an async generator yielding chunks.
+        """
         async with self.semaphore:
             if stream:
 
@@ -76,16 +109,23 @@ class ChatHandler:
 
     @staticmethod
     async def init():
+        """Initialize the underlying queue workers."""
         await ChatHandler.queue.start()
 
     @staticmethod
     async def chat(
         message, context: str = "", model: str = "gemma3:4b", stream: bool = False
     ):
+        """Public API to perform a chat call.
+
+        When `stream` is True, returns an async generator of text chunks,
+        otherwise returns the full response string.
+        """
         return await ChatHandler.queue.submit(message, context, model, stream)
 
     @staticmethod
     async def _chat_internal(message, context: str, model: str):
+        """Execute a single, non-streaming chat call against Ollama."""
         import ollama
 
         response = ollama.chat(
@@ -99,6 +139,7 @@ class ChatHandler:
 
     @staticmethod
     async def _chat_stream_internal(message, context: str, model: str):
+        """Execute a streaming chat call against Ollama, yielding content chunks."""
         import ollama
 
         stream = ollama.chat(

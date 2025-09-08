@@ -14,6 +14,7 @@ UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 
 def create_session_directory() -> Tuple[str, Path]:
+    """Create and return a new session id and directory path."""
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_ROOT / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
@@ -21,12 +22,13 @@ def create_session_directory() -> Tuple[str, Path]:
 
 
 def save_upload(file: UploadFile, destination: Path) -> None:
+    """Persist an uploaded file to the given destination path."""
     with open(destination, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
 
 def load_table(file_path: Path) -> pd.DataFrame:
-    """Load a table file into a DataFrame based on its extension."""
+    """Load a table file into a DataFrame based on file extension."""
     suffix = file_path.suffix.lower()
     if suffix in [".csv", ".txt"]:
         return pd.read_csv(file_path)
@@ -46,6 +48,7 @@ def validate_tabular_inputs(
     time_stamp_column_name: Optional[str],
     task_type: str,
 ) -> Optional[str]:
+    """Validate required columns and task type for tabular training."""
     try:
         train_df = load_table(train_path)
     except Exception as e:
@@ -72,6 +75,7 @@ def store_session_in_db(
     task_type: str,
     time_budget: int,
 ) -> None:
+    """Persist a new AutoML session in the database."""
     db = SessionLocal()
     try:
         new_session = AutoMLSession(
@@ -94,6 +98,7 @@ def store_session_in_db(
 
 @dataclass
 class SessionData:
+    """Lightweight container for session metadata retrieved from DB."""
     session_id: str
     train_file_path: str
     test_file_path: Optional[str]
@@ -104,6 +109,7 @@ class SessionData:
 
 
 def get_session(session_id: str) -> Optional[SessionData]:
+    """Fetch a session by id, returning typed `SessionData` or None."""
     db = SessionLocal()
     try:
         rec = db.query(AutoMLSession).filter_by(session_id=session_id).first()
