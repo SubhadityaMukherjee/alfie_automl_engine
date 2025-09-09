@@ -6,7 +6,7 @@ PID_FILE="processes.pid"
 declare -a PIDS=()
 
 # Kill any existing servers on expected ports to avoid hitting old instances
-for PORT in 8001 8002; do
+for PORT in 8001 8002 8004; do
   if lsof -ti tcp:$PORT >/dev/null 2>&1; then
     echo "Killing process on port $PORT"
     kill -9 $(lsof -ti tcp:$PORT) || true
@@ -28,6 +28,12 @@ fi
 
 if [[ $inpargs == "vision" || $inpargs == "all" ]]; then
   uv run uvicorn app.vision_automl.main:app --reload --host 0.0.0.0 --port 8002 &
+  PIDS+=($!)
+  sleep 2  # Allow server to start
+fi
+
+if [[ $inpargs == "general" || $inpargs == "all" ]]; then
+  uv run uvicorn app.general_inference_tools.main:app --reload --host 0.0.0.0 --port 8004 &
   PIDS+=($!)
   sleep 2  # Allow server to start
 fi
@@ -98,4 +104,45 @@ else
 fi
 fi
 echo -e "\n"
+
+
+if [[ $inpargs == "general" || $inpargs == "all" ]]; then
+echo "=== Testing General Inference - instruction_to_webpage ==="
+curl -s -m 5 -X POST http://localhost:8004/general_inference/instruction_to_webpage \
+  -H "Content-Type: application/json" \
+  -d '{
+        "requirements": "Create a simple Tailwind page with a centered blue button",
+        "gen_kwargs": {"max_new_tokens": 64}
+      }' || true
+echo -e "\n"
+
+echo "=== Testing General Inference - screenshot_to_webpage ==="
+curl -s -m 5 -X POST http://localhost:8004/general_inference/screenshot_to_webpage \
+  -H "Content-Type: application/json" \
+  -d '{
+        "requirements": "Generate Tailwind HTML for a login form",
+        "gen_kwargs": {"max_new_tokens": 64}
+      }' || true
+echo -e "\n"
+
+echo "=== Testing General Inference - video_understanding (uses placeholder input) ==="
+curl -s -m 5 -X POST http://localhost:8004/general_inference/video_understanding \
+  -H "Content-Type: application/json" \
+  -d '{
+        "query": "Describe the video content",
+        "inputs": ["PLACEHOLDER_PATH_TO_VIDEO.mp4"],
+        "gen_kwargs": {"num_beams": 3, "do_sample": false}
+      }' || true
+echo -e "\n"
+
+echo "=== Testing General Inference - document_qa (uses placeholder input) ==="
+curl -s -m 5 -X POST http://localhost:8004/general_inference/document_qa \
+  -H "Content-Type: application/json" \
+  -d '{
+        "document": "PLACEHOLDER_PATH_TO_DOCUMENT_OR_IMAGE",
+        "question": "What is the title?",
+        "gen_kwargs": {"max_answer_len": 32}
+      }' || true
+echo -e "\n"
+fi
 echo "=== All tests completed ==="
