@@ -2,11 +2,11 @@
 import datetime
 import os
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from sqlalchemy import Column, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-load_dotenv()
+load_dotenv(find_dotenv())
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///automl_sessions.db")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})

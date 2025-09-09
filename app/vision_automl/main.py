@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Generator, cast
 
 import pandas as pd
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from fastapi import Depends, FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from huggingface_hub import HfApi
@@ -30,7 +30,7 @@ from app.vision_automl.ml_engine import (ClassificationData,
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_dotenv(find_dotenv())
 
 # app initialized after lifespan definition below
 

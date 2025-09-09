@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -25,7 +25,7 @@ from app.tabular_automl.services import (create_session_directory, get_session,
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_dotenv(find_dotenv())
 
 app = FastAPI()
 

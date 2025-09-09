@@ -1,0 +1,76 @@
+services:
+  website:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: alfie_website_accessibility
+    command: bash -lc "uv run uvicorn app.website_accessibility.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    environment:
+      - JINJAPATH=/app/app/core/prompt_templates
+      - BACKEND_URL=http://localhost:8000
+      - OLLAMA_HOST=http://ollama:11434
+      - DATABASE_URL=sqlite:////data/automl_sessions.db
+    volumes:
+      - ./:/app
+      - website_data:/data
+      - website_venv:/app/.venv
+    depends_on:
+      - ollama
+
+  tabular:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: alfie_tabular_automl
+    command: bash -lc "uv run uvicorn app.tabular_automl.main:app --host 0.0.0.0 --port 8001"
+    ports:
+      - "8001:8001"
+    environment:
+      - BACKEND_URL=http://localhost:8001
+      - OLLAMA_HOST=http://ollama:11434
+      - DATABASE_URL=sqlite:////data/automl_sessions.db
+    volumes:
+      - ./:/app
+      - tabular_data:/data
+      - tabular_venv:/app/.venv
+    depends_on:
+      - ollama
+
+  vision:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    container_name: alfie_vision_automl
+    command: bash -lc "uv run uvicorn app.vision_automl.main:app --host 0.0.0.0 --port 8002"
+    ports:
+      - "8002:8002"
+    environment:
+      - BACKEND_URL=http://localhost:8002
+      - OLLAMA_HOST=http://ollama:11434
+      - DATABASE_URL=sqlite:////data/automl_sessions.db
+    volumes:
+      - ./:/app
+      - vision_data:/data
+      - vision_venv:/app/.venv
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  website_data:
+  tabular_data:
+  vision_data:
+  ollama_data:
+  website_venv:
+  tabular_venv:
+  vision_venv:
+
