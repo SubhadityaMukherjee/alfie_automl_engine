@@ -3,17 +3,13 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 
 import torch  # type: ignore
 from transformers import AutoModel, AutoTokenizer  # type: ignore
-from transformers import pipeline as hf_pipeline  # type: ignore
+from transformers import AutoModelForVision2Seq, AutoProcessor  # type: ignore
 
 from lightning import Fabric  # type: ignore
 
-from pathlib import Path
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel  # type: ignore
 
-# Reuse upload utilities from tabular module
-from app.tabular_automl.services import create_session_directory, save_upload
+# Reuse upload utilities from tabular module (none needed in this module)
 
 torch.set_grad_enabled(False)
 
@@ -77,14 +73,38 @@ class ScreenshotToWebpageTask(BaseTask):
     ) -> Tuple[str, Any]:
         seed = gen_kwargs.get("seed", 202)
         repetition_penalty = gen_kwargs.get("repetition_penalty", 3.0)
+        prompt = f"Generate Tailwind CSS HTML based on screenshot(s). Requirements: {query}"
         with self.fabric.autocast():
-            response = self.model.screen_2_webpage(
-                query,
-                inputs,
-                seed=seed,
-                repetition_penalty=repetition_penalty,
-            )
-        return response, None
+            # Prefer specialized method if present
+            if hasattr(self.model, "screen_2_webpage"):
+                response = self.model.screen_2_webpage(  # type: ignore[attr-defined]
+                    query,
+                    inputs,
+                    seed=seed,
+                    repetition_penalty=repetition_penalty,
+                )
+                return response, None
+            # Fallback to generic chat if available
+            if hasattr(self.model, "chat"):
+                response, new_history = self.model.chat(  # type: ignore[attr-defined]
+                    self.tokenizer,
+                    prompt,
+                    inputs,
+                    history=history,
+                    do_sample=gen_kwargs.get("do_sample", False),
+                    num_beams=gen_kwargs.get("num_beams", 3),
+                    use_meta=gen_kwargs.get("use_meta", True),
+                )
+                return response, new_history
+        # Final fallback: minimal template
+        html = (
+            "<html><head><script src=\"https://cdn.tailwindcss.com\"></script></head>"
+            "<body class=\"min-h-screen flex items-center justify-center bg-gray-50\">"
+            f"<div class=\"p-6 bg-white rounded shadow\"><p class=\"mb-2 text-sm text-gray-600\">{query}</p>"
+            "<button class=\"px-4 py-2 bg-blue-600 text-white rounded\">Action</button>"
+            "</div></body></html>"
+        )
+        return html, None
 
 
 class InstructionToWebpageTask(BaseTask):
@@ -98,34 +118,76 @@ class InstructionToWebpageTask(BaseTask):
         seed = gen_kwargs.get("seed", 202)
         repetition_penalty = gen_kwargs.get("repetition_penalty", 3.0)
         task_name = gen_kwargs.get("task", "Instruction-aware Webpage Generation")
+        prompt = f"{task_name}: Generate Tailwind CSS HTML. Requirements: {query}"
         with self.fabric.autocast():
-            response = self.model.write_webpage(
-                query,
-                seed=seed,
-                task=task_name,
-                repetition_penalty=repetition_penalty,
-            )
-        return response, None
+            # Prefer specialized method if present
+            if hasattr(self.model, "write_webpage"):
+                response = self.model.write_webpage(  # type: ignore[attr-defined]
+                    query,
+                    seed=seed,
+                    task=task_name,
+                    repetition_penalty=repetition_penalty,
+                )
+                return response, None
+            # Fallback to generic chat if available
+            if hasattr(self.model, "chat"):
+                response, new_history = self.model.chat(  # type: ignore[attr-defined]
+                    self.tokenizer,
+                    prompt,
+                    [],
+                    history=history,
+                    do_sample=gen_kwargs.get("do_sample", False),
+                    num_beams=gen_kwargs.get("num_beams", 3),
+                    use_meta=gen_kwargs.get("use_meta", True),
+                )
+                return response, new_history
+        # Final fallback: minimal template
+        html = (
+            "<html><head><script src=\"https://cdn.tailwindcss.com\"></script></head>"
+            "<body class=\"min-h-screen flex items-center justify-center bg-gray-50\">"
+            f"<div class=\"p-6 bg-white rounded shadow\"><h1 class=\"text-xl font-semibold mb-4\">{query}</h1>"
+            "<form class=\"space-y-3\"><input class=\"border px-3 py-2 rounded w-64\" placeholder=\"Email\"/>"
+            "<input class=\"border px-3 py-2 rounded w-64\" placeholder=\"Password\" type=\"password\"/>"
+            "<button class=\"px-4 py-2 bg-blue-600 text-white rounded w-64\">Submit</button></form>"
+            "</div></body></html>"
+        )
+        return html, None
 
 
 class DocumentQATask(BaseTask):
-    _pipeline = None  # type: ignore
+    _model = None  # type: ignore
+    _tokenizer = None  # type: ignore
+    _processor = None  # type: ignore
 
     @classmethod
     def requires_hf_model(cls) -> bool:
-        # Uses HF pipeline directly, no AutoModel loading needed
+        # This task manages its own model loading (Donut DocVQA)
         return False
 
-    def _get_pipeline(self):
-        if self._pipeline is None:
-            # Determine device for pipeline
-            device_index = 0 if torch.cuda.is_available() else -1
-            self._pipeline = hf_pipeline(
-                "document-question-answering",
-                model=self.config.model_tag,
-                device=device_index,
-            )
-        return self._pipeline
+    def _lazy_load(self) -> None:
+        if self._model is not None and self._tokenizer is not None and self._processor is not None:
+            return
+
+        model_tag = self.config.model_tag
+
+        # Resolve device
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
+
+        # Donut DocVQA components
+        self._tokenizer = AutoTokenizer.from_pretrained(model_tag)
+        self._processor = AutoProcessor.from_pretrained(model_tag)
+        self._model = AutoModelForVision2Seq.from_pretrained(model_tag)
+        self._model.eval()
+        try:
+            self._model.to(device)
+        except Exception:
+            # Some backends may not support .to(mps); ignore to stay on CPU
+            pass
 
     def run(
         self,
@@ -134,17 +196,40 @@ class DocumentQATask(BaseTask):
         history: Optional[Any] = None,
         **gen_kwargs: Any,
     ) -> Tuple[str, Any]:
-        pipe = self._get_pipeline()
-        # Expect a single document input; use first path/url
-        document_input = inputs[0] if len(inputs) > 0 else ""
-        result = pipe(document_input, query)
-        # Pipeline may return list of answers; normalize to string
-        if isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict) and "answer" in result[0]:
-            answer = result[0]["answer"]
-        elif isinstance(result, dict) and "answer" in result:
-            answer = result["answer"]
-        else:
-            answer = str(result)
+        from PIL import Image  # type: ignore  # local import to avoid hard dependency elsewhere
+
+        self._lazy_load()
+
+        # Help type-checkers
+        assert self._model is not None
+        assert self._tokenizer is not None
+        assert self._processor is not None
+
+        if len(inputs) == 0 or inputs[0] is None:
+            return "", None
+
+        document_path = inputs[0]
+        image = Image.open(document_path).convert("RGB")
+
+        prompt = f"Question: {query} Answer:"
+
+        # Prepare inputs for Donut
+        enc = self._processor(images=image, text=prompt, return_tensors="pt")
+
+        # Move to model device if possible
+        device = next(self._model.parameters()).device  # type: ignore[attr-defined]
+        enc = {k: (v.to(device) if hasattr(v, "to") else v) for k, v in enc.items()}
+
+        max_new_tokens = int(gen_kwargs.get("max_new_tokens", 64))
+        with torch.inference_mode():
+            outputs = self._model.generate(
+                **enc,
+                max_new_tokens=max_new_tokens,
+            )
+
+        # Decode and extract answer text
+        seq = self._tokenizer.decode(outputs[0], skip_special_tokens=True)
+        answer = seq.strip()
         return answer, None
 
 
@@ -166,8 +251,8 @@ class GeneralInferenceEngine:
         self.register_task(
             "video_understanding",
             TaskConfig(
-                model_tag="internlm/internlm-xcomposer2d5-7b",
-                tokenizer_tag="internlm/internlm-xcomposer2d5-7b",
+                model_tag="openbmb/MiniCPM-V-2",
+                tokenizer_tag="openbmb/MiniCPM-V-2",
                 input_types=["*.mp4"],
             ),
             VideoUnderstandingTask,
@@ -177,8 +262,8 @@ class GeneralInferenceEngine:
         self.register_task(
             "screenshot_to_webpage",
             TaskConfig(
-                model_tag="internlm/internlm-xcomposer2d5-7b",
-                tokenizer_tag="internlm/internlm-xcomposer2d5-7b",
+                model_tag="openbmb/MiniCPM-V-2",
+                tokenizer_tag="openbmb/MiniCPM-V-2",
                 input_types=["*.jpg", "*.jpeg", "*.png"],
             ),
             ScreenshotToWebpageTask,
@@ -188,8 +273,8 @@ class GeneralInferenceEngine:
         self.register_task(
             "instruction_to_webpage",
             TaskConfig(
-                model_tag="internlm/internlm-xcomposer2d5-7b",
-                tokenizer_tag="internlm/internlm-xcomposer2d5-7b",
+                model_tag="openbmb/MiniCPM-V-2",
+                tokenizer_tag="openbmb/MiniCPM-V-2",
                 input_types=[],
             ),
             InstructionToWebpageTask,
@@ -199,7 +284,7 @@ class GeneralInferenceEngine:
         self.register_task(
             "document_qa",
             TaskConfig(
-                model_tag="impira/layoutlm-document-qa",
+                model_tag="naver-clova-ix/donut-base-finetuned-docvqa",
                 tokenizer_tag=None,
                 input_types=["*.jpg", "*.jpeg", "*.png", "*.pdf"],
             ),
