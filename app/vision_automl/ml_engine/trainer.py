@@ -1,5 +1,5 @@
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional, Dict
 
 import lightning as L
 import torch
@@ -12,14 +12,14 @@ class EarlyStopping:
     def __init__(
         self, monitor: str = "val_loss", patience: int = 3, min_delta: float = 0.0
     ):
-        self.monitor = monitor
-        self.patience = patience
-        self.min_delta = min_delta
-        self.best = float("inf")
-        self.counter = 0
+        self.monitor:str = monitor
+        self.patience:int = patience
+        self.min_delta:float = min_delta
+        self.best:float = float("inf")
+        self.counter:int = 0
 
     def on_epoch_end(
-        self, trainer: "FabricTrainer", epoch: int, logs: Dict[str, float]
+        self, trainer: "FabricTrainer", epoch: int, logs: dict[str, float]
     ):
         """Update state after epoch; may signal stopping on trainer."""
         current = logs.get(self.monitor)
@@ -44,15 +44,15 @@ class FabricTrainer:
         self,
         datamodule,
         model_class,
-        model_kwargs: Optional[Dict[str, Any]] = None,
+        model_kwargs: dict[str, int] |None = None,
         optimizer_class=optim.AdamW,
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
         loss_fn: nn.Module = nn.CrossEntropyLoss(),
         lr: float = 0.001,
         epochs: int = 1,
-        time_limit: Optional[float] = None,
+        time_limit: float|None = None,
         device: str = "auto",
-        callbacks: Optional[List[Any]] = None,
+        callbacks: list[Any]|None = None,
         input_dtype: torch.dtype = torch.float32,
         target_dtype: torch.dtype = torch.long,
     ):

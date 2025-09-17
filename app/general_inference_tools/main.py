@@ -33,9 +33,21 @@ async def preload_general_inference_models() -> None:
                 engine._get_model_and_tokenizer(task_name)
                 logger.info(f"[startup] Loaded model/tokenizer for task '{task_name}'")
             else:
-                # Tasks that manage their own lazy loading (e.g., document_qa / Donut)
-                # will initialize on first use to avoid heavy startup costs.
-                pass
+                # Optionally warm up heavy lazy tasks to avoid first-request timeout
+                if task_name in ("document_qa",):
+                    cfg = engine.registry[task_name]
+                    task = task_cls(None, None, engine.fabric, cfg)
+                    try:
+                        # Trigger Donut lazy load by calling run with a tiny blank image
+                        from PIL import Image  # type: ignore
+                        import tempfile
+                        img = Image.new("RGB", (8, 8), color=(255, 255, 255))
+                        with tempfile.NamedTemporaryFile(suffix=".png", delete=True) as tmp:
+                            img.save(tmp.name)
+                            _ = task.run(query="warmup", inputs=[tmp.name])
+                        logger.info(f"[startup] Warmed up task '{task_name}'")
+                    except Exception as warm_exc:
+                        logger.warning(f"[startup] Skipping warmup for '{task_name}': {warm_exc}")
         except Exception as exc:
             logger.exception(f"[startup] Failed to preload task '{task_name}': {exc}")
             # Abort startup so process does not accept traffic until ready

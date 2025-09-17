@@ -274,6 +274,7 @@ def test_vision() -> None:
     print()
 
 
+
 def test_general() -> bool:
     print("=== Testing General Inference - instruction_to_webpage ===")
     cmd1 = [

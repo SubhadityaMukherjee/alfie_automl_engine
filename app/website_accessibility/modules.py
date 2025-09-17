@@ -82,14 +82,51 @@ class AltTextChecker:
             ]
 
             logger.info("Sending request to ollama with model: %s", model)
-            logger.info("Messages structure: %s", messages)
+            # Redact base64 image data from logs to avoid printing large sensitive payloads
+            messages_for_log = []
+            for message in messages:
+                msg_copy = {k: v for k, v in message.items() if k != "images"}
+                if "images" in message:
+                    images = message["images"]
+                    safe_images = []
+                    for img in images:
+                        try:
+                            length_hint = len(img) if isinstance(img, str) else None
+                        except Exception:
+                            length_hint = None
+                        safe_images.append(
+                            f"<redacted_base64 length={length_hint}>" if length_hint is not None else "<redacted_base64>"
+                        )
+                    msg_copy["images"] = safe_images
+                messages_for_log.append(msg_copy)
+            logger.info("Messages structure (redacted): %s", messages_for_log)
 
             response = client.chat(model=model, messages=messages)
             return response["message"]["content"]
         except Exception as e:
             logger.exception("AltTextChecker failed with error: %s", str(e))
             logger.error("Model used: %s", model)
-            logger.error("Messages sent: %s", messages)
+            # Log redacted messages on error as well
+            try:
+                messages_for_log = []
+                for message in messages:
+                    msg_copy = {k: v for k, v in message.items() if k != "images"}
+                    if "images" in message:
+                        images = message["images"]
+                        safe_images = []
+                        for img in images:
+                            try:
+                                length_hint = len(img) if isinstance(img, str) else None
+                            except Exception:
+                                length_hint = None
+                            safe_images.append(
+                                f"<redacted_base64 length={length_hint}>" if length_hint is not None else "<redacted_base64>"
+                            )
+                        msg_copy["images"] = safe_images
+                    messages_for_log.append(msg_copy)
+                logger.error("Messages sent (redacted): %s", messages_for_log)
+            except Exception:
+                logger.error("Messages sent (redaction_failed)")
             raise e
 
 
