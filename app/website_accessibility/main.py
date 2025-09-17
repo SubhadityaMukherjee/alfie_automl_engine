@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
+import requests
 from fastapi.responses import JSONResponse, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
@@ -98,20 +99,63 @@ async def chat_endpoint(prompt: str):
 
 
 @app.post("/web_access/accessibility/")
-async def check_accessibility(file: UploadFile = File(...)):
+async def check_accessibility(
+    file: UploadFile | None = File(default=None),
+    url: str | None = Form(default=None),
+    guidelines_file: UploadFile | None = File(default=None),
+):
     """Run WCAG-inspired checks, readability, and alt-text validation on HTML."""
-    try:
-        content = (await file.read()).decode("utf-8")
-    finally:
-        await file.close()
+    content: str | None = None
+    source_name: str = "uploaded.html"
+
+    # Prefer uploaded file if provided; otherwise fetch from URL
+    if file is not None:
+        try:
+            content = (await file.read()).decode("utf-8")
+            source_name = file.filename or source_name
+        finally:
+            try:
+                await file.close()
+            except Exception:
+                pass
+    elif url:
+        try:
+            resp = requests.get(url, timeout=10)
+            resp.raise_for_status()
+            # Use response text (requests handles encoding detection)
+            content = resp.text
+            source_name = url
+        except Exception as e:
+            return JSONResponse(content={"error": f"Failed to fetch URL: {e}"}, status_code=400)
+    else:
+        return JSONResponse(content={"error": "Either 'file' or 'url' must be provided."}, status_code=400)
+
+    # Validate content and normalize type
+    if content is None or not str(content).strip():
+        return JSONResponse(content={"error": "Resolved content is empty"}, status_code=400)
+    content_str: str = str(content)
+
+    # Optional: read guidelines file and forward as LLM context
+    context_str: str = ""
+    if guidelines_file is not None:
+        try:
+            guidelines_bytes = await guidelines_file.read()
+            guidelines_text = guidelines_bytes.decode("utf-8", errors="replace")
+            context_str = f"Accessibility guidelines to follow (user-provided):\n\n{guidelines_text}"
+        finally:
+            try:
+                await guidelines_file.close()
+            except Exception:
+                pass
 
     chunk_size: int = int(os.getenv("CHUNK_SIZE_FOR_ACCESSIBILITY", 3000))
     results = await run_accessibility_pipeline(
-        content=content,
-        filename=file.filename or "uploaded.html",
+        content=content_str,
+        filename=source_name,
         jinja_environment=jinja_environment,
         chunk_size=chunk_size,
         concurrency=4,
+        context=context_str,
     )
     return StreamingResponse(
         stream_accessibility_results(results), media_type="application/jsonlines"

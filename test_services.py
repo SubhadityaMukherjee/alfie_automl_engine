@@ -179,6 +179,24 @@ def test_web() -> None:
     print()
 
 
+def test_web_url_guidelines() -> None:
+    print("=== Testing Website Accessibility (URL + guidelines) ===")
+    cmd = [
+        "curl",
+        "-X",
+        "POST",
+        "http://localhost:8000/web_access/accessibility/",
+        "-H",
+        "Content-Type: multipart/form-data",
+        "-F",
+        "url=https://alfie-project.eu",
+        # "-F",
+        # "guidelines_file=@./sample_data/wcag_guidelines.txt",
+    ]
+    run(cmd, check=False)
+    print()
+
+
 def parse_json(text: str) -> dict:
     try:
         return json.loads(text)
@@ -403,6 +421,7 @@ def main() -> int:
         # Run tests mirroring the shell script
         if "web" in targets:
             test_web()
+            test_web_url_guidelines()
 
         if "tabular" in targets:
             test_tabular()
