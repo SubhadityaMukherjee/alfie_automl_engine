@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from app.core.chat_handler import ChatHandler
 from app.core.utils import render_template
-from app.website_accessibility.modules import AltTextChecker, split_chunks
+from app.automlplus.website_accessibility.modules import AltTextChecker, split_chunks
 
 
 @dataclass

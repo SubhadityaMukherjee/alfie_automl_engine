@@ -10,9 +10,9 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
 from app.core.chat_handler import ChatHandler
-from app.website_accessibility.modules import (AltTextChecker,
+from app.automlplus.website_accessibility.modules import (AltTextChecker,
                                                ReadabilityAnalyzer)
-from app.website_accessibility.services import (extract_text_from_html_bytes,
+from app.automlplus.website_accessibility.services import (extract_text_from_html_bytes,
                                                 run_accessibility_pipeline,
                                                 stream_accessibility_results)
 
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     pass
 
 
-@app.post("/web_access/readability/")
+@app.post("/automlplus/web_access/readability/")
 async def analyze_readability(file: UploadFile = File(...)) -> JSONResponse:
     """Parse uploaded HTML and return readability scores."""
     logger.info("Received file for readability analysis: %s", file.filename)
@@ -65,7 +65,7 @@ async def analyze_readability(file: UploadFile = File(...)) -> JSONResponse:
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@app.post("/web_access/check-alt-text/")
+@app.post("/automlplus/web_access/check-alt-text/")
 async def check_alt_text(
     image_url: str = Form(...), alt_text: str = Form(...)
 ) -> JSONResponse:
@@ -81,7 +81,7 @@ async def check_alt_text(
         logger.exception("Error during alt-text check")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.post("/web_access/chat/")
+@app.post("/automlplus/web_access/chat/")
 async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
     """
     Stream chat completions from the configured LLM for a prompt.
@@ -109,7 +109,7 @@ async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
         logger.exception("Chat error")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-@app.post("/web_access/accessibility/")
+@app.post("/automlplus/web_access/accessibility/")
 async def check_accessibility(
     file: UploadFile | None = File(default=None),
     url: str | None = Form(default=None),

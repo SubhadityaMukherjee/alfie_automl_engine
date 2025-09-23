@@ -16,7 +16,7 @@ PID_FILE = "processes.pid"
 SERVICES = {
     "web": {
         "port": 8000,
-        "uvicorn_target": "app.website_accessibility.main:app",
+        "uvicorn_target": "app.automlplus.main:app",
         "base_url": "http://localhost:8000",
     },
     "tabular": {
@@ -31,7 +31,7 @@ SERVICES = {
     },
     "general": {
         "port": 8004,
-        "uvicorn_target": "app.general_inference_tools.main:app",
+        "uvicorn_target": "app.automlplus.extras.main:app",
         "base_url": "http://localhost:8004",
     },
 }
@@ -169,7 +169,7 @@ def test_web() -> None:
         "curl",
         "-X",
         "POST",
-        "http://localhost:8000/web_access/accessibility/",
+        "http://localhost:8000/automlplus/web_access/accessibility/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -185,7 +185,7 @@ def test_web_url_guidelines() -> None:
         "curl",
         "-X",
         "POST",
-        "http://localhost:8000/web_access/accessibility/",
+        "http://localhost:8000/automlplus/web_access/accessibility/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
