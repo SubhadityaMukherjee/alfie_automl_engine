@@ -2,12 +2,10 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import torch  # type: ignore
-from transformers import AutoModel, AutoTokenizer  # type: ignore
-from transformers import AutoModelForVision2Seq, AutoProcessor  # type: ignore
-
 from lightning import Fabric  # type: ignore
-
 from pydantic import BaseModel  # type: ignore
+from transformers import (AutoModel, AutoModelForVision2Seq,  # type: ignore
+                          AutoProcessor, AutoTokenizer)
 
 # Reuse upload utilities from tabular module (none needed in this module)
 
@@ -22,7 +20,9 @@ class TaskConfig:
 
 
 class BaseTask:
-    def __init__(self, model: Any, tokenizer: Any, fabric: Fabric, config: TaskConfig) -> None:
+    def __init__(
+        self, model: Any, tokenizer: Any, fabric: Fabric, config: TaskConfig
+    ) -> None:
         self.model = model
         # Prefer explicit tokenizer; fall back to model.tokenizer when available
         if tokenizer is None and hasattr(model, "tokenizer"):
@@ -89,7 +89,9 @@ class ScreenshotToWebpageTask(BaseTask):
     ) -> Tuple[str, Any]:
         seed = gen_kwargs.get("seed", 202)
         repetition_penalty = gen_kwargs.get("repetition_penalty", 3.0)
-        prompt = f"Generate Tailwind CSS HTML based on screenshot(s). Requirements: {query}"
+        prompt = (
+            f"Generate Tailwind CSS HTML based on screenshot(s). Requirements: {query}"
+        )
         with self.fabric.autocast():
             # Prefer specialized method if present
             if hasattr(self.model, "screen_2_webpage"):
@@ -105,7 +107,7 @@ class ScreenshotToWebpageTask(BaseTask):
                 response, new_history = self.model.chat(  # type: ignore[attr-defined]
                     prompt,
                     inputs,
-                    tokenizer = self.tokenizer,
+                    tokenizer=self.tokenizer,
                     history=history,
                     do_sample=gen_kwargs.get("do_sample", False),
                     num_beams=gen_kwargs.get("num_beams", 3),
@@ -114,10 +116,10 @@ class ScreenshotToWebpageTask(BaseTask):
                 return response, new_history
         # Final fallback: minimal template
         html = (
-            "<html><head><script src=\"https://cdn.tailwindcss.com\"></script></head>"
-            "<body class=\"min-h-screen flex items-center justify-center bg-gray-50\">"
-            f"<div class=\"p-6 bg-white rounded shadow\"><p class=\"mb-2 text-sm text-gray-600\">{query}</p>"
-            "<button class=\"px-4 py-2 bg-blue-600 text-white rounded\">Action</button>"
+            '<html><head><script src="https://cdn.tailwindcss.com"></script></head>'
+            '<body class="min-h-screen flex items-center justify-center bg-gray-50">'
+            f'<div class="p-6 bg-white rounded shadow"><p class="mb-2 text-sm text-gray-600">{query}</p>'
+            '<button class="px-4 py-2 bg-blue-600 text-white rounded">Action</button>'
             "</div></body></html>"
         )
         return html, None
@@ -150,7 +152,7 @@ class InstructionToWebpageTask(BaseTask):
                 response, new_history = self.model.chat(  # type: ignore[attr-defined]
                     prompt,
                     [],
-                    tokenizer = self.tokenizer,
+                    tokenizer=self.tokenizer,
                     history=history,
                     do_sample=gen_kwargs.get("do_sample", False),
                     num_beams=gen_kwargs.get("num_beams", 3),
@@ -159,12 +161,12 @@ class InstructionToWebpageTask(BaseTask):
                 return response, new_history
         # Final fallback: minimal template
         html = (
-            "<html><head><script src=\"https://cdn.tailwindcss.com\"></script></head>"
-            "<body class=\"min-h-screen flex items-center justify-center bg-gray-50\">"
-            f"<div class=\"p-6 bg-white rounded shadow\"><h1 class=\"text-xl font-semibold mb-4\">{query}</h1>"
-            "<form class=\"space-y-3\"><input class=\"border px-3 py-2 rounded w-64\" placeholder=\"Email\"/>"
-            "<input class=\"border px-3 py-2 rounded w-64\" placeholder=\"Password\" type=\"password\"/>"
-            "<button class=\"px-4 py-2 bg-blue-600 text-white rounded w-64\">Submit</button></form>"
+            '<html><head><script src="https://cdn.tailwindcss.com"></script></head>'
+            '<body class="min-h-screen flex items-center justify-center bg-gray-50">'
+            f'<div class="p-6 bg-white rounded shadow"><h1 class="text-xl font-semibold mb-4">{query}</h1>'
+            '<form class="space-y-3"><input class="border px-3 py-2 rounded w-64" placeholder="Email"/>'
+            '<input class="border px-3 py-2 rounded w-64" placeholder="Password" type="password"/>'
+            '<button class="px-4 py-2 bg-blue-600 text-white rounded w-64">Submit</button></form>'
             "</div></body></html>"
         )
         return html, None
@@ -210,7 +212,8 @@ class DocumentQATask(BaseTask):
         history: Optional[Any] = None,
         **gen_kwargs: Any,
     ) -> Tuple[str, Any]:
-        from PIL import Image  # type: ignore  # local import to avoid hard dependency elsewhere
+        from PIL import \
+            Image  # type: ignore  # local import to avoid hard dependency elsewhere
 
         self._lazy_load()
 
@@ -305,7 +308,9 @@ class GeneralInferenceEngine:
             DocumentQATask,
         )
 
-    def register_task(self, name: str, config: TaskConfig, task_cls: Type[BaseTask]) -> None:
+    def register_task(
+        self, name: str, config: TaskConfig, task_cls: Type[BaseTask]
+    ) -> None:
         self.registry[name] = config
         self.task_classes[name] = task_cls
 
@@ -319,13 +324,18 @@ class GeneralInferenceEngine:
 
     def _get_model_and_tokenizer(self, task_name: str) -> Tuple[Any, Any]:
         if task_name not in self.registry:
-            raise ValueError(f"Unknown task '{task_name}'. Registered: {list(self.registry.keys())}")
+            raise ValueError(
+                f"Unknown task '{task_name}'. Registered: {list(self.registry.keys())}"
+            )
         cfg = self.registry[task_name]
 
         if cfg.model_tag in self.models_cache:
             cached_model = self.models_cache[cfg.model_tag]
             cached_tokenizer = None
-            if cfg.tokenizer_tag is not None and cfg.tokenizer_tag in self.tokenizers_cache:
+            if (
+                cfg.tokenizer_tag is not None
+                and cfg.tokenizer_tag in self.tokenizers_cache
+            ):
                 cached_tokenizer = self.tokenizers_cache[cfg.tokenizer_tag]
             return cached_model, cached_tokenizer
 
@@ -361,7 +371,9 @@ class GeneralInferenceEngine:
 
         tokenizer = None
         if cfg.tokenizer_tag is not None:
-            tokenizer = AutoTokenizer.from_pretrained(cfg.tokenizer_tag, trust_remote_code=True)
+            tokenizer = AutoTokenizer.from_pretrained(
+                cfg.tokenizer_tag, trust_remote_code=True
+            )
 
         # Some repos expect model.tokenizer to be set
         if tokenizer is not None:
@@ -401,6 +413,7 @@ class GeneralInferenceEngine:
 # Singleton engine to reuse model weights across requests
 _engine: Optional[GeneralInferenceEngine] = None
 
+
 def get_engine() -> GeneralInferenceEngine:
     global _engine
     if _engine is None:
@@ -431,4 +444,3 @@ class DocumentQARequest(BaseModel):
     document: str  # path/url to the document or image
     question: str
     gen_kwargs: Optional[Dict[str, Any]] = None
-

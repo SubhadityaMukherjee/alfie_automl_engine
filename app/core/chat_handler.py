@@ -4,6 +4,7 @@ Provides a simple queued interface (`ChatQueue`) and a static facade
 (`ChatHandler`) to interact with local Ollama models, supporting both
 regular and streaming responses.
 """
+
 import asyncio
 import base64
 import logging
@@ -18,6 +19,7 @@ import ollama
 import requests
 import textstat
 from bs4 import BeautifulSoup
+from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from jinja2 import Environment, FileSystemLoader
@@ -26,9 +28,9 @@ from PIL import Image
 
 from app.core.utils import render_template
 
-from dotenv import load_dotenv, find_dotenv
 # Load environment variables from the project root .env
 load_dotenv(find_dotenv())
+
 
 class ChatQueue:
     """Async work queue for chat requests, supporting streaming and non-streaming calls."""
@@ -40,19 +42,27 @@ class ChatQueue:
         self.semaphore = asyncio.Semaphore(num_workers)
 
     async def start(self):
-        self.tasks = [asyncio.create_task(self.worker()) for _ in range(self.num_workers)]
+        self.tasks = [
+            asyncio.create_task(self.worker()) for _ in range(self.num_workers)
+        ]
 
     async def worker(self):
         while True:
-            fut, message, context, backend, model, stream, stream_queue = await self.queue.get()
+            fut, message, context, backend, model, stream, stream_queue = (
+                await self.queue.get()
+            )
             try:
                 if stream:
-                    async for chunk in ChatHandler.dispatch_stream(message, context, backend, model):
+                    async for chunk in ChatHandler.dispatch_stream(
+                        message, context, backend, model
+                    ):
                         await stream_queue.put(chunk)
                     await stream_queue.put(None)
                     fut.set_result(True)
                 else:
-                    result = await ChatHandler.dispatch(message, context, backend, model)
+                    result = await ChatHandler.dispatch(
+                        message, context, backend, model
+                    )
                     fut.set_result(result)
             except Exception as e:
                 if stream:
@@ -62,12 +72,16 @@ class ChatQueue:
             finally:
                 self.queue.task_done()
 
-    async def submit(self, message, context="", backend="ollama", model="gemma3:4b", stream=False):
+    async def submit(
+        self, message, context="", backend="ollama", model="gemma3:4b", stream=False
+    ):
         async with self.semaphore:
             if stream:
 
                 async def stream_gen():
-                    async for chunk in ChatHandler.dispatch_stream(message, context, backend, model):
+                    async for chunk in ChatHandler.dispatch_stream(
+                        message, context, backend, model
+                    ):
                         yield chunk
 
                 return stream_gen()
@@ -83,7 +97,9 @@ class ChatHandler:
         await ChatHandler.queue.start()
 
     @staticmethod
-    async def chat(message, context="", backend="ollama", model="gemma3:4b", stream=False):
+    async def chat(
+        message, context="", backend="ollama", model="gemma3:4b", stream=False
+    ):
         return await ChatHandler.queue.submit(message, context, backend, model, stream)
 
     @staticmethod
@@ -149,4 +165,3 @@ class ChatHandler:
         # TODO: implement Azure streaming chat
         if False:
             yield
-

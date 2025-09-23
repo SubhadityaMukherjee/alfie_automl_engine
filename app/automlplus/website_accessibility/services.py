@@ -6,14 +6,16 @@ from typing import Any, AsyncGenerator, Dict, List, cast
 
 from bs4 import BeautifulSoup
 
+from app.automlplus.website_accessibility.modules import (AltTextChecker,
+                                                          split_chunks)
 from app.core.chat_handler import ChatHandler
 from app.core.utils import render_template
-from app.automlplus.website_accessibility.modules import AltTextChecker, split_chunks
 
 
 @dataclass
 class ChunkResult:
     """Result for processing a single chunk of an HTML file."""
+
     chunk: int
     start_line: int
     end_line: int

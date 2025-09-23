@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 client = Client()
 
+
 class ImageConverter:
     """Convert images to base64 from local paths or URLs."""
 
@@ -91,7 +92,9 @@ class AltTextChecker:
                         except Exception:
                             length_hint = None
                         safe_images.append(
-                            f"<redacted_base64 length={length_hint}>" if length_hint is not None else "<redacted_base64>"
+                            f"<redacted_base64 length={length_hint}>"
+                            if length_hint is not None
+                            else "<redacted_base64>"
                         )
                     msg_copy["images"] = safe_images
                 messages_for_log.append(msg_copy)
@@ -116,7 +119,9 @@ class AltTextChecker:
                             except Exception:
                                 length_hint = None
                             safe_images.append(
-                                f"<redacted_base64 length={length_hint}>" if length_hint is not None else "<redacted_base64>"
+                                f"<redacted_base64 length={length_hint}>"
+                                if length_hint is not None
+                                else "<redacted_base64>"
                             )
                         msg_copy["images"] = safe_images
                     messages_for_log.append(msg_copy)

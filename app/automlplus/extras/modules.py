@@ -1,13 +1,12 @@
+import logging
+import os
 from typing import Any, Dict, List
 
 import torch  # type: ignore
-from fastapi import FastAPI, File, UploadFile, Form  # type: ignore
+from dotenv import find_dotenv, load_dotenv  # type: ignore
+from fastapi import FastAPI, File, Form, UploadFile  # type: ignore
 from fastapi.responses import JSONResponse  # type: ignore
-import logging
-import os
-from dotenv import load_dotenv, find_dotenv  # type: ignore
 from pydantic import BaseModel
-
 
 from app.general_inference_tools.modules import get_engine
 
@@ -24,11 +23,12 @@ BACKEND = os.getenv("GENERAL_INFERENCE_BACKEND_URL", "http://localhost:8004")
 from transformers import pipeline
 
 TASK_MODEL_MAP = {
-        "visual-question-answering" : "openbmb/MiniCPM-V-2",
-        "document-question-answering": "naver-clova-ix/donut-base-finetuned-docvqa"
-        }
+    "visual-question-answering": "openbmb/MiniCPM-V-2",
+    "document-question-answering": "naver-clova-ix/donut-base-finetuned-docvqa",
+}
 
 # pipeline(1, model =2, trust_remote_code=)
+
 
 class HFModelTaskConnector(BaseModel):
     """
@@ -37,9 +37,8 @@ class HFModelTaskConnector(BaseModel):
     model: str - Model name
     input_types: List[str] - Types of accepted inputs eg : *.jpeg, *.png
     """
+
     hf_task_tag: str
-    subtask : str
+    subtask: str
     model: str
     input_types: List[str]
-
-

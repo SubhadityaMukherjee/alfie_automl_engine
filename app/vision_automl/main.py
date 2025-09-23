@@ -3,6 +3,7 @@
 Handles session intake (CSV + images), validation, storage, model
 selection from Hugging Face Hub, and time-budgeted training.
 """
+
 import datetime
 import logging
 import os
@@ -13,7 +14,7 @@ from pathlib import Path
 from typing import Generator, cast
 
 import pandas as pd
-from dotenv import load_dotenv, find_dotenv
+from dotenv import find_dotenv, load_dotenv
 from fastapi import Depends, FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from huggingface_hub import HfApi
@@ -64,11 +65,13 @@ app = FastAPI(lifespan=lifespan)
 # NOTE: I AM NOT SURE IF THE AUTODW WILL HANDLE THIS PART FIRST :/
 class SessionRequest(BaseModel):
     """Payload for initiating model search/training for a vision session."""
+
     session_id: str
 
 
 class AutoMLVisionSession(Base):
     """SQLAlchemy model for vision AutoML session metadata."""
+
     __tablename__ = "automl_vision_sessions"
 
     session_id = Column(String, primary_key=True, index=True)
@@ -180,17 +183,19 @@ def get_num_params_if_available(repo_id: str, revision: str | None = None):
         return None
 
 
-def search_hf_for_pytorch_models_with_estimated_parameters(filter = "image-classification",limit: int = 3, sort = "downloads"):
+def search_hf_for_pytorch_models_with_estimated_parameters(
+    filter="image-classification", limit: int = 3, sort="downloads"
+):
     """Search HF for PyTorch models and annotate with estimated parameters."""
     api = HfApi()
     models = api.list_models(
         filter=filter,
         library="pytorch",
-        sort=sort, 
-        direction=-1,        
+        sort=sort,
+        direction=-1,
         limit=limit,
     )
-    
+
     model_list_pass_one = [
         {
             "model_id": m.id,
@@ -198,7 +203,7 @@ def search_hf_for_pytorch_models_with_estimated_parameters(filter = "image-class
             "likes": getattr(m, "likes", None),
             "last_modified": getattr(m, "lastModified", None),
             "private": getattr(m, "private", None),
-            "num_params" : get_num_params_if_available(m.id)
+            "num_params": get_num_params_if_available(m.id),
         }
         for m in models
     ]
@@ -221,10 +226,10 @@ def sort_models_by_size(models: list[dict], size_tier: str) -> list[dict]:
     """
     tier = str(size_tier).strip().lower()
 
-    SMALL_MAX:int = int(os.getenv("MODEL_SMALL_MAX_PARAM_SIZE", 50_000_000))
-    MEDIUM_MIN:int = SMALL_MAX + 1
-    MEDIUM_MAX:int = int(os.getenv("MODEL_MEDIUM_MAX_PARAM_SIZE", 200_000_000))
-    LARGE_MIN:int = MEDIUM_MAX + 1
+    SMALL_MAX: int = int(os.getenv("MODEL_SMALL_MAX_PARAM_SIZE", 50_000_000))
+    MEDIUM_MIN: int = SMALL_MAX + 1
+    MEDIUM_MAX: int = int(os.getenv("MODEL_MEDIUM_MAX_PARAM_SIZE", 200_000_000))
+    LARGE_MIN: int = MEDIUM_MAX + 1
 
     def in_tier(m: dict) -> bool:
         n = m.get("num_params")
@@ -242,7 +247,10 @@ def sort_models_by_size(models: list[dict], size_tier: str) -> list[dict]:
     # If filtering eliminated all, fall back to original set
     target = filtered if filtered else models
 
-    return sorted(target, key=lambda m: (m.get("num_params") is None, m.get("num_params", 0)))
+    return sorted(
+        target, key=lambda m: (m.get("num_params") is None, m.get("num_params", 0))
+    )
+
 
 @app.post("/automl_vision/get_user_input/")
 async def get_vision_user_input(
@@ -322,7 +330,7 @@ async def get_vision_user_input(
             label_column=label_column,
             task_type=task_type,
             time_budget=time_budget,
-            model_size= model_size
+            model_size=model_size,
         )
         db.add(new_session)
         db.commit()
@@ -350,7 +358,9 @@ def find_best_model(request: SessionRequest, db: Session = Depends(get_db)):
     if not session_record:
         return JSONResponse(status_code=404, content={"error": "Session not found"})
 
-    candidate_models = search_hf_for_pytorch_models_with_estimated_parameters(filter = "image-classification", limit = MAX_MODELS_HF)
+    candidate_models = search_hf_for_pytorch_models_with_estimated_parameters(
+        filter="image-classification", limit=MAX_MODELS_HF
+    )
 
     # choose model based on size
     model_size_threshold = getattr(session_record, "model_size", "medium")

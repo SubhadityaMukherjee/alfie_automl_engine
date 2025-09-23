@@ -9,7 +9,6 @@ import sys
 import time
 from typing import Dict, List
 
-
 PID_FILE = "processes.pid"
 
 
@@ -40,7 +39,12 @@ DEFAULT_READY_TIMEOUT_S = 240.0
 GENERAL_READY_TIMEOUT_S = 420.0
 
 
-def run(cmd: List[str], capture_output: bool = False, check: bool = True, env: Dict[str, str] | None = None) -> subprocess.CompletedProcess:
+def run(
+    cmd: List[str],
+    capture_output: bool = False,
+    check: bool = True,
+    env: Dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
         stdout=subprocess.PIPE if capture_output else None,
@@ -122,13 +126,17 @@ def wait_for_port(port: int, timeout_seconds: float = 10.0) -> bool:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         try:
-            cp = run([
-                "curl",
-                "-sS",
-                "--max-time",
-                "2",
-                f"http://localhost:{port}/openapi.json",
-            ], capture_output=True, check=False)
+            cp = run(
+                [
+                    "curl",
+                    "-sS",
+                    "--max-time",
+                    "2",
+                    f"http://localhost:{port}/openapi.json",
+                ],
+                capture_output=True,
+                check=False,
+            )
             if cp.returncode == 0 and cp.stdout:
                 return True
         except Exception:
@@ -143,13 +151,17 @@ def wait_for_general_ready(timeout_seconds: float = GENERAL_READY_TIMEOUT_S) -> 
     url = "http://localhost:8004/health"
     while time.time() < deadline:
         try:
-            cp = run([
-                "curl",
-                "-sS",
-                "--max-time",
-                "3",
-                url,
-            ], capture_output=True, check=False)
+            cp = run(
+                [
+                    "curl",
+                    "-sS",
+                    "--max-time",
+                    "3",
+                    url,
+                ],
+                capture_output=True,
+                check=False,
+            )
             if cp.returncode == 0 and cp.stdout:
                 try:
                     data = json.loads(cp.stdout)
@@ -292,7 +304,6 @@ def test_vision() -> None:
     print()
 
 
-
 def test_general() -> bool:
     print("=== Testing General Inference - instruction_to_webpage ===")
     cmd1 = [
@@ -372,14 +383,29 @@ def test_general() -> bool:
             pass
         return False
 
-    failed = (not ok1) or (not ok2) or (not ok3) or _has_error(cp1.stdout) or _has_error(cp2.stdout) or _has_error(cp3.stdout)
+    failed = (
+        (not ok1)
+        or (not ok2)
+        or (not ok3)
+        or _has_error(cp1.stdout)
+        or _has_error(cp2.stdout)
+        or _has_error(cp3.stdout)
+    )
     # failed = (not ok3) or _has_error(cp3.stdout)
     return not failed
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run and test ALFIE services (Python replacement for test_services.sh)")
-    parser.add_argument("target", nargs="?", default="all", choices=["all", "web", "tabular", "vision", "general"], help="Which services to run and test")
+    parser = argparse.ArgumentParser(
+        description="Run and test ALFIE services (Python replacement for test_services.sh)"
+    )
+    parser.add_argument(
+        "target",
+        nargs="?",
+        default="all",
+        choices=["all", "web", "tabular", "vision", "general"],
+        help="Which services to run and test",
+    )
     args = parser.parse_args()
 
     targets = [args.target] if args.target != "all" else list(SERVICES.keys())
@@ -413,7 +439,9 @@ def main() -> int:
             port = SERVICES[name]["port"]
             if name == "general":
                 if not wait_for_general_ready(timeout_seconds=GENERAL_READY_TIMEOUT_S):
-                    print(f"Warning: Service {name} on port {port} may not be ready (health not ready).")
+                    print(
+                        f"Warning: Service {name} on port {port} may not be ready (health not ready)."
+                    )
                 continue
             if not wait_for_port(port, timeout_seconds=DEFAULT_READY_TIMEOUT_S):
                 print(f"Warning: Service {name} on port {port} may not be ready.")
@@ -443,5 +471,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

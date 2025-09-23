@@ -3,6 +3,7 @@
 Provides endpoints to accept user data/config, validate inputs, store
 session metadata, and trigger AutoML training using AutoGluon.
 """
+
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -10,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-from dotenv import load_dotenv, find_dotenv
+from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
 # # NOTE : I AM NOT SURE IF THE AUTODW WILL HANDLE THIS PART FIRST :/
 class SessionRequest(BaseModel):
     """Payload for initiating model search/training for a session."""
+
     session_id: str
 
 

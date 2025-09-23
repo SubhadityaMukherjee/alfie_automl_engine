@@ -1,20 +1,21 @@
 """FastAPI endpoints for website accessibility analysis and chat utilities."""
+
 import logging
 import os
 from contextlib import asynccontextmanager
 
-from dotenv import load_dotenv, find_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
 import requests
+from dotenv import find_dotenv, load_dotenv
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
-from app.core.chat_handler import ChatHandler
 from app.automlplus.website_accessibility.modules import (AltTextChecker,
-                                               ReadabilityAnalyzer)
-from app.automlplus.website_accessibility.services import (extract_text_from_html_bytes,
-                                                run_accessibility_pipeline,
-                                                stream_accessibility_results)
+                                                          ReadabilityAnalyzer)
+from app.automlplus.website_accessibility.services import (
+    extract_text_from_html_bytes, run_accessibility_pipeline,
+    stream_accessibility_results)
+from app.core.chat_handler import ChatHandler
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -81,6 +82,7 @@ async def check_alt_text(
         logger.exception("Error during alt-text check")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+
 @app.post("/automlplus/web_access/chat/")
 async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
     """
@@ -97,6 +99,7 @@ async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
         )
 
         if stream:
+
             async def stream_response():
                 async for chunk in chat_stream:
                     yield chunk
@@ -109,6 +112,7 @@ async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
         logger.exception("Chat error")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+
 @app.post("/automlplus/web_access/accessibility/")
 async def check_accessibility(
     file: UploadFile | None = File(default=None),
@@ -118,7 +122,7 @@ async def check_accessibility(
     """Run WCAG-inspired checks, readability, and alt-text validation on HTML."""
     content: str | None = None
     source_name: str = "uploaded.html"
-    timeout:int = int(os.getenv("WEB_ACCESSIBILITY_URL_RETRY_TIMEOUT", 10))
+    timeout: int = int(os.getenv("WEB_ACCESSIBILITY_URL_RETRY_TIMEOUT", 10))
 
     # Prefer uploaded file if provided; otherwise fetch from URL
     if file is not None:
@@ -138,13 +142,20 @@ async def check_accessibility(
             content = resp.text
             source_name = url
         except Exception as e:
-            return JSONResponse(content={"error": f"Failed to fetch URL: {e}"}, status_code=400)
+            return JSONResponse(
+                content={"error": f"Failed to fetch URL: {e}"}, status_code=400
+            )
     else:
-        return JSONResponse(content={"error": "Either 'file' or 'url' must be provided."}, status_code=400)
+        return JSONResponse(
+            content={"error": "Either 'file' or 'url' must be provided."},
+            status_code=400,
+        )
 
     # Validate content and normalize type
     if content == "" or not str(content).strip():
-        return JSONResponse(content={"error": "Resolved content is empty"}, status_code=400)
+        return JSONResponse(
+            content={"error": "Resolved content is empty"}, status_code=400
+        )
     content_str: str = str(content)
 
     # Optional: read guidelines file and forward as LLM context
