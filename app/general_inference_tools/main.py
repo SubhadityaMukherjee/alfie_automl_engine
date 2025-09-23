@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 load_dotenv(find_dotenv())
 
 app = FastAPI()
-BACKEND = os.getenv("BACKEND_URL", "http://localhost:8004")
+BACKEND = os.getenv("GENERAL_INFERENCE_BACKEND_URL", "http://localhost:8004")
 
 _READY: bool = False
 

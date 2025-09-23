@@ -31,6 +31,8 @@ if not jinja_path:
 jinja_environment = Environment(loader=FileSystemLoader(jinja_path))
 
 BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
+DEFAULT_BACKEND = os.getenv("MODEL_BACKEND", "ollama")
+DEFAULT_MODEL = os.getenv("WEB_CHAT_MODEL", "gemma3:4b")
 
 
 @asynccontextmanager
@@ -80,23 +82,33 @@ async def check_alt_text(
         logger.exception("Error during alt-text check")
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
-
 @app.post("/web_access/chat/")
-async def chat_endpoint(prompt: str):
-    """Stream chat completions from the configured LLM for a prompt."""
-    logger.info("Chat prompt received")
+async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
+    """
+    Stream chat completions from the configured LLM for a prompt.
+    Default backend and model are read from environment variables.
+    """
+    backend = DEFAULT_BACKEND
+    model = DEFAULT_MODEL
+
+    logger.info("Chat prompt received. Backend: %s, Model: %s", backend, model)
     try:
-        stream = await ChatHandler.chat(prompt, context="", stream=True)
+        chat_stream = await ChatHandler.chat(
+            message=prompt, context="", backend=backend, model=model, stream=stream
+        )
 
-        async def stream_response():
-            async for chunk in stream:
-                yield chunk
+        if stream:
+            async def stream_response():
+                async for chunk in chat_stream:
+                    yield chunk
 
-        return StreamingResponse(stream_response(), media_type="text/plain")
+            return StreamingResponse(stream_response(), media_type="text/plain")
+        else:
+            return JSONResponse(content={"response": chat_stream})
+
     except Exception as e:
-        logger.exception("Chat streaming error")
+        logger.exception("Chat error")
         return JSONResponse(content={"error": str(e)}, status_code=500)
-
 
 @app.post("/web_access/accessibility/")
 async def check_accessibility(
@@ -131,7 +143,7 @@ async def check_accessibility(
         return JSONResponse(content={"error": "Either 'file' or 'url' must be provided."}, status_code=400)
 
     # Validate content and normalize type
-    if content is None or not str(content).strip():
+    if content == "" or not str(content).strip():
         return JSONResponse(content={"error": "Resolved content is empty"}, status_code=400)
     content_str: str = str(content)
 
