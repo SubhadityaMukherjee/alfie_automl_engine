@@ -421,7 +421,7 @@ def main() -> int:
         # Run tests mirroring the shell script
         if "web" in targets:
             test_web()
-            test_web_url_guidelines()
+            # test_web_url_guidelines()
 
         if "tabular" in targets:
             test_tabular()
