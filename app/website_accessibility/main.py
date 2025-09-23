@@ -30,9 +30,8 @@ if not jinja_path:
 
 jinja_environment = Environment(loader=FileSystemLoader(jinja_path))
 
-BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000")
-DEFAULT_BACKEND = os.getenv("MODEL_BACKEND", "ollama")
-DEFAULT_MODEL = os.getenv("WEB_CHAT_MODEL", "gemma3:4b")
+LLM_BACKEND = os.getenv("MODEL_BACKEND", "ollama")
+DEFAULT_MODEL = os.getenv("WEB_ACCESSIBILITY_CHAT_MODEL", "gemma3:4b")
 
 
 @asynccontextmanager
@@ -88,7 +87,7 @@ async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
     Stream chat completions from the configured LLM for a prompt.
     Default backend and model are read from environment variables.
     """
-    backend = DEFAULT_BACKEND
+    backend = LLM_BACKEND
     model = DEFAULT_MODEL
 
     logger.info("Chat prompt received. Backend: %s, Model: %s", backend, model)
@@ -119,6 +118,7 @@ async def check_accessibility(
     """Run WCAG-inspired checks, readability, and alt-text validation on HTML."""
     content: str | None = None
     source_name: str = "uploaded.html"
+    timeout:int = int(os.getenv("WEB_ACCESSIBILITY_URL_RETRY_TIMEOUT", 10))
 
     # Prefer uploaded file if provided; otherwise fetch from URL
     if file is not None:
@@ -132,7 +132,7 @@ async def check_accessibility(
                 pass
     elif url:
         try:
-            resp = requests.get(url, timeout=10)
+            resp = requests.get(url, timeout=timeout)
             resp.raise_for_status()
             # Use response text (requests handles encoding detection)
             content = resp.text
@@ -161,12 +161,13 @@ async def check_accessibility(
                 pass
 
     chunk_size: int = int(os.getenv("CHUNK_SIZE_FOR_ACCESSIBILITY", 3000))
+    concurrency_num: int = int(os.getenv("CONCURRENCY_NUM_FOR_ACCESSIBILITY", 4))
     results = await run_accessibility_pipeline(
         content=content_str,
         filename=source_name,
         jinja_environment=jinja_environment,
         chunk_size=chunk_size,
-        concurrency=4,
+        concurrency=concurrency_num,
         context=context_str,
     )
     return StreamingResponse(

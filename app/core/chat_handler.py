@@ -18,7 +18,6 @@ import ollama
 import requests
 import textstat
 from bs4 import BeautifulSoup
-from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from jinja2 import Environment, FileSystemLoader
@@ -27,6 +26,7 @@ from PIL import Image
 
 from app.core.utils import render_template
 
+from dotenv import load_dotenv, find_dotenv
 # Load environment variables from the project root .env
 load_dotenv(find_dotenv())
 

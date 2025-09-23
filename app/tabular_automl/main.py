@@ -29,7 +29,7 @@ load_dotenv(find_dotenv())
 
 app = FastAPI()
 
-BACKEND = os.getenv("TABULAR_AUTOML_BACKEND_URL", "http://localhost:8001")
+TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "http://localhost:8001")
 
 
 @asynccontextmanager

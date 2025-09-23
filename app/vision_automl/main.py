@@ -23,7 +23,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
 from torch import nn, optim
 
-from app.core.chat_handler import ChatHandlerOllama
+from app.core.chat_handler import ChatHandler
 from app.vision_automl.ml_engine import (ClassificationData,
                                          ClassificationModel, FabricTrainer)
 
@@ -34,8 +34,8 @@ load_dotenv(find_dotenv())
 
 # app initialized after lifespan definition below
 
-BACKEND = os.getenv("VISION_AUTOML_BACKEND_URL", "http://localhost:8002")
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///automl_sessions.db")
+VISION_AUTOML_PORT = os.getenv("VISION_AUTOML_PORT", "http://localhost:8002")
+DATABASE_URL = os.getenv("VISION_DATABASE_CONFIG", "sqlite:///automl_sessions.db")
 MAX_MODELS_HF = int(os.getenv("MAX_MODELS_HF", 1))
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
@@ -51,7 +51,7 @@ UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize resources
-    await ChatHandlerOllama.init()
+    await ChatHandler.init()
     yield
     # Cleanup resources
     pass
@@ -221,10 +221,10 @@ def sort_models_by_size(models: list[dict], size_tier: str) -> list[dict]:
     """
     tier = str(size_tier).strip().lower()
 
-    SMALL_MAX = 50_000_000
-    MEDIUM_MIN = SMALL_MAX + 1
-    MEDIUM_MAX = 200_000_000
-    LARGE_MIN = MEDIUM_MAX + 1
+    SMALL_MAX:int = int(os.getenv("MODEL_SMALL_MAX_PARAM_SIZE", 50_000_000))
+    MEDIUM_MIN:int = SMALL_MAX + 1
+    MEDIUM_MAX:int = int(os.getenv("MODEL_MEDIUM_MAX_PARAM_SIZE", 200_000_000))
+    LARGE_MIN:int = MEDIUM_MAX + 1
 
     def in_tier(m: dict) -> bool:
         n = m.get("num_params")

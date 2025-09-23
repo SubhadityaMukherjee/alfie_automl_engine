@@ -2,7 +2,11 @@ from typing import Optional
 
 import pandas as pd
 from autogluon.tabular import TabularDataset, TabularPredictor
+import os
+from dotenv import load_dotenv, find_dotenv
+load_dotenv(find_dotenv())
 
+DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE:float = float(os.getenv("DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE", 0.8))
 
 class AutoMLTrainer:
     """Wrapper around AutoGluon Tabular training routines."""
@@ -43,7 +47,7 @@ class AutoMLTrainer:
     def train_test_split(self, test_df: Optional[pd.DataFrame], train_df: pd.DataFrame):
         """Split data if `test_df` is None, else return provided splits."""
         if test_df is None:
-            final_train_df = train_df.sample(frac=0.8, random_state=42)
+            final_train_df = train_df.sample(frac=DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE, random_state=42)
             final_test_df = train_df.drop(index=final_train_df.index.tolist())
         else:
             final_train_df = train_df
