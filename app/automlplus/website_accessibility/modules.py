@@ -1,49 +1,69 @@
-import base64
 import logging
 import os
-from io import BytesIO
 from typing import Dict, List, Tuple
-
-import requests
-import textstat
-from jinja2 import Environment
-from ollama import Client
-from PIL import Image
-from urllib3.response import HTTPResponse
-
+import textstat  # type: ignore
+from jinja2 import Environment  # type: ignore
 from app.core.utils import render_template
+from app.core.chat_handler import ChatHandler
+from app.automlplus.utils import ImageConverter
 
 logger = logging.getLogger(__name__)
 
-client = Client()
-
-
-class ImageConverter:
-    """Convert images to base64 from local paths or URLs."""
-
-    @staticmethod
-    def to_base64(image_path_or_url: str) -> str:
-        logger.info("Converting image to base64: %s", image_path_or_url)
-        try:
-
-            if image_path_or_url.startswith("http"):
-                raw_image: HTTPResponse = requests.get(
-                    image_path_or_url, stream=True
-                ).raw
-                if raw_image is not None:
-                    image = Image.open(raw_image)
-            else:
-                image = Image.open(image_path_or_url)
-            buffer = BytesIO()
-            image.save(buffer, format="PNG")
-            return base64.b64encode(buffer.getvalue()).decode()
-        except Exception as e:
-            logger.exception("Image conversion failed")
-            raise e
-
-
 class AltTextChecker:
     """Check whether provided alt text matches an image using an LLM/VLM."""
+
+    DEFAULT_MODEL = "qwen2.5vl"
+
+    @staticmethod
+    def _resolve_model(model: str) -> str:
+        """Return a valid model string, falling back to DEFAULT_MODEL if invalid."""
+        if not model or model.strip() == "":
+            logger.error("Model parameter is empty or None, using default '%s'", AltTextChecker.DEFAULT_MODEL)
+            return AltTextChecker.DEFAULT_MODEL
+        return model
+
+    @staticmethod
+    def _build_messages(jinja_environment: Environment, image_b64: str, alt_text: str) -> List[dict]:
+        """Construct the message payload for the VLM call."""
+        return [
+            {
+                "role": "system",
+                "content": render_template(
+                    jinja_environment, "wcag_checker_default_prompt.txt"
+                ),
+            },
+            {"role": "user", "content": f"Alt text: {alt_text}"},
+            {
+                "role": "user",
+                "content": render_template(
+                    jinja_environment, "image_alt_checker_prompt.txt"
+                ),
+                "images": [image_b64],
+            },
+        ]
+
+    @staticmethod
+    def _redact_messages_for_log(messages: List[dict]) -> List[dict]:
+        """Return a copy of messages with any base64 image payloads redacted for logging."""
+        redacted: List[dict] = []
+        for message in messages:
+            msg_copy = {k: v for k, v in message.items() if k != "images"}
+            if "images" in message:
+                images = message["images"]
+                safe_images = []
+                for img in images:
+                    try:
+                        length_hint = len(img) if isinstance(img, str) else None
+                    except Exception:
+                        length_hint = None
+                    safe_images.append(
+                        f"<redacted_base64 length={length_hint}>"
+                        if length_hint is not None
+                        else "<redacted_base64>"
+                    )
+                msg_copy["images"] = safe_images
+            redacted.append(msg_copy)
+        return redacted
 
     @staticmethod
     def check(
@@ -53,79 +73,38 @@ class AltTextChecker:
         model: str = os.getenv("ALT_TEXT_CHECKER_MODEL", "qwen2.5vl"),
     ) -> str:
         logger.info("Checking alt-text using model %s", model)
-
-        # Validate model parameter
-        if not model or model.strip() == "":
-            logger.error("Model parameter is empty or None, using default 'qwen2.5vl'")
-            model = "qwen2.5vl"
+        model = AltTextChecker._resolve_model(model)
 
         try:
             image_b64 = ImageConverter.to_base64(image_url_or_path)
-            messages = [
-                {
-                    "role": "system",
-                    "content": render_template(
-                        jinja_environment, "wcag_checker_default_prompt.txt"
-                    ),
-                },
-                {"role": "user", "content": f"Alt text: {alt_text}"},
-                {
-                    "role": "user",
-                    "content": render_template(
-                        jinja_environment, "image_alt_checker_prompt.txt"
-                    ),
-                    "images": [image_b64],
-                },
-            ]
+            messages = AltTextChecker._build_messages(
+                jinja_environment=jinja_environment,
+                image_b64=image_b64,
+                alt_text=alt_text,
+            )
 
             logger.info("Sending request to ollama with model: %s", model)
             # Redact base64 image data from logs to avoid printing large sensitive payloads
-            messages_for_log = []
-            for message in messages:
-                msg_copy = {k: v for k, v in message.items() if k != "images"}
-                if "images" in message:
-                    images = message["images"]
-                    safe_images = []
-                    for img in images:
-                        try:
-                            length_hint = len(img) if isinstance(img, str) else None
-                        except Exception:
-                            length_hint = None
-                        safe_images.append(
-                            f"<redacted_base64 length={length_hint}>"
-                            if length_hint is not None
-                            else "<redacted_base64>"
-                        )
-                    msg_copy["images"] = safe_images
-                messages_for_log.append(msg_copy)
-            logger.info("Messages structure (redacted): %s", messages_for_log)
+            logger.info(
+                "Messages structure (redacted): %s",
+                AltTextChecker._redact_messages_for_log(messages),
+            )
 
-            response = client.chat(model=model, messages=messages)
-            return response["message"]["content"]
+            response_content = ChatHandler.chat_sync_messages(
+                messages=messages,
+                backend="ollama",
+                model=model,
+            )
+            return response_content
         except Exception as e:
             logger.exception("AltTextChecker failed with error: %s", str(e))
             logger.error("Model used: %s", model)
             # Log redacted messages on error as well
             try:
-                messages_for_log = []
-                for message in messages:
-                    msg_copy = {k: v for k, v in message.items() if k != "images"}
-                    if "images" in message:
-                        images = message["images"]
-                        safe_images = []
-                        for img in images:
-                            try:
-                                length_hint = len(img) if isinstance(img, str) else None
-                            except Exception:
-                                length_hint = None
-                            safe_images.append(
-                                f"<redacted_base64 length={length_hint}>"
-                                if length_hint is not None
-                                else "<redacted_base64>"
-                            )
-                        msg_copy["images"] = safe_images
-                    messages_for_log.append(msg_copy)
-                logger.error("Messages sent (redacted): %s", messages_for_log)
+                logger.error(
+                    "Messages sent (redacted): %s",
+                    AltTextChecker._redact_messages_for_log(messages),
+                )
             except Exception:
                 logger.error("Messages sent (redaction_failed)")
             raise e

@@ -181,7 +181,7 @@ def test_web() -> None:
         "curl",
         "-X",
         "POST",
-        "http://localhost:8000/automlplus/web_access/accessibility/",
+        "http://localhost:8000/automlplus/web_access/analyze/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -197,13 +197,13 @@ def test_web_url_guidelines() -> None:
         "curl",
         "-X",
         "POST",
-        "http://localhost:8000/automlplus/web_access/accessibility/",
+        "http://localhost:8000/automlplus/web_access/analyze/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
         "url=https://alfie-project.eu",
         # "-F",
-        # "guidelines_file=@./sample_data/wcag_guidelines.txt",
+        # "extra_file_input=@./sample_data/wcag_guidelines.txt",
     ]
     run(cmd, check=False)
     print()

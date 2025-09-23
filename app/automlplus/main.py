@@ -1,5 +1,5 @@
 """FastAPI endpoints for website accessibility analysis and chat utilities."""
-
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -43,27 +43,21 @@ async def lifespan(app: FastAPI):
     # Cleanup resources
     pass
 
-
-@app.post("/automlplus/web_access/readability/")
-async def analyze_readability(file: UploadFile = File(...)) -> JSONResponse:
-    """Parse uploaded HTML and return readability scores."""
-    logger.info("Received file for readability analysis: %s", file.filename)
+@app.post("/automlplus/image_tools/image_to_website/")
+async def image_to_website(
+    image_file: UploadFile |None = File(default = None)
+) -> JSONResponse:
+    logger.info("Converting image to a website")
     try:
-        content = await file.read()
-        # Validate non-empty content
-        if not content or not content.strip():
-            raise ValueError("Uploaded file is empty")
-        text = extract_text_from_html_bytes(content)
-        # Validate extracted text is non-empty
-        if not text.strip():
-            raise ValueError("No readable text found in uploaded file")
-
-        scores = ReadabilityAnalyzer.analyze(text)
-        logger.info("Readability scores computed successfully.")
-        return JSONResponse(content=scores)
+        # result = AltTextChecker.check(jinja_environment, image_url, alt_text)
+        logger.info("Conversion completed.")
+        return JSONResponse(
+            content={}
+        )
     except Exception as e:
-        logger.exception("Error during readability analysis")
+        logger.exception("Error during conversion")
         return JSONResponse(content={"error": str(e)}, status_code=500)
+
 
 
 @app.post("/automlplus/web_access/check-alt-text/")
@@ -73,7 +67,7 @@ async def check_alt_text(
     """Evaluate provided alt text against the referenced image using an LLM."""
     logger.info("Checking alt-text for image: %s", image_url)
     try:
-        result = AltTextChecker.check(jinja_environment, image_url, alt_text)
+        result =await AltTextChecker.check(jinja_environment, image_url, alt_text)
         logger.info("Alt-text evaluation completed.")
         return JSONResponse(
             content={"src": image_url, "alt_text": alt_text, "evaluation": result}
@@ -83,51 +77,53 @@ async def check_alt_text(
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@app.post("/automlplus/web_access/chat/")
-async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
-    """
-    Stream chat completions from the configured LLM for a prompt.
-    Default backend and model are read from environment variables.
-    """
-    backend = LLM_BACKEND
-    model = DEFAULT_MODEL
-
-    logger.info("Chat prompt received. Backend: %s, Model: %s", backend, model)
-    try:
-        chat_stream = await ChatHandler.chat(
-            message=prompt, context="", backend=backend, model=model, stream=stream
-        )
-
-        if stream:
-
-            async def stream_response():
-                async for chunk in chat_stream:
-                    yield chunk
-
-            return StreamingResponse(stream_response(), media_type="text/plain")
-        else:
-            return JSONResponse(content={"response": chat_stream})
-
-    except Exception as e:
-        logger.exception("Chat error")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
-
-
-@app.post("/automlplus/web_access/accessibility/")
-async def check_accessibility(
+# @app.post("/automlplus/web_access/chat/")
+# async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
+#     """
+#     Stream chat completions from the configured LLM for a prompt.
+#     Default backend and model are read from environment variables.
+#     """
+#     backend = LLM_BACKEND
+#     model = DEFAULT_MODEL
+#
+#     logger.info("Chat prompt received. Backend: %s, Model: %s", backend, model)
+#     try:
+#         chat_stream = await ChatHandler.chat(
+#             message=prompt, context="", backend=backend, model=model, stream=stream
+#         )
+#
+#         if stream:
+#
+#             async def stream_response():
+#                 async for chunk in chat_stream:
+#                     yield chunk
+#
+#             return StreamingResponse(stream_response(), media_type="text/plain")
+#         else:
+#             return JSONResponse(content={"response": chat_stream})
+#
+#     except Exception as e:
+#         logger.exception("Chat error")
+#         return JSONResponse(content={"error": str(e)}, status_code=500)
+#
+@app.post("/automlplus/web_access/analyze/")
+async def analyze_web_accessibility_and_readability(
     file: UploadFile | None = File(default=None),
     url: str | None = Form(default=None),
-    guidelines_file: UploadFile | None = File(default=None),
+    extra_file_input: UploadFile | None = File(default=None),
 ):
-    """Run WCAG-inspired checks, readability, and alt-text validation on HTML."""
+    """
+    Run WCAG-inspired accessibility checks and optional readability analysis on HTML.
+    Accepts an uploaded file or a URL, with optional guidelines file for context.
+    """
     content: str | None = None
     source_name: str = "uploaded.html"
     timeout: int = int(os.getenv("WEB_ACCESSIBILITY_URL_RETRY_TIMEOUT", 10))
 
-    # Prefer uploaded file if provided; otherwise fetch from URL
+    # --- Load HTML content ---
     if file is not None:
         try:
-            content = (await file.read()).decode("utf-8")
+            content = (await file.read()).decode("utf-8", errors="replace")
             source_name = file.filename or source_name
         finally:
             try:
@@ -138,7 +134,6 @@ async def check_accessibility(
         try:
             resp = requests.get(url, timeout=timeout)
             resp.raise_for_status()
-            # Use response text (requests handles encoding detection)
             content = resp.text
             source_name = url
         except Exception as e:
@@ -151,26 +146,26 @@ async def check_accessibility(
             status_code=400,
         )
 
-    # Validate content and normalize type
-    if content == "" or not str(content).strip():
+    if not content or not str(content).strip():
         return JSONResponse(
             content={"error": "Resolved content is empty"}, status_code=400
         )
     content_str: str = str(content)
 
-    # Optional: read guidelines file and forward as LLM context
+    # --- Load guidelines file if provided ---
     context_str: str = ""
-    if guidelines_file is not None:
+    if extra_file_input is not None:
         try:
-            guidelines_bytes = await guidelines_file.read()
+            guidelines_bytes = await extra_file_input.read()
             guidelines_text = guidelines_bytes.decode("utf-8", errors="replace")
             context_str = f"Accessibility guidelines to follow (user-provided):\n\n{guidelines_text}"
         finally:
             try:
-                await guidelines_file.close()
+                await extra_file_input.close()
             except Exception:
                 pass
 
+    # --- Run accessibility pipeline ---
     chunk_size: int = int(os.getenv("CHUNK_SIZE_FOR_ACCESSIBILITY", 3000))
     concurrency_num: int = int(os.getenv("CONCURRENCY_NUM_FOR_ACCESSIBILITY", 4))
     results = await run_accessibility_pipeline(
@@ -181,6 +176,19 @@ async def check_accessibility(
         concurrency=concurrency_num,
         context=context_str,
     )
-    return StreamingResponse(
-        stream_accessibility_results(results), media_type="application/jsonlines"
-    )
+
+    async def result_stream():
+        """Stream results back as JSON lines, merging readability if requested."""
+        async for item in stream_accessibility_results(results):
+            yield item
+
+        try:
+            text = extract_text_from_html_bytes(content_str.encode("utf-8"))
+            if text.strip():
+                readability_scores = ReadabilityAnalyzer.analyze(text)
+                yield json.dumps({"readability": readability_scores}) + "\n"
+        except Exception as e:
+            yield json.dumps({"readability_error": str(e)}) + "\n"
+
+    return StreamingResponse(result_stream(), media_type="application/jsonlines")
+

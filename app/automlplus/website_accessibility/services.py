@@ -2,7 +2,7 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Dict, List, cast
+from typing import Any, AsyncGenerator, Dict, List, cast, Iterable
 
 from bs4 import BeautifulSoup
 
@@ -123,13 +123,40 @@ async def run_accessibility_pipeline(
     results: List[ChunkResult] = await asyncio.gather(*tasks)
     return results
 
+async def resolve_coroutines(obj: Any) -> Any:
+    """Recursively await any coroutine attributes in an object."""
+    if asyncio.iscoroutine(obj):
+        return await obj
+    elif isinstance(obj, dict):
+        return {k: await resolve_coroutines(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [await resolve_coroutines(v) for v in obj]
+    elif hasattr(obj, "__dict__"):
+        # Make a copy of the object's dict with coroutines resolved
+        new_obj = {}
+        for k, v in vars(obj).items():
+            new_obj[k] = await resolve_coroutines(v)
+        return new_obj
+    else:
+        return obj
 
-async def stream_accessibility_results(
-    results: List[ChunkResult],
-) -> AsyncGenerator[bytes, None]:
-    """Yield JSON lines for each chunk result followed by an average score."""
-    scores = [r.score for r in results if r.score is not None]
-    for r in results:
-        yield (json.dumps(r.__dict__) + "\n").encode("utf-8")
-    avg_score = round(sum(scores) / len(scores), 2) if scores else None
-    yield (json.dumps({"average_score": avg_score}) + "\n").encode("utf-8")
+async def stream_accessibility_results(results):
+    """
+    Stream results safely as JSON lines, awaiting any nested coroutines.
+    """
+    for item in results:
+        # Await top-level coroutine if needed
+        if asyncio.iscoroutine(item):
+            try:
+                item = await item
+            except Exception as e:
+                yield (json.dumps({"error": str(e)}) + "\n").encode("utf-8")
+                continue
+
+        # Recursively resolve any nested coroutines
+        try:
+            data = await resolve_coroutines(item)
+        except Exception as e:
+            data = {"error": f"Failed to resolve item: {e}"}
+
+        yield (json.dumps(data) + "\n").encode("utf-8")

@@ -6,30 +6,7 @@ regular and streaming responses.
 """
 
 import asyncio
-import base64
-import logging
-import os
-import re
-import uuid
-from io import BytesIO
-from pathlib import Path
 from typing import List
-
-import ollama
-import requests
-import textstat
-from bs4 import BeautifulSoup
-from dotenv import find_dotenv, load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import JSONResponse
-from jinja2 import Environment, FileSystemLoader
-from ollama import Client
-from PIL import Image
-
-from app.core.utils import render_template
-
-# Load environment variables from the project root .env
-load_dotenv(find_dotenv())
 
 
 class ChatQueue:
@@ -123,10 +100,9 @@ class ChatHandler:
         else:
             raise ValueError(f"Unknown chat backend: {backend}")
 
-    # --- Ollama implementation ---
     @staticmethod
     async def _ollama_chat(message, context, model):
-        import ollama
+        import ollama  # type: ignore
 
         response = ollama.chat(
             model=model,
@@ -139,7 +115,7 @@ class ChatHandler:
 
     @staticmethod
     async def _ollama_chat_stream(message, context, model):
-        import ollama
+        import ollama  # type: ignore
 
         stream = ollama.chat(
             model=model,
@@ -153,6 +129,34 @@ class ChatHandler:
             content = chunk.get("message", {}).get("content", "")
             if content:
                 yield content
+
+    # --- Synchronous helpers for structured message payloads (incl. images) ---
+    @staticmethod
+    def chat_sync_messages(messages: List[dict], backend: str = "ollama", model: str = "gemma3:4b") -> str:
+        """Synchronously send a list of chat messages (optionally with images) to a backend.
+
+        This is useful for callers that aren't async and need to pass through
+        full message structures, e.g., for VLM prompts that include an
+        "images" field supported by Ollama.
+        """
+        backend_lower = backend.lower()
+        if backend_lower == "ollama":
+            return ChatHandler._ollama_chat_messages_sync(messages, model)
+        elif backend_lower == "azure":
+            # Placeholder until Azure implementation supports message lists
+            return "Azure chat (messages) not implemented yet."
+        else:
+            raise ValueError(f"Unknown chat backend: {backend}")
+
+    @staticmethod
+    def _ollama_chat_messages_sync(messages: List[dict], model: str) -> str:
+        import ollama  # type: ignore
+
+        response = ollama.chat(
+            model=model,
+            messages=messages,
+        )
+        return response["message"]["content"].strip()
 
     # --- Azure placeholders ---
     @staticmethod
