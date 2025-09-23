@@ -1,4 +1,5 @@
 """FastAPI endpoints for website accessibility analysis and chat utilities."""
+
 import json
 import logging
 import os
@@ -10,11 +11,16 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
-from app.automlplus.website_accessibility.modules import (AltTextChecker,
-                                                          ReadabilityAnalyzer)
+from app.automlplus.imagetools import ImagePromptRunner
+from app.automlplus.website_accessibility.modules import (
+    AltTextChecker,
+    ReadabilityAnalyzer,
+)
 from app.automlplus.website_accessibility.services import (
-    extract_text_from_html_bytes, run_accessibility_pipeline,
-    stream_accessibility_results)
+    extract_text_from_html_bytes,
+    run_accessibility_pipeline,
+    stream_accessibility_results,
+)
 from app.core.chat_handler import ChatHandler
 
 # Configure logging
@@ -43,21 +49,19 @@ async def lifespan(app: FastAPI):
     # Cleanup resources
     pass
 
+
 @app.post("/automlplus/image_tools/image_to_website/")
 async def image_to_website(
-    image_file: UploadFile |None = File(default = None)
+    image_file: UploadFile | None = File(default=None),
 ) -> JSONResponse:
     logger.info("Converting image to a website")
     try:
         # result = AltTextChecker.check(jinja_environment, image_url, alt_text)
         logger.info("Conversion completed.")
-        return JSONResponse(
-            content={}
-        )
+        return JSONResponse(content={})
     except Exception as e:
         logger.exception("Error during conversion")
         return JSONResponse(content={"error": str(e)}, status_code=500)
-
 
 
 @app.post("/automlplus/web_access/check-alt-text/")
@@ -67,7 +71,7 @@ async def check_alt_text(
     """Evaluate provided alt text against the referenced image using an LLM."""
     logger.info("Checking alt-text for image: %s", image_url)
     try:
-        result =await AltTextChecker.check(jinja_environment, image_url, alt_text)
+        result = AltTextChecker.check(jinja_environment, image_url, alt_text)
         logger.info("Alt-text evaluation completed.")
         return JSONResponse(
             content={"src": image_url, "alt_text": alt_text, "evaluation": result}
@@ -77,35 +81,45 @@ async def check_alt_text(
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-# @app.post("/automlplus/web_access/chat/")
-# async def chat_endpoint(prompt: str = Form(...), stream: bool = Form(True)):
-#     """
-#     Stream chat completions from the configured LLM for a prompt.
-#     Default backend and model are read from environment variables.
-#     """
-#     backend = LLM_BACKEND
-#     model = DEFAULT_MODEL
-#
-#     logger.info("Chat prompt received. Backend: %s, Model: %s", backend, model)
-#     try:
-#         chat_stream = await ChatHandler.chat(
-#             message=prompt, context="", backend=backend, model=model, stream=stream
-#         )
-#
-#         if stream:
-#
-#             async def stream_response():
-#                 async for chunk in chat_stream:
-#                     yield chunk
-#
-#             return StreamingResponse(stream_response(), media_type="text/plain")
-#         else:
-#             return JSONResponse(content={"response": chat_stream})
-#
-#     except Exception as e:
-#         logger.exception("Chat error")
-#         return JSONResponse(content={"error": str(e)}, status_code=500)
-#
+@app.post("/automlplus/image_tools/run_on_image/")
+async def run_on_image(
+    prompt: str = Form(...),
+    model: str | None = Form(default=None),
+    image_file: UploadFile | None = File(default=None),
+    image_url: str | None = Form(default=None),
+) -> JSONResponse:
+    """Run a VLM on an image and prompt, similar to AltTextChecker but generic.
+
+    Provide either an uploaded image file or an image URL/path.
+    """
+    if image_file is None and not image_url:
+        return JSONResponse(
+            content={"error": "Provide image_file or image_url"}, status_code=400
+        )
+    try:
+        image_bytes: bytes | None = None
+        if image_file is not None:
+            try:
+                image_bytes = await image_file.read()
+            finally:
+                try:
+                    await image_file.close()
+                except Exception:
+                    pass
+
+        result = ImagePromptRunner.run(
+            image_bytes=image_bytes,
+            image_path_or_url=image_url,
+            prompt=prompt,
+            model=model,
+            jinja_environment=jinja_environment,
+        )
+        return JSONResponse(content={"response": result})
+    except Exception as e:
+        logger.exception("Error during image prompt run")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
+
+
 @app.post("/automlplus/web_access/analyze/")
 async def analyze_web_accessibility_and_readability(
     file: UploadFile | None = File(default=None),
@@ -191,4 +205,3 @@ async def analyze_web_accessibility_and_readability(
             yield json.dumps({"readability_error": str(e)}) + "\n"
 
     return StreamingResponse(result_stream(), media_type="application/jsonlines")
-

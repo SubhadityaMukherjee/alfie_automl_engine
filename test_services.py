@@ -13,7 +13,17 @@ PID_FILE = "processes.pid"
 
 
 SERVICES = {
-    "web": {
+    "webfromfile": {
+        "port": 8000,
+        "uvicorn_target": "app.automlplus.main:app",
+        "base_url": "http://localhost:8000",
+    },
+    "webfromurl": {
+        "port": 8000,
+        "uvicorn_target": "app.automlplus.main:app",
+        "base_url": "http://localhost:8000",
+    },
+    "im2web": {
         "port": 8000,
         "uvicorn_target": "app.automlplus.main:app",
         "base_url": "http://localhost:8000",
@@ -27,11 +37,6 @@ SERVICES = {
         "port": 8002,
         "uvicorn_target": "app.vision_automl.main:app",
         "base_url": "http://localhost:8002",
-    },
-    "general": {
-        "port": 8004,
-        "uvicorn_target": "app.automlplus.extras.main:app",
-        "base_url": "http://localhost:8004",
     },
 }
 
@@ -191,6 +196,34 @@ def test_web() -> None:
     print()
 
 
+def test_image_to_website() -> None:
+    print("=== Testing Image Tools - run_on_image (image + prompt) ===")
+    cmd = [
+        "curl",
+        "-s",
+        "-X",
+        "POST",
+        "http://localhost:8000/automlplus/image_tools/run_on_image/",
+        "-H",
+        "Content-Type: multipart/form-data",
+        "-F",
+        "prompt=Recreate this image into a website with HTML/CSS/JS and explain how to run it.",
+        "-F",
+        "image_file=@./sample_data/test_pdf.png",
+        # Optionally: "-F", "model=qwen2.5vl",
+    ]
+    cp = run(cmd, capture_output=True, check=False)
+    print(cp.stdout)
+    try:
+        data = json.loads(cp.stdout or "{}")
+        if isinstance(data, dict) and (data.get("error") or data.get("detail")):
+            print(
+                "run_on_image returned error:", data.get("error") or data.get("detail")
+            )
+    except json.JSONDecodeError:
+        pass
+
+
 def test_web_url_guidelines() -> None:
     print("=== Testing Website Accessibility (URL + guidelines) ===")
     cmd = [
@@ -304,97 +337,6 @@ def test_vision() -> None:
     print()
 
 
-def test_general() -> bool:
-    print("=== Testing General Inference - instruction_to_webpage ===")
-    cmd1 = [
-        "curl",
-        "-s",
-        "-m",
-        "5",
-        "-X",
-        "POST",
-        "http://localhost:8004/general_inference/instruction_to_webpage",
-        "-H",
-        "Content-Type: multipart/form-data",
-        "-F",
-        "requirements=Create a simple Tailwind page with a centered blue button",
-        "-F",
-        'gen_kwargs={"max_new_tokens": 64}',
-    ]
-    cp1 = run(cmd1, capture_output=True, check=False)
-    ok1 = cp1.returncode == 0 and bool(cp1.stdout)
-    print(cp1.stdout)
-    if not ok1:
-        sys.stderr.write(cp1.stderr or "")
-    print()
-
-    print("=== Testing General Inference - screenshot_to_webpage ===")
-    cmd2 = [
-        "curl",
-        "-s",
-        "-m",
-        "5",
-        "-X",
-        "POST",
-        "http://localhost:8004/general_inference/screenshot_to_webpage",
-        "-H",
-        "Content-Type: multipart/form-data",
-        "-F",
-        "requirements=Generate Tailwind HTML for a login form",
-        "-F",
-        'gen_kwargs={"max_new_tokens": 64}',
-    ]
-    cp2 = run(cmd2, capture_output=True, check=False)
-    ok2 = cp2.returncode == 0 and bool(cp2.stdout)
-    print(cp2.stdout)
-    if not ok2:
-        sys.stderr.write(cp2.stderr or "")
-    print()
-
-    print("=== Testing General Inference - document_qa ===")
-    cmd3 = [
-        "curl",
-        "-s",
-        "-m",
-        "5",
-        "-X",
-        "POST",
-        "http://localhost:8004/general_inference/document_qa",
-        "-H",
-        "Content-Type: multipart/form-data",
-        "-F",
-        "question=What is the title?",
-        "-F",
-        "document_file=@./sample_data/test_pdf.png",
-        "-F",
-        'gen_kwargs={"max_answer_len": 32}',
-    ]
-    cp3 = run(cmd3, capture_output=True, check=False)
-    ok3 = cp3.returncode == 0 and bool(cp3.stdout)
-    print()
-    print(cp3.stdout)
-
-    def _has_error(text: str) -> bool:
-        try:
-            data = json.loads(text)
-            if isinstance(data, dict) and (data.get("error") or data.get("detail")):
-                return True
-        except json.JSONDecodeError:
-            pass
-        return False
-
-    failed = (
-        (not ok1)
-        or (not ok2)
-        or (not ok3)
-        or _has_error(cp1.stdout)
-        or _has_error(cp2.stdout)
-        or _has_error(cp3.stdout)
-    )
-    # failed = (not ok3) or _has_error(cp3.stdout)
-    return not failed
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run and test ALFIE services (Python replacement for test_services.sh)"
@@ -403,7 +345,7 @@ def main() -> int:
         "target",
         nargs="?",
         default="all",
-        choices=["all", "web", "tabular", "vision", "general"],
+        choices=["all", "webfromfile", "webfromurl", "tabular", "vision", "im2web"],
         help="Which services to run and test",
     )
     args = parser.parse_args()
@@ -447,20 +389,20 @@ def main() -> int:
                 print(f"Warning: Service {name} on port {port} may not be ready.")
 
         # Run tests mirroring the shell script
-        if "web" in targets:
+        if "webfromfile" in targets:
             test_web()
-            # test_web_url_guidelines()
+
+        if "webfromhtml" in targets:
+            test_web_url_guidelines()
+
+        if "im2web" in targets:
+            test_image_to_website()
 
         if "tabular" in targets:
             test_tabular()
 
         if "vision" in targets:
             test_vision()
-
-        if "general" in targets:
-            if not test_general():
-                print("General inference tests failed.")
-                return 1
 
         print("=== All tests completed ===")
         return 0

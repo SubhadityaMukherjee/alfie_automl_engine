@@ -1,14 +1,14 @@
-
-from io import BytesIO
 import base64
-import logging
 import json
+import logging
+from io import BytesIO
 
 import requests
 from PIL import Image
 from urllib3.response import HTTPResponse
 
 logger = logging.getLogger(__name__)
+
 
 class ImageConverter:
     """Convert images to base64 from local paths or URLs."""
@@ -33,4 +33,14 @@ class ImageConverter:
             logger.exception("Image conversion failed")
             raise e
 
-
+    @staticmethod
+    def bytes_to_base64(image_bytes: bytes) -> str:
+        """Convert raw image bytes to base64 PNG string."""
+        try:
+            image = Image.open(BytesIO(image_bytes))
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+            return base64.b64encode(buffer.getvalue()).decode()
+        except Exception as e:
+            logger.exception("Image bytes conversion failed")
+            raise e

@@ -4,9 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.website_accessibility.services import (extract_text_from_html_bytes,
-                                                run_accessibility_pipeline,
-                                                stream_accessibility_results)
+from app.website_accessibility.services import (
+    extract_text_from_html_bytes,
+    run_accessibility_pipeline,
+    stream_accessibility_results,
+)
 
 
 def test_extract_text_from_html_bytes_basic():

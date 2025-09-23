@@ -132,7 +132,9 @@ class ChatHandler:
 
     # --- Synchronous helpers for structured message payloads (incl. images) ---
     @staticmethod
-    def chat_sync_messages(messages: List[dict], backend: str = "ollama", model: str = "gemma3:4b") -> str:
+    def chat_sync_messages(
+        messages: List[dict], backend: str = "ollama", model: str = "gemma3:4b"
+    ) -> str:
         """Synchronously send a list of chat messages (optionally with images) to a backend.
 
         This is useful for callers that aren't async and need to pass through

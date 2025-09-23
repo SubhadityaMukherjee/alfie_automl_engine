@@ -4,8 +4,8 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 import torch  # type: ignore
 from lightning import Fabric  # type: ignore
 from pydantic import BaseModel  # type: ignore
-from transformers import (AutoModel, AutoModelForVision2Seq,  # type: ignore
-                          AutoProcessor, AutoTokenizer)
+from transformers import AutoModelForVision2Seq  # type: ignore
+from transformers import AutoModel, AutoProcessor, AutoTokenizer
 
 # Reuse upload utilities from tabular module (none needed in this module)
 
@@ -212,8 +212,9 @@ class DocumentQATask(BaseTask):
         history: Optional[Any] = None,
         **gen_kwargs: Any,
     ) -> Tuple[str, Any]:
-        from PIL import \
-            Image  # type: ignore  # local import to avoid hard dependency elsewhere
+        from PIL import (
+            Image,
+        )  # type: ignore  # local import to avoid hard dependency elsewhere
 
         self._lazy_load()
 

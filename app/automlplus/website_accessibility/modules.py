@@ -1,13 +1,16 @@
 import logging
 import os
 from typing import Dict, List, Tuple
+
 import textstat  # type: ignore
 from jinja2 import Environment  # type: ignore
-from app.core.utils import render_template
-from app.core.chat_handler import ChatHandler
+
 from app.automlplus.utils import ImageConverter
+from app.core.chat_handler import ChatHandler
+from app.core.utils import render_template
 
 logger = logging.getLogger(__name__)
+
 
 class AltTextChecker:
     """Check whether provided alt text matches an image using an LLM/VLM."""
@@ -18,12 +21,17 @@ class AltTextChecker:
     def _resolve_model(model: str) -> str:
         """Return a valid model string, falling back to DEFAULT_MODEL if invalid."""
         if not model or model.strip() == "":
-            logger.error("Model parameter is empty or None, using default '%s'", AltTextChecker.DEFAULT_MODEL)
+            logger.error(
+                "Model parameter is empty or None, using default '%s'",
+                AltTextChecker.DEFAULT_MODEL,
+            )
             return AltTextChecker.DEFAULT_MODEL
         return model
 
     @staticmethod
-    def _build_messages(jinja_environment: Environment, image_b64: str, alt_text: str) -> List[dict]:
+    def _build_messages(
+        jinja_environment: Environment, image_b64: str, alt_text: str
+    ) -> List[dict]:
         """Construct the message payload for the VLM call."""
         return [
             {

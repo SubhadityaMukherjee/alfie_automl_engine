@@ -2,12 +2,11 @@ import asyncio
 import json
 import re
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Dict, List, cast, Iterable
+from typing import Any, AsyncGenerator, Dict, Iterable, List, cast
 
 from bs4 import BeautifulSoup
 
-from app.automlplus.website_accessibility.modules import (AltTextChecker,
-                                                          split_chunks)
+from app.automlplus.website_accessibility.modules import AltTextChecker, split_chunks
 from app.core.chat_handler import ChatHandler
 from app.core.utils import render_template
 
@@ -123,6 +122,7 @@ async def run_accessibility_pipeline(
     results: List[ChunkResult] = await asyncio.gather(*tasks)
     return results
 
+
 async def resolve_coroutines(obj: Any) -> Any:
     """Recursively await any coroutine attributes in an object."""
     if asyncio.iscoroutine(obj):
@@ -139,6 +139,7 @@ async def resolve_coroutines(obj: Any) -> Any:
         return new_obj
     else:
         return obj
+
 
 async def stream_accessibility_results(results):
     """
