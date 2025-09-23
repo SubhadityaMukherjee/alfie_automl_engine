@@ -16,10 +16,6 @@ from app.core.utils import render_template
 logger = logging.getLogger(__name__)
 
 client = Client()
-# Remove duplicate jinja environment creation - it will be passed from main.py
-# jinja_path = os.getenv("JINJAPATH") or ""
-# jinja_environment = Environment(loader=FileSystemLoader(Path(jinja_path)))
-
 
 class ImageConverter:
     """Convert images to base64 from local paths or URLs."""

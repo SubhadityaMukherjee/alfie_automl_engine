@@ -8,7 +8,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 load_dotenv(find_dotenv())
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///automl_sessions.db")
+DATABASE_URL = os.getenv("TABULAR_DATABASE_CONFIG", "sqlite:///automl_sessions.db")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
