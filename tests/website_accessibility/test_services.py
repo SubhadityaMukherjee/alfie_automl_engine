@@ -35,7 +35,7 @@ async def test_run_pipeline_and_stream(monkeypatch):
     async def fake_chat(prompt: str, context: str, stream: bool):
         return "Score: 7.5\nOK"
 
-    monkeypatch.setattr(chat_handler.ChatHandler, "chat", staticmethod(fake_chat))
+    monkeypatch.setattr(chat_handler.ChatHandlerOllama, "chat", staticmethod(fake_chat))
 
     # Mock AltTextChecker to avoid real image checks
     from app.website_accessibility import modules as wa_modules

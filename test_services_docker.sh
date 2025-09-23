@@ -2,49 +2,25 @@
 inpargs="${1:-all}"
 set -euo pipefail
 
-PID_FILE="processes.pid"
-declare -a PIDS=()
-
-# Kill any existing servers on expected ports to avoid hitting old instances
-for PORT in 8001 8002; do
-  if lsof -ti tcp:$PORT >/dev/null 2>&1; then
-    echo "Killing process on port $PORT"
-    kill -9 $(lsof -ti tcp:$PORT) || true
-  fi
-done
-
-# Start FastAPI apps in background and save their PIDs
-if [[ $inpargs == "web" || $inpargs == "all" ]]; then
-  uv run uvicorn app.website_accessibility.main:app --reload --host 0.0.0.0 --port 8000 &
-  PIDS+=($!)
-  sleep 2  # Allow server to start
-fi
-
-if [[ $inpargs == "tabular" || $inpargs == "all" ]]; then
-  uv run uvicorn app.tabular_automl.main:app --reload --host 0.0.0.0 --port 8001 &
-  PIDS+=($!)
-  sleep 2  # Allow server to start
-fi
-
-if [[ $inpargs == "vision" || $inpargs == "all" ]]; then
-  uv run uvicorn app.vision_automl.main:app --reload --host 0.0.0.0 --port 8002 &
-  PIDS+=($!)
-  sleep 2  # Allow server to start
-fi
-# Save all PIDs to file
-printf "%s\n" "${PIDS[@]}" > "$PID_FILE"
-
-# Function to clean up background processes on exit
-cleanup() {
-  echo "Stopping servers..."
-  for pid in "${PIDS[@]}"; do
-    kill "$pid" 2>/dev/null
+wait_for() {
+  local name="$1"; shift
+  local url="$1"; shift
+  local timeout="${1:-60}"
+  local start_ts=$(date +%s)
+  echo "Waiting for $name at $url ..."
+  until curl -fsS "$url" >/dev/null 2>&1; do
+    sleep 1
+    now=$(date +%s)
+    if (( now - start_ts > timeout )); then
+      echo "Timed out waiting for $name at $url"
+      return 1
+    fi
   done
-  rm -f "$PID_FILE"
+  echo "$name is up"
 }
-trap cleanup EXIT
 
 if [[ $inpargs == "web" || $inpargs == "all" ]]; then
+wait_for "website" "http://localhost:8000/web_access" 90
 echo "=== Testing Website Accessibility ==="
 curl -X POST http://localhost:8000/web_access/accessibility/ \
   -H "Content-Type: multipart/form-data" \
@@ -52,6 +28,7 @@ curl -X POST http://localhost:8000/web_access/accessibility/ \
 echo -e "\n"
 fi
 if [[ $inpargs == "tabular" || $inpargs == "all" ]]; then
+wait_for "tabular" "http://localhost:8001/automl_tabular" 90
 echo "=== Testing AutoML Tabular - get_user_input ==="
 SESSION_RESPONSE=$(curl -s -X POST http://localhost:8001/automl_tabular/get_user_input/ \
   -H "Content-Type: multipart/form-data" \
@@ -69,12 +46,14 @@ if [[ "$SESSION_ID" != "null" && -n "$SESSION_ID" ]]; then
     -d "{\"session_id\": \"$SESSION_ID\"}"
 else
   echo "Failed to get valid session_id from tabular get_user_input"
+  exit 1
 fi
 
 fi
 echo -e "\n"
 
 if [[ $inpargs == "vision" || $inpargs == "all" ]]; then
+wait_for "vision" "http://localhost:8002/automl_vision" 120
 echo "=== Testing AutoML Vision - get_user_input ==="
 VISION_SESSION_RESPONSE=$(curl -s -X POST http://localhost:8002/automl_vision/get_user_input/ \
   -H "Content-Type: multipart/form-data" \
@@ -95,6 +74,7 @@ if [[ "$VISION_SESSION_ID" != "null" && -n "$VISION_SESSION_ID" ]]; then
     -d "{\"session_id\": \"$VISION_SESSION_ID\"}"
 else
   echo "Failed to get valid session_id from vision get_user_input"
+  exit 1
 fi
 fi
 echo -e "\n"

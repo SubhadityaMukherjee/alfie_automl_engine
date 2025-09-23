@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import Optional
 
 import pandas as pd
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.core.chat_handler import ChatHandler
+from app.core.chat_handler import ChatHandlerOllama
 from app.tabular_automl.modules import AutoMLTrainer
 from app.tabular_automl.services import (create_session_directory, get_session,
                                          load_table, save_upload,
@@ -25,17 +25,17 @@ from app.tabular_automl.services import (create_session_directory, get_session,
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_dotenv(find_dotenv())
 
 app = FastAPI()
 
-BACKEND = os.getenv("BACKEND_URL", "http://localhost:8001")
+BACKEND = os.getenv("TABULAR_AUTOML_BACKEND_URL", "http://localhost:8001")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize resources
-    await ChatHandler.init()
+    await ChatHandlerOllama.init()
     yield
     # Cleanup resources
     pass

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Generator, cast
 
 import pandas as pd
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 from fastapi import Depends, FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from huggingface_hub import HfApi
@@ -23,18 +23,18 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Session, sessionmaker
 from torch import nn, optim
 
-from app.core.chat_handler import ChatHandler
+from app.core.chat_handler import ChatHandlerOllama
 from app.vision_automl.ml_engine import (ClassificationData,
                                          ClassificationModel, FabricTrainer)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-load_dotenv()
+load_dotenv(find_dotenv())
 
 # app initialized after lifespan definition below
 
-BACKEND = os.getenv("BACKEND_URL", "http://localhost:8002")
+BACKEND = os.getenv("VISION_AUTOML_BACKEND_URL", "http://localhost:8002")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///automl_sessions.db")
 MAX_MODELS_HF = int(os.getenv("MAX_MODELS_HF", 1))
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -51,7 +51,7 @@ UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize resources
-    await ChatHandler.init()
+    await ChatHandlerOllama.init()
     yield
     # Cleanup resources
     pass

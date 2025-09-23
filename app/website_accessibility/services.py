@@ -43,6 +43,7 @@ async def _process_single_chunk(
     filename: str,
     jinja_environment,
     sem: asyncio.Semaphore,
+    context: str,
 ) -> ChunkResult:
     """Process a single chunk: prompt LLM and validate image alt texts."""
     async with sem:
@@ -58,7 +59,7 @@ async def _process_single_chunk(
                 end_line=end,
             )
 
-            response_raw = await ChatHandler.chat(prompt, context="", stream=False)
+            response_raw = await ChatHandler.chat(prompt, context=context, stream=False)
             response_text = response_raw if isinstance(response_raw, str) else ""
 
             score_match = re.search(
@@ -106,13 +107,14 @@ async def run_accessibility_pipeline(
     jinja_environment,
     chunk_size: int,
     concurrency: int = 4,
+    context: str = "",
 ) -> List[ChunkResult]:
     """Split HTML into chunks and process them concurrently with a semaphore."""
     chunks, ranges = split_chunks(content, chunk_size)
     sem = asyncio.Semaphore(concurrency)
     tasks = [
         _process_single_chunk(
-            i, chunk, start, end, len(chunks), filename, jinja_environment, sem
+            i, chunk, start, end, len(chunks), filename, jinja_environment, sem, context
         )
         for i, (chunk, (start, end)) in enumerate(zip(chunks, ranges))
     ]
