@@ -118,6 +118,46 @@ async def run_on_image(
     except Exception as e:
         logger.exception("Error during image prompt run")
         return JSONResponse(content={"error": str(e)}, status_code=500)
+@app.post("/automlplus/image_tools/run_on_image_stream/")
+async def run_on_image_stream(
+    prompt: str = Form(...),
+    model: str | None = Form(default=None),
+    image_file: UploadFile | None = File(default=None),
+    image_url: str | None = Form(default=None),
+):
+    """Stream a VLM on an image and prompt.
+
+    Returns text chunks as they arrive using text/plain streaming.
+    """
+    if image_file is None and not image_url:
+        return JSONResponse(
+            content={"error": "Provide image_file or image_url"}, status_code=400
+        )
+    try:
+        image_bytes: bytes | None = None
+        if image_file is not None:
+            try:
+                image_bytes = await image_file.read()
+            finally:
+                try:
+                    await image_file.close()
+                except Exception:
+                    pass
+
+        def generator():
+            for chunk in ImagePromptRunner.run_stream(
+                image_bytes=image_bytes,
+                image_path_or_url=image_url,
+                prompt=prompt,
+                model=model,
+                jinja_environment=jinja_environment,
+            ):
+                yield chunk
+
+        return StreamingResponse(generator(), media_type="text/plain")
+    except Exception as e:
+        logger.exception("Error during image prompt run (stream)")
+        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
 @app.post("/automlplus/web_access/analyze/")

@@ -28,7 +28,7 @@ class ImageConverter:
                 image = Image.open(image_path_or_url)
             buffer = BytesIO()
             image.save(buffer, format="PNG")
-            return base64.b64encode(buffer.getvalue()).decode()
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
         except Exception as e:
             logger.exception("Image conversion failed")
             raise e
@@ -40,7 +40,7 @@ class ImageConverter:
             image = Image.open(BytesIO(image_bytes))
             buffer = BytesIO()
             image.save(buffer, format="PNG")
-            return base64.b64encode(buffer.getvalue()).decode()
+            return base64.b64encode(buffer.getvalue()).decode('utf-8')
         except Exception as e:
             logger.exception("Image bytes conversion failed")
             raise e

@@ -102,9 +102,10 @@ class ChatHandler:
 
     @staticmethod
     async def _ollama_chat(message, context, model):
-        import ollama  # type: ignore
+        from ollama import Client
+        chat = Client(timeout = 120).chat
 
-        response = ollama.chat(
+        response = chat(
             model=model,
             messages=[
                 {"role": "user", "content": message},
@@ -115,9 +116,9 @@ class ChatHandler:
 
     @staticmethod
     async def _ollama_chat_stream(message, context, model):
-        import ollama  # type: ignore
-
-        stream = ollama.chat(
+        from ollama import Client
+        chat = Client(timeout = 120).chat
+        stream = chat(
             model=model,
             messages=[
                 {"role": "user", "content": message},
@@ -152,13 +153,44 @@ class ChatHandler:
 
     @staticmethod
     def _ollama_chat_messages_sync(messages: List[dict], model: str) -> str:
-        import ollama  # type: ignore
-
-        response = ollama.chat(
+        from ollama import Client
+        chat = Client(timeout = 300).chat
+        response = chat(
             model=model,
             messages=messages,
         )
         return response["message"]["content"].strip()
+
+    # --- Streaming helpers for structured message payloads (incl. images) ---
+    @staticmethod
+    def chat_stream_messages_sync(
+        messages: List[dict], backend: str = "ollama", model: str = "gemma3:4b"
+    ):
+        """Synchronously stream a list of chat messages (optionally with images).
+
+        Yields incremental text chunks from the backend as they arrive.
+        """
+        backend_lower = backend.lower()
+        if backend_lower == "ollama":
+            return ChatHandler._ollama_chat_messages_stream_sync(messages, model)
+        elif backend_lower == "azure":
+            raise NotImplementedError("Azure chat (messages stream) not implemented yet.")
+        else:
+            raise ValueError(f"Unknown chat backend: {backend}")
+
+    @staticmethod
+    def _ollama_chat_messages_stream_sync(messages: List[dict], model: str):
+        from ollama import Client
+        chat = Client(timeout = 300).chat
+        stream = chat(
+            model=model,
+            messages=messages,
+            stream=True,
+        )
+        for chunk in stream:
+            content = (chunk or {}).get("message", {}).get("content", "")
+            if content:
+                yield content
 
     # --- Azure placeholders ---
     @staticmethod

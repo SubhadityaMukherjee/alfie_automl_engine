@@ -184,6 +184,7 @@ def test_web() -> None:
     print("=== Testing Website Accessibility ===")
     cmd = [
         "curl",
+        "-s",
         "-X",
         "POST",
         "http://localhost:8000/automlplus/web_access/analyze/",
@@ -192,7 +193,12 @@ def test_web() -> None:
         "-F",
         "file=@./sample_data/test.html",
     ]
-    run(cmd, check=False)
+    cp = run(cmd, capture_output=True, check=False)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
     print()
 
 
@@ -209,25 +215,24 @@ def test_image_to_website() -> None:
         "-F",
         "prompt=Recreate this image into a website with HTML/CSS/JS and explain how to run it.",
         "-F",
-        "image_file=@./sample_data/test_pdf.png",
+        "image_file=@./sample_data/websample.png",
         # Optionally: "-F", "model=qwen2.5vl",
     ]
     cp = run(cmd, capture_output=True, check=False)
-    print(cp.stdout)
-    try:
-        data = json.loads(cp.stdout or "{}")
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
         if isinstance(data, dict) and (data.get("error") or data.get("detail")):
-            print(
-                "run_on_image returned error:", data.get("error") or data.get("detail")
-            )
-    except json.JSONDecodeError:
-        pass
+            print("run_on_image returned error:", data.get("error") or data.get("detail"))
+    else:
+        print(cp.stdout)
 
 
 def test_web_url_guidelines() -> None:
     print("=== Testing Website Accessibility (URL + guidelines) ===")
     cmd = [
         "curl",
+        "-s",
         "-X",
         "POST",
         "http://localhost:8000/automlplus/web_access/analyze/",
@@ -238,7 +243,12 @@ def test_web_url_guidelines() -> None:
         # "-F",
         # "extra_file_input=@./sample_data/wcag_guidelines.txt",
     ]
-    run(cmd, check=False)
+    cp = run(cmd, capture_output=True, check=False)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
     print()
 
 
@@ -269,13 +279,17 @@ def test_tabular() -> None:
         "time_budget=30",
     ]
     cp = run(cmd, capture_output=True, check=False)
-    print(cp.stdout)
-    data = parse_json(cp.stdout)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
     session_id = data.get("session_id")
     if session_id:
         print("=== Testing AutoML Tabular - find_best_model ===")
         cmd2 = [
             "curl",
+            "-s",
             "-X",
             "POST",
             "http://localhost:8001/automl_tabular/find_best_model/",
@@ -284,7 +298,12 @@ def test_tabular() -> None:
             "-d",
             json.dumps({"session_id": session_id}),
         ]
-        run(cmd2, check=False)
+        cp2 = run(cmd2, capture_output=True, check=False)
+        data2 = parse_json(cp2.stdout or "")
+        if data2:
+            print(json.dumps(data2, indent=2, ensure_ascii=False))
+        else:
+            print(cp2.stdout)
     else:
         print("Failed to get valid session_id from tabular get_user_input")
     print()
@@ -316,13 +335,17 @@ def test_vision() -> None:
         "model_size=medium",
     ]
     cp = run(cmd, capture_output=True, check=False)
-    print(cp.stdout)
-    data = parse_json(cp.stdout)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
     session_id = data.get("session_id")
     if session_id:
         print("=== Testing AutoML Vision - find_best_model ===")
         cmd2 = [
             "curl",
+            "-s",
             "-X",
             "POST",
             "http://localhost:8002/automl_vision/find_best_model/",
@@ -331,7 +354,12 @@ def test_vision() -> None:
             "-d",
             json.dumps({"session_id": session_id}),
         ]
-        run(cmd2, check=False)
+        cp2 = run(cmd2, capture_output=True, check=False)
+        data2 = parse_json(cp2.stdout or "")
+        if data2:
+            print(json.dumps(data2, indent=2, ensure_ascii=False))
+        else:
+            print(cp2.stdout)
     else:
         print("Failed to get valid session_id from vision get_user_input")
     print()

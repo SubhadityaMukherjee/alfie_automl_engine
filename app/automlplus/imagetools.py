@@ -2,15 +2,13 @@ import logging
 import os
 from typing import List
 
-from jinja2 import Environment
-from ollama import Client
+from jinja2 import Environment  # type: ignore
 
 from app.automlplus.utils import ImageConverter
 from app.core.utils import render_template
+from app.core.chat_handler import ChatHandler
 
 logger = logging.getLogger(__name__)
-
-client = Client()
 
 
 class ImagePromptRunner:
@@ -64,9 +62,34 @@ class ImagePromptRunner:
                 jinja_environment, image_b64, prompt
             )
 
-            # Use low-level client to mirror ChatHandler.messages pattern
-            result = client.chat(model=model_name, messages=messages)
-            return result.get("message", {}).get("content", "").strip()
+            # Use central ChatHandler for synchronous message-based chat (supports images)
+            return ChatHandler.chat_sync_messages(messages=messages, model=model_name)
         except Exception as e:
             logger.exception("ImagePromptRunner failed")
             raise e
+
+    @staticmethod
+    def run_stream(
+        image_bytes: bytes | None = None,
+        image_path_or_url: str | None = None,
+        prompt: str = "",
+        model: str | None = None,
+        jinja_environment: Environment | None = None,
+    ):
+        """Stream VLM output for an image+prompt interaction.
+
+        Yields incremental text chunks.
+        """
+        model_name = ImagePromptRunner._resolve_model(model)
+        if image_bytes is None and not image_path_or_url:
+            raise ValueError("Provide either image_bytes or image_path_or_url")
+
+        image_b64 = (
+            ImageConverter.bytes_to_base64(image_bytes)
+            if image_bytes is not None
+            else ImageConverter.to_base64(str(image_path_or_url))
+        )
+        messages = ImagePromptRunner.build_messages(
+            jinja_environment, image_b64, prompt
+        )
+        return ChatHandler.chat_stream_messages_sync(messages=messages, model=model_name)
