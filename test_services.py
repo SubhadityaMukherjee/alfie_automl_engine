@@ -184,7 +184,7 @@ def test_web() -> None:
     print("=== Testing Website Accessibility ===")
     cmd = [
         "curl",
-        "-s",
+        "-sN",
         "-X",
         "POST",
         "http://localhost:8000/automlplus/web_access/analyze/",
@@ -194,11 +194,8 @@ def test_web() -> None:
         "file=@./sample_data/test.html",
     ]
     cp = run(cmd, capture_output=True, check=False)
-    data = parse_json(cp.stdout or "")
-    if data:
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-    else:
-        print(cp.stdout)
+    # The endpoint streams JSON lines; print raw output
+    print(cp.stdout)
     print()
 
 
@@ -206,10 +203,10 @@ def test_image_to_website() -> None:
     print("=== Testing Image Tools - run_on_image (image + prompt) ===")
     cmd = [
         "curl",
-        "-s",
+        "-sN",
         "-X",
         "POST",
-        "http://localhost:8000/automlplus/image_tools/run_on_image/",
+        "http://localhost:8000/automlplus/image_tools/run_on_image_stream/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -219,13 +216,8 @@ def test_image_to_website() -> None:
         # Optionally: "-F", "model=qwen2.5vl",
     ]
     cp = run(cmd, capture_output=True, check=False)
-    data = parse_json(cp.stdout or "")
-    if data:
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-        if isinstance(data, dict) and (data.get("error") or data.get("detail")):
-            print("run_on_image returned error:", data.get("error") or data.get("detail"))
-    else:
-        print(cp.stdout)
+    # Streaming text/plain; print raw streamed output
+    print(cp.stdout)
 
 
 def test_web_url_guidelines() -> None:

@@ -2,6 +2,7 @@ Your job is to read the provided image and recreate it as a runnable website.
 
 Requirements:
 - Provide production-ready HTML, CSS, and JavaScript in your response.
+- Preserve any text not only for the body but also the UI elements
 - Recreate the layout, typography, colors, and interactions as faithfully as possible.
 - Implement enough functionality to replicate the major visible interactions (e.g., nav hovers, buttons, simple forms).
 - If the design suggests responsive behavior, include responsive CSS.

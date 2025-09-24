@@ -240,8 +240,8 @@ async def analyze_web_accessibility_and_readability(
             text = extract_text_from_html_bytes(content_str.encode("utf-8"))
             if text.strip():
                 readability_scores = ReadabilityAnalyzer.analyze(text)
-                yield json.dumps({"readability": readability_scores}) + "\n"
+                yield (json.dumps({"readability": readability_scores}) + "\n").encode("utf-8")
         except Exception as e:
-            yield json.dumps({"readability_error": str(e)}) + "\n"
+            yield (json.dumps({"readability_error": str(e)}) + "\n").encode("utf-8")
 
     return StreamingResponse(result_stream(), media_type="application/jsonlines")

@@ -8,6 +8,9 @@ from app.automlplus.utils import ImageConverter
 from app.core.utils import render_template
 from app.core.chat_handler import ChatHandler
 
+from dotenv import find_dotenv, load_dotenv
+
+load_dotenv(find_dotenv())
 logger = logging.getLogger(__name__)
 
 
