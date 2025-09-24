@@ -99,6 +99,7 @@ def store_session_in_db(
 @dataclass
 class SessionData:
     """Lightweight container for session metadata retrieved from DB."""
+
     session_id: str
     train_file_path: str
     test_file_path: Optional[str]

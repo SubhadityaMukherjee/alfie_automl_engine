@@ -4,31 +4,10 @@ Provides a simple queued interface (`ChatQueue`) and a static facade
 (`ChatHandler`) to interact with local Ollama models, supporting both
 regular and streaming responses.
 """
+
 import asyncio
-import base64
-import logging
-import os
-import re
-import uuid
-from io import BytesIO
-from pathlib import Path
 from typing import List
 
-import ollama
-import requests
-import textstat
-from bs4 import BeautifulSoup
-from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import JSONResponse
-from jinja2 import Environment, FileSystemLoader
-from ollama import Client
-from PIL import Image
-
-from app.core.utils import render_template
-
-from dotenv import load_dotenv, find_dotenv
-# Load environment variables from the project root .env
-load_dotenv(find_dotenv())
 
 class ChatQueue:
     """Async work queue for chat requests, supporting streaming and non-streaming calls."""
@@ -40,19 +19,27 @@ class ChatQueue:
         self.semaphore = asyncio.Semaphore(num_workers)
 
     async def start(self):
-        self.tasks = [asyncio.create_task(self.worker()) for _ in range(self.num_workers)]
+        self.tasks = [
+            asyncio.create_task(self.worker()) for _ in range(self.num_workers)
+        ]
 
     async def worker(self):
         while True:
-            fut, message, context, backend, model, stream, stream_queue = await self.queue.get()
+            fut, message, context, backend, model, stream, stream_queue = (
+                await self.queue.get()
+            )
             try:
                 if stream:
-                    async for chunk in ChatHandler.dispatch_stream(message, context, backend, model):
+                    async for chunk in ChatHandler.dispatch_stream(
+                        message, context, backend, model
+                    ):
                         await stream_queue.put(chunk)
                     await stream_queue.put(None)
                     fut.set_result(True)
                 else:
-                    result = await ChatHandler.dispatch(message, context, backend, model)
+                    result = await ChatHandler.dispatch(
+                        message, context, backend, model
+                    )
                     fut.set_result(result)
             except Exception as e:
                 if stream:
@@ -62,12 +49,16 @@ class ChatQueue:
             finally:
                 self.queue.task_done()
 
-    async def submit(self, message, context="", backend="ollama", model="gemma3:4b", stream=False):
+    async def submit(
+        self, message, context="", backend="ollama", model="gemma3:4b", stream=False
+    ):
         async with self.semaphore:
             if stream:
 
                 async def stream_gen():
-                    async for chunk in ChatHandler.dispatch_stream(message, context, backend, model):
+                    async for chunk in ChatHandler.dispatch_stream(
+                        message, context, backend, model
+                    ):
                         yield chunk
 
                 return stream_gen()
@@ -83,7 +74,9 @@ class ChatHandler:
         await ChatHandler.queue.start()
 
     @staticmethod
-    async def chat(message, context="", backend="ollama", model="gemma3:4b", stream=False):
+    async def chat(
+        message, context="", backend="ollama", model="gemma3:4b", stream=False
+    ):
         return await ChatHandler.queue.submit(message, context, backend, model, stream)
 
     @staticmethod
@@ -107,12 +100,12 @@ class ChatHandler:
         else:
             raise ValueError(f"Unknown chat backend: {backend}")
 
-    # --- Ollama implementation ---
     @staticmethod
     async def _ollama_chat(message, context, model):
-        import ollama
+        from ollama import Client
+        chat = Client(timeout = 120).chat
 
-        response = ollama.chat(
+        response = chat(
             model=model,
             messages=[
                 {"role": "user", "content": message},
@@ -123,9 +116,9 @@ class ChatHandler:
 
     @staticmethod
     async def _ollama_chat_stream(message, context, model):
-        import ollama
-
-        stream = ollama.chat(
+        from ollama import Client
+        chat = Client(timeout = 120).chat
+        stream = chat(
             model=model,
             messages=[
                 {"role": "user", "content": message},
@@ -135,6 +128,67 @@ class ChatHandler:
         )
         async for chunk in stream:
             content = chunk.get("message", {}).get("content", "")
+            if content:
+                yield content
+
+    # --- Synchronous helpers for structured message payloads (incl. images) ---
+    @staticmethod
+    def chat_sync_messages(
+        messages: List[dict], backend: str = "ollama", model: str = "gemma3:4b"
+    ) -> str:
+        """Synchronously send a list of chat messages (optionally with images) to a backend.
+
+        This is useful for callers that aren't async and need to pass through
+        full message structures, e.g., for VLM prompts that include an
+        "images" field supported by Ollama.
+        """
+        backend_lower = backend.lower()
+        if backend_lower == "ollama":
+            return ChatHandler._ollama_chat_messages_sync(messages, model)
+        elif backend_lower == "azure":
+            # Placeholder until Azure implementation supports message lists
+            return "Azure chat (messages) not implemented yet."
+        else:
+            raise ValueError(f"Unknown chat backend: {backend}")
+
+    @staticmethod
+    def _ollama_chat_messages_sync(messages: List[dict], model: str) -> str:
+        from ollama import Client
+        chat = Client(timeout = 300).chat
+        response = chat(
+            model=model,
+            messages=messages,
+        )
+        return response["message"]["content"].strip()
+
+    # --- Streaming helpers for structured message payloads (incl. images) ---
+    @staticmethod
+    def chat_stream_messages_sync(
+        messages: List[dict], backend: str = "ollama", model: str = "gemma3:4b"
+    ):
+        """Synchronously stream a list of chat messages (optionally with images).
+
+        Yields incremental text chunks from the backend as they arrive.
+        """
+        backend_lower = backend.lower()
+        if backend_lower == "ollama":
+            return ChatHandler._ollama_chat_messages_stream_sync(messages, model)
+        elif backend_lower == "azure":
+            raise NotImplementedError("Azure chat (messages stream) not implemented yet.")
+        else:
+            raise ValueError(f"Unknown chat backend: {backend}")
+
+    @staticmethod
+    def _ollama_chat_messages_stream_sync(messages: List[dict], model: str):
+        from ollama import Client
+        chat = Client(timeout = 300).chat
+        stream = chat(
+            model=model,
+            messages=messages,
+            stream=True,
+        )
+        for chunk in stream:
+            content = (chunk or {}).get("message", {}).get("content", "")
             if content:
                 yield content
 
@@ -149,4 +203,3 @@ class ChatHandler:
         # TODO: implement Azure streaming chat
         if False:
             yield
-

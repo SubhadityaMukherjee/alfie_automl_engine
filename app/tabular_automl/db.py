@@ -1,8 +1,9 @@
 """Database models and engine setup for tabular AutoML sessions."""
+
 import datetime
 import os
 
-from dotenv import load_dotenv, find_dotenv
+from dotenv import find_dotenv, load_dotenv
 from sqlalchemy import Column, DateTime, Integer, String, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -19,6 +20,7 @@ class AutoMLSession(Base):
 
     Stores file paths, task configuration, and creation time for a session.
     """
+
     __tablename__ = "automl_sessions"
 
     session_id = Column(String, primary_key=True, index=True)

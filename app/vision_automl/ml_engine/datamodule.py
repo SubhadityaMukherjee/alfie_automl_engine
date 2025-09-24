@@ -1,25 +1,30 @@
+import os
 from typing import Any, Dict, List, Optional, Tuple, cast
 
 import pandas as pd
 import torch
+from dotenv import find_dotenv, load_dotenv
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from transformers import AutoImageProcessor
 
 from .dataset import ImageClassificationFromCSVDataset
-import os
-from dotenv import load_dotenv, find_dotenv
+
 # Load environment variables from the project root .env
 load_dotenv(find_dotenv())
 
-DEFAULT_BATCH_SIZE=int(os.getenv("DEFAULT_BATCH_SIZE", 32))
-DEFAULT_NUM_WORKERS=int(os.getenv("DEFAULT_NUM_WORKERS", 0))
-DEFAULT_VAL_SPLIT=float(os.getenv("DEFAULT_VAL_SPLIT", 0.2))
-DEFAULT_TEST_SPLIT=float(os.getenv("DEFAULT_TEST_SPLIT", 0.1))
-DEFAULT_IMAGE_CLASSIFIER_HF_ID=os.getenv("DEFAULT_IMAGE_CLASSIFIER_HF_ID", "google/vit-base-patch16-224")
+DEFAULT_BATCH_SIZE = int(os.getenv("DEFAULT_BATCH_SIZE", 32))
+DEFAULT_NUM_WORKERS = int(os.getenv("DEFAULT_NUM_WORKERS", 0))
+DEFAULT_VAL_SPLIT = float(os.getenv("DEFAULT_VAL_SPLIT", 0.2))
+DEFAULT_TEST_SPLIT = float(os.getenv("DEFAULT_TEST_SPLIT", 0.1))
+DEFAULT_IMAGE_CLASSIFIER_HF_ID = os.getenv(
+    "DEFAULT_IMAGE_CLASSIFIER_HF_ID", "google/vit-base-patch16-224"
+)
+
 
 class ClassificationData:
     """Data module handling splits, datasets, and dataloaders for classification."""
+
     def __init__(
         self,
         csv_file: str,
@@ -33,7 +38,7 @@ class ClassificationData:
         val_split: float = DEFAULT_VAL_SPLIT,
         test_split: float = DEFAULT_TEST_SPLIT,
         seed: int = 42,
-        hf_model_id: str = DEFAULT_IMAGE_CLASSIFIER_HF_ID
+        hf_model_id: str = DEFAULT_IMAGE_CLASSIFIER_HF_ID,
     ) -> None:
         self.csv_file = csv_file
         self.root_dir = root_dir

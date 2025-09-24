@@ -10,6 +10,7 @@ from torchvision import transforms as T
 
 class ImageClassificationFromCSVDataset(Dataset):
     """Torch dataset that reads image paths and labels from a CSV/DataFrame."""
+
     def __init__(
         self,
         csv_file: Union[str, pd.DataFrame],

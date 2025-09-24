@@ -4,6 +4,7 @@ from transformers import AutoModelForImageClassification
 
 class ClassificationModel(nn.Module):
     """Thin wrapper over HF image classification model for logits output."""
+
     def __init__(
         self,
         model_id: str = "google/vit-base-patch16-224",

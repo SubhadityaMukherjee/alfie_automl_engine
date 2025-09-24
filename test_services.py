@@ -9,14 +9,23 @@ import sys
 import time
 from typing import Dict, List
 
-
 PID_FILE = "processes.pid"
 
 
 SERVICES = {
-    "web": {
+    "webfromfile": {
         "port": 8000,
-        "uvicorn_target": "app.website_accessibility.main:app",
+        "uvicorn_target": "app.automlplus.main:app",
+        "base_url": "http://localhost:8000",
+    },
+    "webfromurl": {
+        "port": 8000,
+        "uvicorn_target": "app.automlplus.main:app",
+        "base_url": "http://localhost:8000",
+    },
+    "im2web": {
+        "port": 8000,
+        "uvicorn_target": "app.automlplus.main:app",
         "base_url": "http://localhost:8000",
     },
     "tabular": {
@@ -29,18 +38,18 @@ SERVICES = {
         "uvicorn_target": "app.vision_automl.main:app",
         "base_url": "http://localhost:8002",
     },
-    "general": {
-        "port": 8004,
-        "uvicorn_target": "app.general_inference_tools.main:app",
-        "base_url": "http://localhost:8004",
-    },
 }
 
 DEFAULT_READY_TIMEOUT_S = 240.0
 GENERAL_READY_TIMEOUT_S = 420.0
 
 
-def run(cmd: List[str], capture_output: bool = False, check: bool = True, env: Dict[str, str] | None = None) -> subprocess.CompletedProcess:
+def run(
+    cmd: List[str],
+    capture_output: bool = False,
+    check: bool = True,
+    env: Dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         cmd,
         stdout=subprocess.PIPE if capture_output else None,
@@ -122,13 +131,17 @@ def wait_for_port(port: int, timeout_seconds: float = 10.0) -> bool:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
         try:
-            cp = run([
-                "curl",
-                "-sS",
-                "--max-time",
-                "2",
-                f"http://localhost:{port}/openapi.json",
-            ], capture_output=True, check=False)
+            cp = run(
+                [
+                    "curl",
+                    "-sS",
+                    "--max-time",
+                    "2",
+                    f"http://localhost:{port}/openapi.json",
+                ],
+                capture_output=True,
+                check=False,
+            )
             if cp.returncode == 0 and cp.stdout:
                 return True
         except Exception:
@@ -143,13 +156,17 @@ def wait_for_general_ready(timeout_seconds: float = GENERAL_READY_TIMEOUT_S) -> 
     url = "http://localhost:8004/health"
     while time.time() < deadline:
         try:
-            cp = run([
-                "curl",
-                "-sS",
-                "--max-time",
-                "3",
-                url,
-            ], capture_output=True, check=False)
+            cp = run(
+                [
+                    "curl",
+                    "-sS",
+                    "--max-time",
+                    "3",
+                    url,
+                ],
+                capture_output=True,
+                check=False,
+            )
             if cp.returncode == 0 and cp.stdout:
                 try:
                     data = json.loads(cp.stdout)
@@ -167,33 +184,63 @@ def test_web() -> None:
     print("=== Testing Website Accessibility ===")
     cmd = [
         "curl",
+        "-sN",
         "-X",
         "POST",
-        "http://localhost:8000/web_access/accessibility/",
+        "http://localhost:8000/automlplus/web_access/analyze/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
         "file=@./sample_data/test.html",
     ]
-    run(cmd, check=False)
+    cp = run(cmd, capture_output=True, check=False)
+    # The endpoint streams JSON lines; print raw output
+    print(cp.stdout)
     print()
+
+
+def test_image_to_website() -> None:
+    print("=== Testing Image Tools - run_on_image (image + prompt) ===")
+    cmd = [
+        "curl",
+        "-sN",
+        "-X",
+        "POST",
+        "http://localhost:8000/automlplus/image_tools/run_on_image_stream/",
+        "-H",
+        "Content-Type: multipart/form-data",
+        "-F",
+        "prompt=Recreate this image into a website with HTML/CSS/JS and explain how to run it.",
+        "-F",
+        "image_file=@./sample_data/websample.png",
+        # Optionally: "-F", "model=qwen2.5vl",
+    ]
+    cp = run(cmd, capture_output=True, check=False)
+    # Streaming text/plain; print raw streamed output
+    print(cp.stdout)
 
 
 def test_web_url_guidelines() -> None:
     print("=== Testing Website Accessibility (URL + guidelines) ===")
     cmd = [
         "curl",
+        "-s",
         "-X",
         "POST",
-        "http://localhost:8000/web_access/accessibility/",
+        "http://localhost:8000/automlplus/web_access/analyze/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
         "url=https://alfie-project.eu",
         # "-F",
-        # "guidelines_file=@./sample_data/wcag_guidelines.txt",
+        # "extra_file_input=@./sample_data/wcag_guidelines.txt",
     ]
-    run(cmd, check=False)
+    cp = run(cmd, capture_output=True, check=False)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
     print()
 
 
@@ -224,13 +271,17 @@ def test_tabular() -> None:
         "time_budget=30",
     ]
     cp = run(cmd, capture_output=True, check=False)
-    print(cp.stdout)
-    data = parse_json(cp.stdout)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
     session_id = data.get("session_id")
     if session_id:
         print("=== Testing AutoML Tabular - find_best_model ===")
         cmd2 = [
             "curl",
+            "-s",
             "-X",
             "POST",
             "http://localhost:8001/automl_tabular/find_best_model/",
@@ -239,7 +290,12 @@ def test_tabular() -> None:
             "-d",
             json.dumps({"session_id": session_id}),
         ]
-        run(cmd2, check=False)
+        cp2 = run(cmd2, capture_output=True, check=False)
+        data2 = parse_json(cp2.stdout or "")
+        if data2:
+            print(json.dumps(data2, indent=2, ensure_ascii=False))
+        else:
+            print(cp2.stdout)
     else:
         print("Failed to get valid session_id from tabular get_user_input")
     print()
@@ -271,13 +327,17 @@ def test_vision() -> None:
         "model_size=medium",
     ]
     cp = run(cmd, capture_output=True, check=False)
-    print(cp.stdout)
-    data = parse_json(cp.stdout)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
     session_id = data.get("session_id")
     if session_id:
         print("=== Testing AutoML Vision - find_best_model ===")
         cmd2 = [
             "curl",
+            "-s",
             "-X",
             "POST",
             "http://localhost:8002/automl_vision/find_best_model/",
@@ -286,100 +346,28 @@ def test_vision() -> None:
             "-d",
             json.dumps({"session_id": session_id}),
         ]
-        run(cmd2, check=False)
+        cp2 = run(cmd2, capture_output=True, check=False)
+        data2 = parse_json(cp2.stdout or "")
+        if data2:
+            print(json.dumps(data2, indent=2, ensure_ascii=False))
+        else:
+            print(cp2.stdout)
     else:
         print("Failed to get valid session_id from vision get_user_input")
     print()
 
 
-
-def test_general() -> bool:
-    print("=== Testing General Inference - instruction_to_webpage ===")
-    cmd1 = [
-        "curl",
-        "-s",
-        "-m",
-        "5",
-        "-X",
-        "POST",
-        "http://localhost:8004/general_inference/instruction_to_webpage",
-        "-H",
-        "Content-Type: multipart/form-data",
-        "-F",
-        "requirements=Create a simple Tailwind page with a centered blue button",
-        "-F",
-        'gen_kwargs={"max_new_tokens": 64}',
-    ]
-    cp1 = run(cmd1, capture_output=True, check=False)
-    ok1 = cp1.returncode == 0 and bool(cp1.stdout)
-    print(cp1.stdout)
-    if not ok1:
-        sys.stderr.write(cp1.stderr or "")
-    print()
-
-    print("=== Testing General Inference - screenshot_to_webpage ===")
-    cmd2 = [
-        "curl",
-        "-s",
-        "-m",
-        "5",
-        "-X",
-        "POST",
-        "http://localhost:8004/general_inference/screenshot_to_webpage",
-        "-H",
-        "Content-Type: multipart/form-data",
-        "-F",
-        "requirements=Generate Tailwind HTML for a login form",
-        "-F",
-        'gen_kwargs={"max_new_tokens": 64}',
-    ]
-    cp2 = run(cmd2, capture_output=True, check=False)
-    ok2 = cp2.returncode == 0 and bool(cp2.stdout)
-    print(cp2.stdout)
-    if not ok2:
-        sys.stderr.write(cp2.stderr or "")
-    print()
-
-    print("=== Testing General Inference - document_qa ===")
-    cmd3 = [
-        "curl",
-        "-s",
-        "-m",
-        "5",
-        "-X",
-        "POST",
-        "http://localhost:8004/general_inference/document_qa",
-        "-H",
-        "Content-Type: multipart/form-data",
-        "-F",
-        "question=What is the title?",
-        "-F",
-        "document_file=@./sample_data/test_pdf.png",
-        "-F",
-        'gen_kwargs={"max_answer_len": 32}',
-    ]
-    cp3 = run(cmd3, capture_output=True, check=False)
-    ok3 = cp3.returncode == 0 and bool(cp3.stdout)
-    print()
-    print(cp3.stdout)
-
-    def _has_error(text: str) -> bool:
-        try:
-            data = json.loads(text)
-            if isinstance(data, dict) and (data.get("error") or data.get("detail")):
-                return True
-        except json.JSONDecodeError:
-            pass
-        return False
-
-    failed = (not ok1) or (not ok2) or (not ok3) or _has_error(cp1.stdout) or _has_error(cp2.stdout) or _has_error(cp3.stdout)
-    # failed = (not ok3) or _has_error(cp3.stdout)
-    return not failed
-
-
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run and test ALFIE services (Python replacement for test_services.sh)")
-    parser.add_argument("target", nargs="?", default="all", choices=["all", "web", "tabular", "vision", "general"], help="Which services to run and test")
+    parser = argparse.ArgumentParser(
+        description="Run and test ALFIE services (Python replacement for test_services.sh)"
+    )
+    parser.add_argument(
+        "target",
+        nargs="?",
+        default="all",
+        choices=["all", "webfromfile", "webfromurl", "tabular", "vision", "im2web"],
+        help="Which services to run and test",
+    )
     args = parser.parse_args()
 
     targets = [args.target] if args.target != "all" else list(SERVICES.keys())
@@ -413,26 +401,28 @@ def main() -> int:
             port = SERVICES[name]["port"]
             if name == "general":
                 if not wait_for_general_ready(timeout_seconds=GENERAL_READY_TIMEOUT_S):
-                    print(f"Warning: Service {name} on port {port} may not be ready (health not ready).")
+                    print(
+                        f"Warning: Service {name} on port {port} may not be ready (health not ready)."
+                    )
                 continue
             if not wait_for_port(port, timeout_seconds=DEFAULT_READY_TIMEOUT_S):
                 print(f"Warning: Service {name} on port {port} may not be ready.")
 
         # Run tests mirroring the shell script
-        if "web" in targets:
+        if "webfromfile" in targets:
             test_web()
-            # test_web_url_guidelines()
+
+        if "webfromhtml" in targets:
+            test_web_url_guidelines()
+
+        if "im2web" in targets:
+            test_image_to_website()
 
         if "tabular" in targets:
             test_tabular()
 
         if "vision" in targets:
             test_vision()
-
-        if "general" in targets:
-            if not test_general():
-                print("General inference tests failed.")
-                return 1
 
         print("=== All tests completed ===")
         return 0
@@ -443,5 +433,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

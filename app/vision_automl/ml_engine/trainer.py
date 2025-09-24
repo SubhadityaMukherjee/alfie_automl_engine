@@ -1,5 +1,5 @@
 import time
-from typing import Any, Optional, Dict
+from typing import Any, Dict, Optional
 
 import lightning as L
 import torch
@@ -9,14 +9,15 @@ from tqdm import tqdm
 
 class EarlyStopping:
     """Simple early stopping callback based on monitored metric."""
+
     def __init__(
         self, monitor: str = "val_loss", patience: int = 3, min_delta: float = 0.0
     ):
-        self.monitor:str = monitor
-        self.patience:int = patience
-        self.min_delta:float = min_delta
-        self.best:float = float("inf")
-        self.counter:int = 0
+        self.monitor: str = monitor
+        self.patience: int = patience
+        self.min_delta: float = min_delta
+        self.best: float = float("inf")
+        self.counter: int = 0
 
     def on_epoch_end(
         self, trainer: "FabricTrainer", epoch: int, logs: dict[str, float]
@@ -40,19 +41,20 @@ class EarlyStopping:
 
 class FabricTrainer:
     """Minimal trainer using Lightning Fabric for classification tasks."""
+
     def __init__(
         self,
         datamodule,
         model_class,
-        model_kwargs: dict[str, int] |None = None,
+        model_kwargs: dict[str, int] | None = None,
         optimizer_class=optim.AdamW,
         optimizer_kwargs: Optional[Dict[str, Any]] = None,
         loss_fn: nn.Module = nn.CrossEntropyLoss(),
         lr: float = 0.001,
         epochs: int = 1,
-        time_limit: float|None = None,
+        time_limit: float | None = None,
         device: str = "auto",
-        callbacks: list[Any]|None = None,
+        callbacks: list[Any] | None = None,
         input_dtype: torch.dtype = torch.float32,
         target_dtype: torch.dtype = torch.long,
     ):
