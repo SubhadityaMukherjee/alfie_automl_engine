@@ -70,4 +70,4 @@ uv add --dev ruff
 - Uploads are saved under `uploaded_data/`.
 - AutoML artifacts (from training) are written alongside the uploaded session folder in `automl_data_path/`.
 
-You can set environment variables inline when running commands, or via a `.env` file in the project root.
+You can set environment variables via the `.env` file in the project root.
