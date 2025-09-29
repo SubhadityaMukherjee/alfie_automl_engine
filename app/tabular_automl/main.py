@@ -16,7 +16,7 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.core.chat_handler import ChatHandlerOllama
+from app.core.chat_handler import ChatHandler
 from app.tabular_automl.modules import AutoMLTrainer
 from app.tabular_automl.services import (
     create_session_directory,
@@ -40,7 +40,7 @@ TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "http://localhost:8001")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize resources
-    await ChatHandlerOllama.init()
+    await ChatHandler.init()
     yield
     # Cleanup resources
     pass

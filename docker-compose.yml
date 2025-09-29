@@ -1,76 +1,61 @@
+x-common-service: &common-service
+  build:
+    context: .
+    dockerfile: app/Dockerfile
+  env_file: ".env"
+  depends_on:
+    ollama:
+      condition: service_healthy
+  environment:
+    - OLLAMA_HOST=http://ollama:${OLLAMA_PORT}
+  restart: always
+  volumes:
+    - ./:/app
+
 services:
-  website:
-    build:
-      context: .
-      dockerfile: app/Dockerfile
-    container_name: alfie_website_accessibility
-    command: bash -lc "uv run uvicorn app.website_accessibility.main:app --host 0.0.0.0 --port 8000"
+  automlplus:
+    <<: *common-service
+    container_name: alfie_automlplus
+    command: uv run uvicorn app.automlplus.main:app --reload --host 0.0.0.0 --port ${AUTOML_PLUS_PORT}
     ports:
-      - "8000:8000"
-    environment:
-      - JINJAPATH=/app/app/core/prompt_templates
-      - BACKEND_URL=http://localhost:8000
-      - OLLAMA_HOST=http://ollama:11434
-      - DATABASE_URL=sqlite:////data/automl_sessions.db
+      - "${AUTOML_PLUS_PORT}:${AUTOML_PLUS_PORT}"
     volumes:
-      - ./:/app
-      - website_data:/data
-      - website_venv:/app/.venv
-    depends_on:
-      - ollama
+      - automlplus_data:/data
+      - automlplus_venv:/app/.venv
 
   tabular:
-    build:
-      context: .
-      dockerfile: app/Dockerfile
-    container_name: alfie_tabular_automl
-    command: bash -lc "uv run uvicorn app.tabular_automl.main:app --host 0.0.0.0 --port 8001"
+    <<: *common-service
+    container_name: alfie_automl_tabular
+    command: uv run uvicorn app.tabular_automl.main:app --reload --host 0.0.0.0 --port ${TABULAR_AUTOML_PORT}
     ports:
-      - "8001:8001"
-    environment:
-      - BACKEND_URL=http://localhost:8001
-      - OLLAMA_HOST=http://ollama:11434
-      - DATABASE_URL=sqlite:////data/automl_sessions.db
+      - "${TABULAR_AUTOML_PORT}:${TABULAR_AUTOML_PORT}"
     volumes:
-      - ./:/app
       - tabular_data:/data
       - tabular_venv:/app/.venv
-    depends_on:
-      - ollama
 
   vision:
-    build:
-      context: .
-      dockerfile: app/Dockerfile
-    container_name: alfie_vision_automl
-    command: bash -lc "uv run uvicorn app.vision_automl.main:app --host 0.0.0.0 --port 8002"
+    <<: *common-service
+    container_name: alfie_automl_vision
+    command: uv run uvicorn app.vision_automl.main:app --reload --host 0.0.0.0 --port ${VISION_AUTOML_PORT}
     ports:
-      - "8002:8002"
-    environment:
-      - BACKEND_URL=http://localhost:8002
-      - OLLAMA_HOST=http://ollama:11434
-      - DATABASE_URL=sqlite:////data/automl_sessions.db
+      - "${VISION_AUTOML_PORT}:${VISION_AUTOML_PORT}"
     volumes:
-      - ./:/app
       - vision_data:/data
       - vision_venv:/app/.venv
-    depends_on:
-      - ollama
 
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
     ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
+      - "${OLLAMA_PORT}:${OLLAMA_PORT}"
+
 
 volumes:
-  website_data:
-  tabular_data:
-  vision_data:
   ollama_data:
-  website_venv:
-  tabular_venv:
+  vision_data:
+  tabular_data:
+  automlplus_data:
   vision_venv:
+  tabular_venv:
+  automlplus_venv:
 
