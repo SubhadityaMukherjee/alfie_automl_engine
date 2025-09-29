@@ -1,54 +1,83 @@
-x-common-service: &common-service
-  build:
-    context: .
-    dockerfile: app/Dockerfile
-  env_file: ".env"
-  depends_on:
-    ollama:
-      condition: service_healthy
-  environment:
-    - OLLAMA_HOST=http://ollama:${OLLAMA_PORT}
-  restart: always
-  volumes:
-    - ./:/app
-
 services:
   automlplus:
-    <<: *common-service
+    build:
+      context: .
+      dockerfile: app/Dockerfile
     container_name: alfie_automlplus
-    command: uv run uvicorn app.automlplus.main:app --reload --host 0.0.0.0 --port ${AUTOML_PLUS_PORT}
+    command: bash -lc "uv run uvicorn app.automlplus.main:app --reload --host 0.0.0.0 --port ${AUTOML_PLUS_PORT}"
     ports:
       - "${AUTOML_PLUS_PORT}:${AUTOML_PLUS_PORT}"
+    env_file: ".env"
     volumes:
+      - ./:/app
       - automlplus_data:/data
       - automlplus_venv:/app/.venv
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    restart: always
 
   tabular:
-    <<: *common-service
+    build:
+      context: .
+      dockerfile: app/Dockerfile
     container_name: alfie_automl_tabular
-    command: uv run uvicorn app.tabular_automl.main:app --reload --host 0.0.0.0 --port ${TABULAR_AUTOML_PORT}
+    command: bash -lc "uv run uvicorn app.tabular_automl.main:app --reload --host 0.0.0.0 --port ${TABULAR_AUTOML_PORT}"
     ports:
       - "${TABULAR_AUTOML_PORT}:${TABULAR_AUTOML_PORT}"
+    env_file: ".env"
     volumes:
+      - ./:/app
       - tabular_data:/data
       - tabular_venv:/app/.venv
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    restart: always
 
   vision:
-    <<: *common-service
+    build:
+      context: .
+      dockerfile: app/Dockerfile
     container_name: alfie_automl_vision
-    command: uv run uvicorn app.vision_automl.main:app --reload --host 0.0.0.0 --port ${VISION_AUTOML_PORT}
+    command: bash -lc "uv run uvicorn app.vision_automl.main:app --reload --host 0.0.0.0 --port ${VISION_AUTOML_PORT}"
     ports:
       - "${VISION_AUTOML_PORT}:${VISION_AUTOML_PORT}"
+    env_file: ".env"
     volumes:
+      - ./:/app
       - vision_data:/data
       - vision_venv:/app/.venv
+    depends_on:
+      - ollama
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    restart: always
 
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
     ports:
-      - "${OLLAMA_PORT}:${OLLAMA_PORT}"
-
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./entrypoint.sh:/entrypoint.sh
+    entrypoint: ["/usr/bin/bash", "/entrypoint.sh"]
+    pull_policy: always
+    tty: true
+    restart: always
+    healthcheck:
+      test: 
+        - "CMD-SHELL"
+        - |
+          test -f /tmp/ollama_ready && \
+          bash -c '</dev/tcp/localhost/11434'  # Checks if Ollama is accepting connections
+      interval: 10s
+      timeout: 10s
+      retries: 100
+      start_period: 10s
 
 volumes:
   ollama_data:
@@ -58,4 +87,5 @@ volumes:
   vision_venv:
   tabular_venv:
   automlplus_venv:
+
 
