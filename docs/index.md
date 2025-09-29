@@ -64,8 +64,10 @@ uv add --dev ruff
 ```
 
 ## Configuration
+- Copy the `.env.template` to `.env` and fill in whatever is missing
 - `DATABASE_URL` (optional): SQLAlchemy connection string. Default is `sqlite:///automl_sessions.db` created at repo root.
+- Change the ports if needed
 - Uploads are saved under `uploaded_data/`.
 - AutoML artifacts (from training) are written alongside the uploaded session folder in `automl_data_path/`.
 
-You can set environment variables inline when running commands, or via a `.env` file in the project root.
+You can set environment variables via the `.env` file in the project root.

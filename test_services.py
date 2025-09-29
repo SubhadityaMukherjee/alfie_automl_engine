@@ -8,6 +8,10 @@ import subprocess
 import sys
 import time
 from typing import Dict, List
+from dotenv import find_dotenv, load_dotenv
+
+load_dotenv(find_dotenv)
+
 
 PID_FILE = "processes.pid"
 
@@ -16,27 +20,27 @@ SERVICES = {
     "webfromfile": {
         "port": 8000,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": "http://localhost:8000",
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})"
     },
     "webfromurl": {
         "port": 8000,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": "http://localhost:8000",
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})"
     },
     "im2web": {
         "port": 8000,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": "http://localhost:8000",
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})"
     },
     "tabular": {
         "port": 8001,
         "uvicorn_target": "app.tabular_automl.main:app",
-        "base_url": "http://localhost:8001",
+        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})"
     },
     "vision": {
         "port": 8002,
         "uvicorn_target": "app.vision_automl.main:app",
-        "base_url": "http://localhost:8002",
+        "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT',8002)})"
     },
 }
 
