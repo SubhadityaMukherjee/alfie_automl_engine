@@ -13,10 +13,10 @@ UPLOAD_ROOT = Path("uploaded_data")
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 
-def create_session_directory() -> Tuple[str, Path]:
+def create_session_directory(upload_root = UPLOAD_ROOT) -> Tuple[str, Path]:
     """Create and return a new session id and directory path."""
     session_id = str(uuid.uuid4())
-    session_dir = UPLOAD_ROOT / session_id
+    session_dir = upload_root / session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     return session_id, session_dir
 
@@ -45,8 +45,8 @@ def load_table(file_path: Path) -> pd.DataFrame:
 def validate_tabular_inputs(
     train_path: Path,
     target_column_name: str,
-    time_stamp_column_name: Optional[str],
-    task_type: str,
+    time_stamp_column_name: Optional[str] = None,
+    task_type: str = "classification",
 ) -> Optional[str]:
     """Validate required columns and task type for tabular training."""
     try:

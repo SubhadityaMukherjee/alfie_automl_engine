@@ -231,7 +231,8 @@ def test_web_url_guidelines() -> None:
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
-        "url=https://alfie-project.eu",
+        # "url=https://alfie-project.eu",
+        "url=https://aiod.eu",
         # "-F",
         # "extra_file_input=@./sample_data/wcag_guidelines.txt",
     ]
@@ -241,7 +242,7 @@ def test_web_url_guidelines() -> None:
         print(json.dumps(data, indent=2, ensure_ascii=False))
     else:
         print(cp.stdout)
-    print()
+    print("there was data")
 
 
 def parse_json(text: str) -> dict:
@@ -412,7 +413,7 @@ def main() -> int:
         if "webfromfile" in targets:
             test_web()
 
-        if "webfromhtml" in targets:
+        if "webfromurl" in targets:
             test_web_url_guidelines()
 
         if "im2web" in targets:
