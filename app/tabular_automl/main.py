@@ -173,11 +173,11 @@ def find_best_model_for_mvp(
         None, description="Timestamp column (required for time-series tasks)"
     ),
     task_type: str = Form(
-        ...,
+        "classification",
         description="Type of ML task",
         examples=["classification", "regression", "time_series"],
     ),
-    time_budget: int = Form(..., description="Time budget in seconds"),
+    time_budget: int = Form(10, description="Time budget in seconds"),
 ) -> JSONResponse:
     """
         Create a session, upload data, validate inputs, store metadata,
