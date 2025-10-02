@@ -37,6 +37,12 @@ SERVICES = {
         "uvicorn_target": "app.tabular_automl.main:app",
         "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})"
     },
+    "tabularmvp": {
+        "port": 8001,
+        "uvicorn_target": "app.tabular_automl.main:app",
+        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})"
+    },
+
     "vision": {
         "port": 8002,
         "uvicorn_target": "app.vision_automl.main:app",
@@ -255,6 +261,33 @@ def parse_json(text: str) -> dict:
     except json.JSONDecodeError:
         return {}
 
+def test_tabularmvp() -> None:
+    print("=== Testing AutoML Tabular - get_user_input ===")
+    cmd = [
+        "curl",
+        "-s",
+        "-X",
+        "POST",
+        "http://localhost:8001/automl_tabular/get_user_input/",
+        "-H",
+        "Content-Type: multipart/form-data",
+        "-F",
+        "train_csv=@./sample_data/knot_theory/train.csv",
+        "-F",
+        "target_column_name=signature",
+        "-F",
+        "task_type=classification",
+        "-F",
+        "time_budget=30",
+    ]
+    cp = run(cmd, capture_output=True, check=False)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
+    print()
+
 
 def test_tabular() -> None:
     print("=== Testing AutoML Tabular - get_user_input ===")
@@ -370,7 +403,7 @@ def main() -> int:
         "target",
         nargs="?",
         default="all",
-        choices=["all", "webfromfile", "webfromurl", "tabular", "vision", "im2web"],
+        choices=["all", "webfromfile", "webfromurl", "tabular", "vision", "im2web", "tabularmvp"],
         help="Which services to run and test",
     )
     args = parser.parse_args()
@@ -425,6 +458,9 @@ def main() -> int:
 
         if "tabular" in targets:
             test_tabular()
+
+        if "tabular" in targets:
+            test_tabularmvp()
 
         if "vision" in targets:
             test_vision()
