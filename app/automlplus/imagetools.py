@@ -37,8 +37,8 @@ class ImagePromptRunner:
                     jinja_environment, "image_to_website_prompt.txt"
                 )
                 messages.append({"role": "system", "content": system_prompt})
-            except Exception:
-                pass
+            except Exception as e:
+                raise e
         messages.append({"role": "user", "content": prompt, "images": [image_b64]})
         return messages
 

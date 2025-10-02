@@ -184,7 +184,7 @@ async def analyze_web_accessibility_and_readability(
                 await file.close()
             except Exception:
                 pass
-    elif url:
+    elif url is not None:
         try:
             resp = requests.get(url, timeout=timeout)
             resp.raise_for_status()

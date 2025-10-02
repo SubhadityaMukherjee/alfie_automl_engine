@@ -15,8 +15,15 @@ DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE: float = float(
 class AutoMLTrainer:
     """Wrapper around AutoGluon Tabular training routines."""
 
-    def __init__(self, save_model_path):
+    def __init__(
+        self,
+        save_model_path,
+        DatasetClass=TabularDataset,
+        PredictorClass=TabularPredictor,
+    ):
         self.save_model_path = save_model_path
+        self.DatasetClass = DatasetClass
+        self.PredictorClass = PredictorClass
 
     def train(
         self,
@@ -25,31 +32,24 @@ class AutoMLTrainer:
         target_column: str,
         time_limit: int,
     ) -> pd.DataFrame | str:
-        """Train AutoGluon Tabular and return leaderboard or error.
-
-        If `test_df` is None, performs an 80/20 split on `train_df`.
-        Returns a leaderboard DataFrame or an error string.
-        """
-
+        """Train AutoGluon Tabular and return leaderboard or error."""
         final_train_df, final_test_df = self.train_test_split(
             test_df=test_df, train_df=train_df
         )
 
-        train_dataset = TabularDataset(final_train_df)
-        test_dataset = TabularDataset(final_test_df)
+        train_dataset = self.DatasetClass(final_train_df)
+        test_dataset = self.DatasetClass(final_test_df)
 
-        predictor = TabularPredictor(
+        predictor = self.PredictorClass(
             label=target_column, path=self.save_model_path
         ).fit(train_data=train_dataset, time_limit=time_limit)
 
         try:
-            leaderboard = predictor.leaderboard(test_dataset)
+            return predictor.leaderboard(test_dataset)
         except Exception as e:
             return str(e)
-        return leaderboard
 
     def train_test_split(self, test_df: Optional[pd.DataFrame], train_df: pd.DataFrame):
-        """Split data if `test_df` is None, else return provided splits."""
         if test_df is None:
             final_train_df = train_df.sample(
                 frac=DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE, random_state=42
