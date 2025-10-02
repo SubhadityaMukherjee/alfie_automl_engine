@@ -13,7 +13,7 @@ UPLOAD_ROOT = Path("uploaded_data")
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 
-def create_session_directory(upload_root = UPLOAD_ROOT) -> Tuple[str, Path]:
+def create_session_directory(upload_root=UPLOAD_ROOT) -> Tuple[str, Path]:
     """Create and return a new session id and directory path."""
     session_id = str(uuid.uuid4())
     session_dir = upload_root / session_id

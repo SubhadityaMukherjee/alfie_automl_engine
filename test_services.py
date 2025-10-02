@@ -10,7 +10,7 @@ import time
 from typing import Dict, List
 from dotenv import find_dotenv, load_dotenv
 
-load_dotenv(find_dotenv)
+load_dotenv(find_dotenv())
 
 
 PID_FILE = "processes.pid"
@@ -37,6 +37,12 @@ SERVICES = {
         "uvicorn_target": "app.tabular_automl.main:app",
         "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})"
     },
+    "tabularmvp": {
+        "port": 8001,
+        "uvicorn_target": "app.tabular_automl.main:app",
+        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})"
+    },
+
     "vision": {
         "port": 8002,
         "uvicorn_target": "app.vision_automl.main:app",
@@ -255,7 +261,36 @@ def parse_json(text: str) -> dict:
     except json.JSONDecodeError:
         return {}
 
-
+def test_tabularmvp() -> None:
+    print("=== Testing AutoML Tabular - get_user_input ===")
+    cmd = [
+        "curl",
+        "-s",
+        "-X",
+        "POST",
+        "http://localhost:8001/automl_tabular/best_model_mvp/",
+        "-H",
+        "Content-Type: multipart/form-data",
+        "-F",
+        "train_file=@./sample_data/knot_theory/train.csv",
+        "-F",
+        "target_column_name=signature",
+        "-F",
+        "task_type=classification",
+        "-F",
+        "time_budget=10",
+    ]
+    cp = run(cmd, capture_output=True, check=False)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+        session_id = data.get("session_id")
+        if session_id:
+            print(f"Session stored in DB: {session_id}")
+    else:
+        print(cp.stdout)
+    print()
+  
 def test_tabular() -> None:
     print("=== Testing AutoML Tabular - get_user_input ===")
     cmd = [
@@ -273,7 +308,7 @@ def test_tabular() -> None:
         "-F",
         "task_type=classification",
         "-F",
-        "time_budget=30",
+        "time_budget=10",
     ]
     cp = run(cmd, capture_output=True, check=False)
     data = parse_json(cp.stdout or "")
@@ -370,7 +405,7 @@ def main() -> int:
         "target",
         nargs="?",
         default="all",
-        choices=["all", "webfromfile", "webfromurl", "tabular", "vision", "im2web"],
+        choices=["all", "webfromfile", "webfromurl", "tabular", "vision", "im2web", "tabularmvp"],
         help="Which services to run and test",
     )
     args = parser.parse_args()
@@ -425,6 +460,9 @@ def main() -> int:
 
         if "tabular" in targets:
             test_tabular()
+
+        if "tabularmvp" in targets:
+            test_tabularmvp()
 
         if "vision" in targets:
             test_vision()
