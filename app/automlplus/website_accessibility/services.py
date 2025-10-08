@@ -1,8 +1,9 @@
 import asyncio
 import json
 import re
+import os
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Dict, Iterable, List, cast
+from typing import Any, Dict, List
 
 from bs4 import BeautifulSoup
 
@@ -60,7 +61,20 @@ async def _process_single_chunk(
                 end_line=end,
             )
 
-            response_raw = await ChatHandler.chat(prompt, context=context, stream=False)
+            backend = os.getenv("MODEL_BACKEND", "ollama").lower()
+            model_env = os.getenv("WEB_ACCESSIBILITY_CHAT_MODEL")
+            # Default model depends on backend
+            if model_env and model_env.strip():
+                model = model_env
+            else:
+                model = "gpt-4o-mini" if backend == "azure" else "gemma3:4b"
+            response_raw = await ChatHandler.chat(
+                prompt,
+                context=context,
+                backend=backend,
+                model=model,
+                stream=False,
+            )
             response_text = response_raw if isinstance(response_raw, str) else ""
 
             score_match = re.search(

@@ -19,14 +19,20 @@ class AltTextChecker:
 
     @staticmethod
     def _resolve_model(model: str) -> str:
-        """Return a valid model string, falling back to DEFAULT_MODEL if invalid."""
+        """Return a valid model string, normalizing common aliases and falling back to default."""
         if not model or model.strip() == "":
             logger.error(
                 "Model parameter is empty or None, using default '%s'",
                 AltTextChecker.DEFAULT_MODEL,
             )
             return AltTextChecker.DEFAULT_MODEL
-        return model
+
+        candidate = model.strip()
+        # Normalize common Azure GPT-4o-mini aliases (e.g., 'gpt40-mini', 'gpt4o-mini')
+        lower = candidate.lower().replace(" ", "")
+        if lower in {"gpt40-mini", "gpt4o-mini"}:
+            return "gpt-4o-mini"
+        return candidate
 
     @staticmethod
     def _build_messages(
@@ -91,7 +97,11 @@ class AltTextChecker:
                 alt_text=alt_text,
             )
 
-            logger.info("Sending request to ollama with model: %s", model)
+            backend = os.getenv("MODEL_BACKEND", "ollama").lower()
+            # Choose a sane default model per backend if caller/env leaves default
+            if (not model or not model.strip()) and backend == "azure":
+                model = "gpt-4o-mini"
+            logger.info("Sending request to %s with model: %s", backend, model)
             # Redact base64 image data from logs to avoid printing large sensitive payloads
             logger.info(
                 "Messages structure (redacted): %s",
@@ -100,7 +110,7 @@ class AltTextChecker:
 
             response_content = ChatHandler.chat_sync_messages(
                 messages=messages,
-                backend="ollama",
+                backend=backend,
                 model=model,
             )
             return response_content
@@ -144,7 +154,7 @@ class ReadabilityAnalyzer:
         }
 
 
-def split_chunks(content: str, chunk_size: int) -> Tuple[List[str], List[int]]:
+def split_chunks(content: str, chunk_size: int) -> Tuple[List[str], List[Tuple[int, int]]]:
     """Split long content into chunks and track line ranges for each chunk."""
     lines = content.splitlines()
     line_offsets = [0]
