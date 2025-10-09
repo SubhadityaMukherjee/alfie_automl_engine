@@ -1,9 +1,7 @@
 import logging
 import os
-from typing import List
 
 from jinja2 import Environment  # type: ignore
-
 from app.automlplus.utils import ImageConverter
 from app.core.utils import render_template
 from app.core.chat_handler import ChatHandler
@@ -17,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ImagePromptRunner:
     """Run a VLM on an image and user-provided prompt."""
 
-    DEFAULT_MODEL = os.getenv("IMAGE_PROMPT_MODEL", "qwen2.5vl")
+    DEFAULT_MODEL:str = os.getenv("IMAGE_PROMPT_MODEL", "qwen2.5vl")
 
     @staticmethod
     def _resolve_model(model: str | None) -> str:
@@ -28,9 +26,9 @@ class ImagePromptRunner:
     @staticmethod
     def build_messages(
         jinja_environment: Environment | None, image_b64: str, prompt: str
-    ) -> List[dict]:
+    ) -> list[dict[str,str|list[str]|list[None]]]:
         # If a jinja environment is provided, try to render a default system prompt; otherwise minimal messages
-        messages: List[dict] = []
+        messages: list[dict[str,str|list[str]|list[None]]] = []
         if jinja_environment is not None:
             try:
                 system_prompt = render_template(
@@ -78,7 +76,7 @@ class ImagePromptRunner:
         prompt: str = "",
         model: str | None = None,
         jinja_environment: Environment | None = None,
-    ):
+    ) -> str:
         """Stream VLM output for an image+prompt interaction.
 
         Yields incremental text chunks.

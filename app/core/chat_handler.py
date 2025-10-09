@@ -263,7 +263,7 @@ class ChatHandler:
             return azure_messages
 
         azure_msgs = to_azure_messages(messages)
-        logger.debug(f"Azure message dict {azure_messages}")
+        logger.debug(f"Azure message dict {azure_msgs}")
         response = client.complete(model=model, messages=azure_msgs)
         return ChatHandler._extract_azure_text_from_response(response)
 
