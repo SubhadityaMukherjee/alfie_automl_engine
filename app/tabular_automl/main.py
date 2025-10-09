@@ -8,7 +8,6 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Optional
 from dotenv import find_dotenv, load_dotenv
 
 import pandas as pd
@@ -18,17 +17,17 @@ from pydantic import BaseModel
 
 from app.core.chat_handler import ChatHandler
 from app.tabular_automl.modules import AutoMLTrainer
+from typing import Annotated
 from app.tabular_automl.services import (
     create_session_directory,
-    get_session,
     load_table,
     save_upload,
     store_session_in_db,
     validate_tabular_inputs,
 )
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 load_dotenv(find_dotenv())
 
@@ -52,132 +51,14 @@ class SessionRequest(BaseModel):
 
     session_id: str
 
-
-@app.post("/automl_tabular/get_user_input/")
-async def get_user_input(
-    train_file: UploadFile = File(
-        ..., description="Training dataset file (CSV/Parquet)"
-    ),
-    test_file: Optional[UploadFile] = File(
-        None, description="Optional test dataset file (CSV/Parquet)"
-    ),
-    target_column_name: str = Form(..., description="Name of the target column"),
-    time_stamp_column_name: Optional[str] = Form(
-        None, description="Timestamp column (required for time-series tasks)"
-    ),
-    task_type: str = Form(
-        ...,
-        description="Type of ML task",
-        examples=["classification", "regression", "time_series"],
-    ),
-    time_budget: int = Form(..., description="Time budget in seconds"),
-) -> JSONResponse:
-    """Create a session, upload data, validate inputs, and store metadata."""
-    session_id, session_dir = create_session_directory()
-
-    if not train_file.filename.endswith((".csv", ".parquet", ".tsv")):
-        return JSONResponse(
-            status_code=400,
-            content={"error": "Training file is invalid, must be csv/tsv/parquet"},
-        )
-
-    try:
-        provided_filename = train_file.filename or "train.csv"
-        train_suffix = Path(provided_filename).suffix or ".csv"
-        train_path = session_dir / f"train{train_suffix}"
-        save_upload(train_file, train_path)
-
-        test_path = None
-        if test_file:
-            test_filename = test_file.filename or "test.csv"
-            test_suffix = Path(test_filename).suffix or ".csv"
-            test_path = session_dir / f"test{test_suffix}"
-            save_upload(test_file, test_path)
-
-        validation_error = validate_tabular_inputs(
-            train_path=train_path,
-            target_column_name=target_column_name,
-            time_stamp_column_name=time_stamp_column_name,
-            task_type=task_type,
-        )
-        if validation_error:
-            return JSONResponse(status_code=400, content={"error": validation_error})
-
-        store_session_in_db(
-            session_id=session_id,
-            train_path=train_path,
-            test_path=test_path,
-            target_column_name=target_column_name,
-            time_stamp_column_name=time_stamp_column_name,
-            task_type=task_type,
-            time_budget=time_budget,
-        )
-
-        return JSONResponse(
-            status_code=200,
-            content={"message": "Session stored in DB.", "session_id": session_id},
-        )
-    except Exception as e:
-        return JSONResponse(status_code=500, content={"error": str(e)})
-
-
-@app.post("/automl_tabular/find_best_model/")
-def find_best_model(request: SessionRequest):
-    """Train AutoML on stored session data and return leaderboard."""
-    session_record = get_session(request.session_id)
-
-    if not session_record:
-        return JSONResponse(status_code=404, content={"error": "Session not found"})
-
-    save_model_path = (
-        Path(str(session_record.train_file_path)).parent / "automl_data_path"
-    )
-    os.makedirs(save_model_path, exist_ok=True)
-
-    trainer = AutoMLTrainer(save_model_path=save_model_path)
-
-    # Load dataframes
-    train_df = load_table(Path(session_record.train_file_path))
-    test_df = (
-        load_table(Path(session_record.test_file_path))
-        if session_record.test_file_path
-        else None
-    )
-
-    leaderboard = trainer.train(
-        train_df=train_df,
-        test_df=test_df,
-        target_column=str(session_record.target_column),
-        time_limit=int(session_record.time_budget),
-    )
-
-    return JSONResponse(
-        content=(
-            leaderboard.to_markdown()
-            if isinstance(leaderboard, pd.DataFrame)
-            else leaderboard
-        )
-    )
-
-
 @app.post("/automl_tabular/best_model_mvp/")
-def find_best_model_for_mvp(
-    train_file: UploadFile = File(
-        ..., description="Training dataset file (CSV/TSV/Parquet)"
-    ),
-    test_file: Optional[UploadFile] = File(
-        None, description="Optional test dataset file (CSV/TSV/Parquet)"
-    ),
-    target_column_name: str = Form(..., description="Name of the target column"),
-    time_stamp_column_name: Optional[str] = Form(
-        None, description="Timestamp column (required for time-series tasks)"
-    ),
-    task_type: str = Form(
-        "classification",
-        description="Type of ML task",
-        examples=["classification", "regression", "time_series"],
-    ),
-    time_budget: int = Form(10, description="Time budget in seconds"),
+async def find_best_model_for_mvp(
+    train_file: Annotated[UploadFile, File(..., description="Training dataset file (CSV/TSV/Parquet)")],
+    test_file: Annotated[UploadFile | None, File(..., description="Optional test dataset file (CSV/TSV/Parquet)")] = None,
+    target_column_name: Annotated[str, Form(..., description="Name of the target column")] = "",
+    time_stamp_column_name: Annotated[str | None, Form(..., description="Timestamp column (required for time-series tasks)")] = None,
+    task_type: Annotated[str, Form(..., description="Type of ML task", examples=["classification", "regression", "time_series"])] = "classification",
+    time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10
 ) -> JSONResponse:
     """
         Create a session, upload data, validate inputs, store metadata,
@@ -396,16 +277,19 @@ def find_best_model_for_mvp(
         session_id, session_dir = create_session_directory()
 
         #  Validate training file type
-        if not train_file.filename.endswith((".csv", ".tsv", ".parquet")):
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Training file is invalid, must be CSV/TSV/Parquet"},
-            )
+        if train_file.filename is not None:
+            if not train_file.filename.endswith((".csv", ".tsv", ".parquet")):
+                logger.error("Input file type is wrong")
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "Training file is invalid, must be CSV/TSV/Parquet"},
+                )
 
         #  Save uploaded files
         provided_filename = train_file.filename or "train.csv"
         train_suffix = Path(provided_filename).suffix or ".csv"
         train_path = session_dir / f"train{train_suffix}"
+        logger.debug(f"Train path {train_path}")
         save_upload(train_file, train_path)
 
         test_path = None
@@ -414,6 +298,7 @@ def find_best_model_for_mvp(
             test_suffix = Path(test_filename).suffix or ".csv"
             test_path = session_dir / f"test{test_suffix}"
             save_upload(test_file, test_path)
+            logger.debug(f"Test path {test_path}")
 
         #  Validate tabular inputs
         validation_error = validate_tabular_inputs(
@@ -422,7 +307,9 @@ def find_best_model_for_mvp(
             time_stamp_column_name=time_stamp_column_name,
             task_type=task_type,
         )
+        logger.debug("Tabular input validated")
         if validation_error:
+            logger.error(f"Tabular info wrong {validation_error}")
             return JSONResponse(status_code=400, content={"error": validation_error})
 
         #  Store session metadata in DB
@@ -435,15 +322,19 @@ def find_best_model_for_mvp(
             task_type=task_type,
             time_budget=time_budget,
         )
+        logger.debug("session stored in db")
 
         #  Train AutoML
         save_model_path = session_dir / "automl_data_path"
         os.makedirs(save_model_path, exist_ok=True)
+        logger.debug("Temp model path created")
 
         trainer = AutoMLTrainer(save_model_path=save_model_path)
+        logger.debug("Tabular Trainer created")
 
         train_df = load_table(train_path)
         test_df = load_table(test_path) if test_path else None
+        logger.debug("Tables loaded")
 
         leaderboard = trainer.train(
             train_df=train_df,
@@ -451,6 +342,7 @@ def find_best_model_for_mvp(
             target_column=target_column_name,
             time_limit=int(time_budget),
         )
+        logger.debug(f"Found best model {leaderboard}")
 
         #  Return leaderboard + session info
         return JSONResponse(
@@ -467,4 +359,5 @@ def find_best_model_for_mvp(
         )
 
     except Exception as e:
+        logger.error(f"Could not find best model {e}")
         return JSONResponse(status_code=500, content={"error": str(e)})

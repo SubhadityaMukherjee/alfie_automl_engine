@@ -1,5 +1,8 @@
 import ollama
 from jinja2 import Environment
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def render_template(
@@ -12,5 +15,5 @@ def render_template(
     try:
         return template.render(**kwargs)
     except Exception as e:
-        print(e)
+        logger.exception("Template render failed: %s", str(e))
         return ""

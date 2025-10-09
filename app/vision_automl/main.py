@@ -31,7 +31,6 @@ from app.vision_automl.ml_engine import (
     FabricTrainer,
 )
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 load_dotenv(find_dotenv())

@@ -135,7 +135,8 @@ async def run_accessibility_pipeline(
 ) -> List[ChunkResult]:
     """Split HTML into chunks and process them concurrently with a semaphore."""
     chunks, ranges = split_chunks(content, chunk_size)
-    print(f"Processing the website in {len(chunks)} chunks")
+    import logging
+    logging.getLogger(__name__).info("Processing the website in %d chunks", len(chunks))
     sem = asyncio.Semaphore(concurrency)
     tasks = [
         _process_single_chunk(

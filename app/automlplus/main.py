@@ -22,8 +22,7 @@ from app.automlplus.website_accessibility.services import (
 from app.core.chat_handler import ChatHandler
 import json
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Module logger
 logger = logging.getLogger(__name__)
 
 load_dotenv(find_dotenv())

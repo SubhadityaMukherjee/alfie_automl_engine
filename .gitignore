@@ -1,3 +1,4 @@
+*.log
 processes.pid
 .DS_store
 .webui_secret_key
