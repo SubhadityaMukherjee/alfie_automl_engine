@@ -50,5 +50,3 @@ def _configure_logging_once() -> None:
 
 # Configure logging on import
 _configure_logging_once()
-
-

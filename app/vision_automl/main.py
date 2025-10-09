@@ -25,11 +25,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from torch import nn, optim
 
 from app.core.chat_handler import ChatHandler
-from app.vision_automl.ml_engine import (
-    ClassificationData,
-    ClassificationModel,
-    FabricTrainer,
-)
+from app.vision_automl.ml_engine import (ClassificationData,
+                                         ClassificationModel, FabricTrainer)
 
 logger = logging.getLogger(__name__)
 

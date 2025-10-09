@@ -8,23 +8,19 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
-from dotenv import find_dotenv, load_dotenv
+from typing import Annotated
 
 import pandas as pd
+from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.core.chat_handler import ChatHandler
 from app.tabular_automl.modules import AutoMLTrainer
-from typing import Annotated
-from app.tabular_automl.services import (
-    create_session_directory,
-    load_table,
-    save_upload,
-    store_session_in_db,
-    validate_tabular_inputs,
-)
+from app.tabular_automl.services import (create_session_directory, load_table,
+                                         save_upload, store_session_in_db,
+                                         validate_tabular_inputs)
 
 logger = logging.getLogger(__name__)
 
@@ -51,14 +47,32 @@ class SessionRequest(BaseModel):
 
     session_id: str
 
+
 @app.post("/automl_tabular/best_model_mvp/")
 async def find_best_model_for_mvp(
-    train_file: Annotated[UploadFile, File(..., description="Training dataset file (CSV/TSV/Parquet)")],
-    test_file: Annotated[UploadFile | None, File(..., description="Optional test dataset file (CSV/TSV/Parquet)")] = None,
-    target_column_name: Annotated[str, Form(..., description="Name of the target column")] = "",
-    time_stamp_column_name: Annotated[str | None, Form(..., description="Timestamp column (required for time-series tasks)")] = None,
-    task_type: Annotated[str, Form(..., description="Type of ML task", examples=["classification", "regression", "time_series"])] = "classification",
-    time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10
+    train_file: Annotated[
+        UploadFile, File(..., description="Training dataset file (CSV/TSV/Parquet)")
+    ],
+    test_file: Annotated[
+        UploadFile | None,
+        File(..., description="Optional test dataset file (CSV/TSV/Parquet)"),
+    ] = None,
+    target_column_name: Annotated[
+        str, Form(..., description="Name of the target column")
+    ] = "",
+    time_stamp_column_name: Annotated[
+        str | None,
+        Form(..., description="Timestamp column (required for time-series tasks)"),
+    ] = None,
+    task_type: Annotated[
+        str,
+        Form(
+            ...,
+            description="Type of ML task",
+            examples=["classification", "regression", "time_series"],
+        ),
+    ] = "classification",
+    time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10,
 ) -> JSONResponse:
     """
         Create a session, upload data, validate inputs, store metadata,
@@ -282,7 +296,9 @@ async def find_best_model_for_mvp(
                 logger.error("Input file type is wrong")
                 return JSONResponse(
                     status_code=400,
-                    content={"error": "Training file is invalid, must be CSV/TSV/Parquet"},
+                    content={
+                        "error": "Training file is invalid, must be CSV/TSV/Parquet"
+                    },
                 )
 
         #  Save uploaded files

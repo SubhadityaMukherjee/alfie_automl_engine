@@ -6,14 +6,16 @@ regular and streaming responses.
 """
 
 import asyncio
+import logging
 import os
 from typing import List
+
 from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import UserMessage, SystemMessage
+from azure.ai.inference.models import SystemMessage, UserMessage
 from azure.core.credentials import AzureKeyCredential
-import logging
 
 logger = logging.getLogger(__name__)
+
 
 class ChatQueue:
     """Async work queue for chat requests, supporting streaming and non-streaming calls."""
@@ -61,7 +63,9 @@ class ChatQueue:
     ):
         async with self.semaphore:
 
-            logger.debug(f"Submitted {message} message with backend {backend}, model {model}, stream {stream}")
+            logger.debug(
+                f"Submitted {message} message with backend {backend}, model {model}, stream {stream}"
+            )
             if stream:
 
                 async def stream_gen():
@@ -102,7 +106,9 @@ class ChatHandler:
 
     @staticmethod
     async def dispatch_stream(message, context, backend, model):
-        logger.debug(f"Dispatch Chat Stream to backend {backend} with {message}, {context}")
+        logger.debug(
+            f"Dispatch Chat Stream to backend {backend} with {message}, {context}"
+        )
         if backend.lower() == "ollama":
             async for chunk in ChatHandler._ollama_chat_stream(message, context, model):
                 yield chunk
@@ -115,7 +121,8 @@ class ChatHandler:
     @staticmethod
     async def _ollama_chat(message, context, model):
         from ollama import Client
-        chat = Client(timeout = 120).chat
+
+        chat = Client(timeout=120).chat
         logger.debug(f"Ollama client init")
 
         response = chat(
@@ -130,7 +137,8 @@ class ChatHandler:
     @staticmethod
     async def _ollama_chat_stream(message, context, model):
         from ollama import Client
-        chat = Client(timeout = 120).chat
+
+        chat = Client(timeout=120).chat
         logger.debug(f"Ollama client init stream")
         stream = chat(
             model=model,
@@ -168,7 +176,8 @@ class ChatHandler:
     @staticmethod
     def _ollama_chat_messages_sync(messages: List[dict], model: str) -> str:
         from ollama import Client
-        chat = Client(timeout = 300).chat
+
+        chat = Client(timeout=300).chat
         logger.debug(f"Ollama client cht synchronous init")
         response = chat(
             model=model,
@@ -190,14 +199,17 @@ class ChatHandler:
         if backend_lower == "ollama":
             return ChatHandler._ollama_chat_messages_stream_sync(messages, model)
         elif backend_lower == "azure":
-            raise NotImplementedError("Azure chat (messages stream) not implemented yet.")
+            raise NotImplementedError(
+                "Azure chat (messages stream) not implemented yet."
+            )
         else:
             raise ValueError(f"Unknown chat backend: {backend}")
 
     @staticmethod
     def _ollama_chat_messages_stream_sync(messages: List[dict], model: str):
         from ollama import Client
-        chat = Client(timeout = 300).chat
+
+        chat = Client(timeout=300).chat
         stream = chat(
             model=model,
             messages=messages,
@@ -273,9 +285,13 @@ class ChatHandler:
         endpoint = os.getenv("AZURE_OPENAI_ENDPOINT_LARGE_MODEL")
         api_key = os.getenv("AZURE_OPENAI_KEY")
         if not endpoint or not api_key:
-            raise RuntimeError("Missing AZURE_OPENAI_ENDPOINT_LARGE_MODEL or AZURE_OPENAI_KEY environment variables")
+            raise RuntimeError(
+                "Missing AZURE_OPENAI_ENDPOINT_LARGE_MODEL or AZURE_OPENAI_KEY environment variables"
+            )
         logger.debug(f"Endpoint and API Key Exsists")
-        return ChatCompletionsClient(endpoint=endpoint, credential=AzureKeyCredential(api_key))
+        return ChatCompletionsClient(
+            endpoint=endpoint, credential=AzureKeyCredential(api_key)
+        )
 
     @staticmethod
     async def _azure_chat(message, context, model):
@@ -287,8 +303,7 @@ class ChatHandler:
         ]
         loop = asyncio.get_event_loop()
         response = await loop.run_in_executor(
-            None,
-            lambda: client.complete(model=model, messages=messages)
+            None, lambda: client.complete(model=model, messages=messages)
         )
         logger.debug(f"Azure chat async works")
         return ChatHandler._extract_azure_text_from_response(response)
@@ -376,4 +391,3 @@ class ChatHandler:
             pass
         # Last resort: str(response)
         return str(response)
-

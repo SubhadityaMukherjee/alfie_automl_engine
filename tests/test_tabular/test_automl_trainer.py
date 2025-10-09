@@ -1,8 +1,8 @@
+import shutil
 import tempfile
 
 import pandas as pd
 import pytest
-import shutil
 
 from app.tabular_automl.modules import AutoMLTrainer
 

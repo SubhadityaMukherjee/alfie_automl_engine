@@ -1,26 +1,22 @@
 """FastAPI endpoints for website accessibility analysis and chat utilities."""
+
 import logging
 import os
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
 import requests
 from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
-from fastapi.responses import Response, JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
 from app.automlplus.imagetools import ImagePromptRunner
-from app.automlplus.website_accessibility.modules import (
-    AltTextChecker,
-    ReadabilityAnalyzer,
-)
-from typing import Annotated
+from app.automlplus.website_accessibility.modules import (AltTextChecker,
+                                                          ReadabilityAnalyzer)
 from app.automlplus.website_accessibility.services import (
-    extract_text_from_html_bytes,
-    run_accessibility_pipeline,
-    resolve_coroutines,
-)
+    extract_text_from_html_bytes, resolve_coroutines,
+    run_accessibility_pipeline)
 from app.core.chat_handler import ChatHandler
 
 # Module logger
@@ -63,10 +59,10 @@ def json_safe(data: Any) -> Any:
     elif isinstance(data, str):
         logger.debug("Escaping special characters in string for JSON safety")
         return (
-            data.replace('\\', '\\\\')
+            data.replace("\\", "\\\\")
             .replace('"', '\\"')
-            .replace('\n', '\\n')
-            .replace('\r', '\\r')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
         )
     else:
         return data
@@ -95,14 +91,18 @@ async def check_alt_text(
     """Evaluate provided alt text against the referenced image using an LLM."""
     logger.info(f"Checking alt text for image URL: {image_url}")
     try:
-        result: dict[str, Any] = AltTextChecker.check(jinja_environment, image_url, alt_text)
+        result: dict[str, Any] = AltTextChecker.check(
+            jinja_environment, image_url, alt_text
+        )
         logger.info("Alt-text evaluation completed successfully")
 
-        safe_result = json_safe({
-            "src": image_url,
-            "alt_text": alt_text,
-            "evaluation": result,
-        })
+        safe_result = json_safe(
+            {
+                "src": image_url,
+                "alt_text": alt_text,
+                "evaluation": result,
+            }
+        )
         return JSONResponse(content=safe_result)
     except Exception as e:
         logger.exception("Error during alt-text check: %s", e)
@@ -121,7 +121,9 @@ async def run_on_image(
 
     if image_file is None and not image_url:
         logger.error("Missing both image_file and image_url")
-        return JSONResponse({"error": "Provide image_file or image_url"}, status_code=400)
+        return JSONResponse(
+            {"error": "Provide image_file or image_url"}, status_code=400
+        )
 
     try:
         image_bytes: bytes | None = await image_file.read() if image_file else None
@@ -151,9 +153,15 @@ async def run_on_image(
 )
 async def run_on_image_stream(
     prompt: Annotated[str, Form(..., description="Prompt to apply on the image")] = "",
-    model: Annotated[str | None, Form(..., description="Model to apply on the image")] = None,
-    image_file: Annotated[UploadFile | None, File(..., description="Image file if not a URL")] = None,
-    image_url: Annotated[str | None, Form(..., description="Image URL if not a file but an URL")] = None,
+    model: Annotated[
+        str | None, Form(..., description="Model to apply on the image")
+    ] = None,
+    image_file: Annotated[
+        UploadFile | None, File(..., description="Image file if not a URL")
+    ] = None,
+    image_url: Annotated[
+        str | None, Form(..., description="Image URL if not a file but an URL")
+    ] = None,
 ) -> Response:
     """Stream a vision-language model's output on an image and prompt."""
     logger.info("Streaming model output for image prompt: %s", prompt)
@@ -194,11 +202,14 @@ async def run_on_image_stream(
         logger.exception("Error during image prompt streaming run: %s", e)
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
+
 @app.post("/automlplus/web_access/analyze/")
 async def analyze_web_accessibility_and_readability(
     file: Annotated[UploadFile, File(..., description="HTML file")],
     url: Annotated[str | None, Form(..., description="URL of website")] = None,
-    extra_file_input: Annotated[UploadFile | None, File(..., description="Extra file for LLM context")] = None,
+    extra_file_input: Annotated[
+        UploadFile | None, File(..., description="Extra file for LLM context")
+    ] = None,
 ) -> JSONResponse:
     """Run WCAG-inspired accessibility checks and optional readability analysis on HTML."""
     logger.info("Starting web accessibility and readability analysis")
@@ -233,10 +244,11 @@ async def analyze_web_accessibility_and_readability(
                 content={"error": f"Failed to fetch URL: {e}"}, status_code=400
             )
 
-    
     if not content or not str(content).strip():
         logger.error("Resolved HTML content is empty")
-        return JSONResponse(content={"error": "Resolved content is empty"}, status_code=400)
+        return JSONResponse(
+            content={"error": "Resolved content is empty"}, status_code=400
+        )
 
     content_str: str = str(content)
 
@@ -258,7 +270,9 @@ async def analyze_web_accessibility_and_readability(
     # --- Run accessibility pipeline ---
     chunk_size: int = int(os.getenv("CHUNK_SIZE_FOR_ACCESSIBILITY", 3000))
     concurrency_num: int = int(os.getenv("CONCURRENCY_NUM_FOR_ACCESSIBILITY", 4))
-    logger.debug(f"Running accessibility pipeline with chunk size {chunk_size}, concurrency {concurrency_num}")
+    logger.debug(
+        f"Running accessibility pipeline with chunk size {chunk_size}, concurrency {concurrency_num}"
+    )
 
     results = await run_accessibility_pipeline(
         content=content_str,
@@ -273,7 +287,11 @@ async def analyze_web_accessibility_and_readability(
     # --- Aggregate results ---
     resolved_results = [await resolve_coroutines(r) for r in results]
 
-    scores = [r.get("score") for r in resolved_results if isinstance(r.get("score"), (int, float))]
+    scores = [
+        r.get("score")
+        for r in resolved_results
+        if isinstance(r.get("score"), (int, float))
+    ]
     average_score: float | None = (sum(scores) / len(scores)) if scores else None
     logger.debug(f"Computed average accessibility score: {average_score}")
 

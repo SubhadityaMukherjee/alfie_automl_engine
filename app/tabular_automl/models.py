@@ -1,4 +1,5 @@
 from pathlib import Path
+
 import pandas as pd
 from pydantic import BaseModel
 
@@ -7,12 +8,12 @@ class TabularTask(BaseModel):
     """Base Pydantic model describing common tabular task inputs."""
 
     target_feature: str
-    time_stamp_col: pd.DataFrame|None = None
+    time_stamp_col: pd.DataFrame | None = None
     train_file_path: Path
-    test_file_path: Path|None = None
+    test_file_path: Path | None = None
 
     class Config:
-        arbitrary_types_allowed:bool = True
+        arbitrary_types_allowed: bool = True
 
 
 class TabularSupervisedClassificationTask(TabularTask):
@@ -37,4 +38,4 @@ class TabularSupervisedTimeSeriesTask(TabularTask):
     """Time-series forecasting task configuration for tabular data."""
 
     task_type: str = "time_series"
-    time_stamp_col: str = "timestamp" 
+    time_stamp_col: str = "timestamp"

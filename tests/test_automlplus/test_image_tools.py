@@ -1,13 +1,18 @@
-import pytest
-from app.automlplus.imagetools import ImagePromptRunner
 from unittest.mock import MagicMock, patch
+
+import pytest
+
+from app.automlplus.imagetools import ImagePromptRunner
+
 
 @pytest.fixture
 def jinja_template_example():
     return "this is {content}"
 
+
 def test_default_model_name():
     assert isinstance(ImagePromptRunner.DEFAULT_MODEL, str)
+
 
 def test_resolve_model():
     default = ImagePromptRunner.DEFAULT_MODEL
@@ -21,22 +26,25 @@ def test_resolve_model():
 def test_build_messages_with_no_template():
     prompt = "prompt"
     image_b64 = "image"
-    messages = ImagePromptRunner.build_messages(jinja_environment= None, image_b64 = image_b64, prompt = prompt)
+    messages = ImagePromptRunner.build_messages(
+        jinja_environment=None, image_b64=image_b64, prompt=prompt
+    )
     assert len(messages) == 1
     assert messages[0]["role"] == "user"
     assert messages[0]["content"] == prompt
     assert messages[0]["images"] == [image_b64]
+
 
 def test_build_messages_with_jinja(jinja_template_example):
     prompt = "prompt"
     image_b64 = "image"
-    messages = ImagePromptRunner.build_messages(jinja_environment= jinja_template_example, image_b64 = image_b64, prompt = prompt)
+    messages = ImagePromptRunner.build_messages(
+        jinja_environment=jinja_template_example, image_b64=image_b64, prompt=prompt
+    )
     assert len(messages) == 1
     assert messages[0]["role"] == "user"
     assert messages[0]["content"] == prompt
     assert messages[0]["images"] == [image_b64]
-
-
 
 
 # def test_build_messages_with_jinja():

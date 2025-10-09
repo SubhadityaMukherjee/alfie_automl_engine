@@ -161,7 +161,9 @@ class ReadabilityAnalyzer:
         }
 
 
-def split_chunks(content: str, chunk_size: int) -> Tuple[List[str], List[Tuple[int, int]]]:
+def split_chunks(
+    content: str, chunk_size: int
+) -> Tuple[List[str], List[Tuple[int, int]]]:
     """Split long content into chunks and track line ranges for each chunk."""
     lines = content.splitlines()
     line_offsets = [0]

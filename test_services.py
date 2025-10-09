@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 from typing import Dict, List
+
 from dotenv import find_dotenv, load_dotenv
 
 load_dotenv(find_dotenv())
@@ -20,33 +21,32 @@ SERVICES = {
     "webfromfile": {
         "port": 8000,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})"
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})",
     },
     "webfromurl": {
         "port": 8000,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})"
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})",
     },
     "im2web": {
         "port": 8000,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})"
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})",
     },
     "tabular": {
         "port": 8001,
         "uvicorn_target": "app.tabular_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})"
+        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})",
     },
     "tabularmvp": {
         "port": 8001,
         "uvicorn_target": "app.tabular_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})"
+        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})",
     },
-
     "vision": {
         "port": 8002,
         "uvicorn_target": "app.vision_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT',8002)})"
+        "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT',8002)})",
     },
 }
 
@@ -261,6 +261,7 @@ def parse_json(text: str) -> dict:
     except json.JSONDecodeError:
         return {}
 
+
 def test_tabularmvp() -> None:
     print("=== Testing AutoML Tabular - get_user_input ===")
     cmd = [
@@ -290,7 +291,8 @@ def test_tabularmvp() -> None:
     else:
         print(cp.stdout)
     print()
-  
+
+
 def test_tabular() -> None:
     print("=== Testing AutoML Tabular - get_user_input ===")
     cmd = [
@@ -405,7 +407,15 @@ def main() -> int:
         "target",
         nargs="?",
         default="all",
-        choices=["all", "webfromfile", "webfromurl", "tabular", "vision", "im2web", "tabularmvp"],
+        choices=[
+            "all",
+            "webfromfile",
+            "webfromurl",
+            "tabular",
+            "vision",
+            "im2web",
+            "tabularmvp",
+        ],
         help="Which services to run and test",
     )
     args = parser.parse_args()

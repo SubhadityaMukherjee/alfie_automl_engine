@@ -1,13 +1,14 @@
 import asyncio
 import json
-import re
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from bs4 import BeautifulSoup
 
-from app.automlplus.website_accessibility.modules import AltTextChecker, split_chunks
+from app.automlplus.website_accessibility.modules import (AltTextChecker,
+                                                          split_chunks)
 from app.core.chat_handler import ChatHandler
 from app.core.utils import render_template
 
@@ -76,6 +77,7 @@ async def _process_single_chunk(
                 stream=False,
             )
             response_text = response_raw if isinstance(response_raw, str) else ""
+
             # Normalize LLM text to avoid embedded newlines and odd whitespace sequences in JSON
             def _normalize_text(text: str) -> str:
                 # Collapse all whitespace (including newlines, tabs) to single spaces
@@ -136,6 +138,7 @@ async def run_accessibility_pipeline(
     """Split HTML into chunks and process them concurrently with a semaphore."""
     chunks, ranges = split_chunks(content, chunk_size)
     import logging
+
     logging.getLogger(__name__).info("Processing the website in %d chunks", len(chunks))
     sem = asyncio.Semaphore(concurrency)
     tasks = [
@@ -164,6 +167,7 @@ async def resolve_coroutines(obj: Any) -> Any:
         return new_obj
     else:
         return obj
+
 
 async def stream_accessibility_results(results):
     """

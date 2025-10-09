@@ -1,6 +1,12 @@
-import pytest
 from pathlib import Path
-from app.tabular_automl.models import TabularTask, TabularSupervisedClassificationTask, TabularSupervisedRegressionTask, TabularSupervisedTimeSeriesTask
+
+import pytest
+
+from app.tabular_automl.models import (TabularSupervisedClassificationTask,
+                                       TabularSupervisedRegressionTask,
+                                       TabularSupervisedTimeSeriesTask,
+                                       TabularTask)
+
 
 @pytest.mark.parametrize(
     "task_cls",
@@ -29,12 +35,15 @@ def test_task_type_time_series():
     assert isinstance(task.task_type, str)
 
 
-@pytest.mark.parametrize("field,value", [
-    ("target_feature", "target"),
-    ("time_stamp_col", None),
-    ("train_file_path", Path("train.csv")),
-    ("test_file_path", None),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("target_feature", "target"),
+        ("time_stamp_col", None),
+        ("train_file_path", Path("train.csv")),
+        ("test_file_path", None),
+    ],
+)
 def test_tabular_task_fields(field, value):
     task = TabularTask(
         target_feature="target",
@@ -44,4 +53,3 @@ def test_tabular_task_fields(field, value):
     )
     # ensure the field exists and has expected type
     assert getattr(task, field) == value
-

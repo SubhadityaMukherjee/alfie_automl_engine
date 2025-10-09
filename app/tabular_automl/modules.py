@@ -1,10 +1,10 @@
+import logging
 import os
+from pathlib import Path
 
 import pandas as pd
 from autogluon.tabular import TabularDataset, TabularPredictor
 from dotenv import find_dotenv, load_dotenv
-import logging
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -20,11 +20,11 @@ class AutoMLTrainer:
 
     def __init__(
         self,
-        save_model_path:Path,
+        save_model_path: Path,
         DatasetClass=TabularDataset,
         PredictorClass=TabularPredictor,
     ):
-        self.save_model_path:str = save_model_path
+        self.save_model_path: str = save_model_path
         self.DatasetClass = DatasetClass
         self.PredictorClass = PredictorClass
         logger.debug(f"Automl trainer, model path {self.save_model_path}")
@@ -32,7 +32,7 @@ class AutoMLTrainer:
     def train(
         self,
         train_df: pd.DataFrame,
-        test_df: pd.DataFrame|None,
+        test_df: pd.DataFrame | None,
         target_column: str,
         time_limit: int,
     ) -> pd.DataFrame | str:
@@ -54,7 +54,7 @@ class AutoMLTrainer:
             logger.error(f"AutoML trainer failed {e}")
             return str(e)
 
-    def train_test_split(self, test_df: pd.DataFrame|None, train_df: pd.DataFrame):
+    def train_test_split(self, test_df: pd.DataFrame | None, train_df: pd.DataFrame):
         if test_df is None:
             logger.debug(f"Test dataset not found, creating split")
             final_train_df = train_df.sample(

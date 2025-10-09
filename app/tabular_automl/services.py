@@ -1,3 +1,4 @@
+import logging
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -7,7 +8,6 @@ import pandas as pd
 from fastapi import UploadFile
 
 from .db import AutoMLSession, SessionLocal
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ UPLOAD_ROOT = Path("uploaded_data")
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 
-def create_session_directory(upload_root:Path=UPLOAD_ROOT) -> tuple[str, Path]:
+def create_session_directory(upload_root: Path = UPLOAD_ROOT) -> tuple[str, Path]:
     """Create and return a new session id and directory path."""
     session_id = str(uuid.uuid4())
     session_dir = upload_root / session_id
@@ -53,9 +53,9 @@ def load_table(file_path: Path) -> pd.DataFrame:
 def validate_tabular_inputs(
     train_path: Path,
     target_column_name: str,
-    time_stamp_column_name: str|None = None,
+    time_stamp_column_name: str | None = None,
     task_type: str = "classification",
-) -> str|None:
+) -> str | None:
     """Validate required columns and task type for tabular training."""
     try:
         train_df = load_table(train_path)
@@ -81,9 +81,9 @@ def validate_tabular_inputs(
 def store_session_in_db(
     session_id: str,
     train_path: Path,
-    test_path: Path|None,
+    test_path: Path | None,
     target_column_name: str,
-    time_stamp_column_name: str|None,
+    time_stamp_column_name: str | None,
     task_type: str,
     time_budget: int,
 ) -> None:
@@ -114,14 +114,14 @@ class SessionData:
 
     session_id: str
     train_file_path: str
-    test_file_path: str|None
+    test_file_path: str | None
     target_column: str
-    time_stamp_column_name: str|None
+    time_stamp_column_name: str | None
     task_type: str
     time_budget: int
 
 
-def get_session(session_id: str) -> SessionData|None:
+def get_session(session_id: str) -> SessionData | None:
     """Fetch a session by id, returning typed `SessionData` or None."""
     db = SessionLocal()
     try:
