@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Literal, Optional, Union
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -8,9 +8,9 @@ class ImageTask(BaseModel):
     """Base Pydantic model describing common image task inputs."""
 
     train_dir: Path
-    test_dir: Optional[Path] = None
+    test_dir: Path|None = None
     label_format: Literal["folder", "csv"] = "folder"
-    labels_file: Optional[Path] = None  # used if label_format != 'folder'
+    labels_file: Path|None = None  # used if label_format != 'folder'
 
     class Config:
         arbitrary_types_allowed = True

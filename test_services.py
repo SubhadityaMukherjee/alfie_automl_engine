@@ -43,7 +43,7 @@ SERVICES = {
         "uvicorn_target": "app.tabular_automl.main:app",
         "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})",
     },
-    "vision": {
+    "visionmvp": {
         "port": 8002,
         "uvicorn_target": "app.vision_automl.main:app",
         "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT',8002)})",
@@ -343,14 +343,14 @@ def test_tabular() -> None:
     print()
 
 
-def test_vision() -> None:
+def test_visionmvp() -> None:
     print("=== Testing AutoML Vision - get_user_input ===")
     cmd = [
         "curl",
         "-s",
         "-X",
         "POST",
-        "http://localhost:8002/automl_vision/get_user_input/",
+        "http://localhost:8002/automl_vision/best_model_mvp/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -374,28 +374,7 @@ def test_vision() -> None:
         print(json.dumps(data, indent=2, ensure_ascii=False))
     else:
         print(cp.stdout)
-    session_id = data.get("session_id")
-    if session_id:
-        print("=== Testing AutoML Vision - find_best_model ===")
-        cmd2 = [
-            "curl",
-            "-s",
-            "-X",
-            "POST",
-            "http://localhost:8002/automl_vision/find_best_model/",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            json.dumps({"session_id": session_id}),
-        ]
-        cp2 = run(cmd2, capture_output=True, check=False)
-        data2 = parse_json(cp2.stdout or "")
-        if data2:
-            print(json.dumps(data2, indent=2, ensure_ascii=False))
-        else:
-            print(cp2.stdout)
-    else:
-        print("Failed to get valid session_id from vision get_user_input")
+
     print()
 
 
@@ -412,7 +391,7 @@ def main() -> int:
             "webfromfile",
             "webfromurl",
             "tabular",
-            "vision",
+            "visionmvp",
             "im2web",
             "tabularmvp",
         ],
@@ -474,8 +453,8 @@ def main() -> int:
         if "tabularmvp" in targets:
             test_tabularmvp()
 
-        if "vision" in targets:
-            test_vision()
+        if "visionmvp" in targets:
+            test_visionmvp()
 
         print("=== All tests completed ===")
         return 0
