@@ -1,6 +1,4 @@
 """FastAPI endpoints for website accessibility analysis and chat utilities."""
-
-import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -19,9 +17,10 @@ from app.automlplus.website_accessibility.modules import (
 from app.automlplus.website_accessibility.services import (
     extract_text_from_html_bytes,
     run_accessibility_pipeline,
-    stream_accessibility_results,
+    resolve_coroutines,
 )
 from app.core.chat_handler import ChatHandler
+import json
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -49,6 +48,20 @@ async def lifespan(app: FastAPI):
     # Cleanup resources
     pass
 
+def json_safe(data: dict) -> dict:
+    """
+    Recursively convert all string values in a dict to JSON-safe strings
+    (escape quotes, line breaks, etc.) so JSONResponse won't fail.
+    """
+    if isinstance(data, dict):
+        return {k: json_safe(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [json_safe(v) for v in data]
+    elif isinstance(data, str):
+        # Escape quotes and newlines
+        return data.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r')
+    else:
+        return data
 
 @app.post("/automlplus/image_tools/image_to_website/")
 async def image_to_website(
@@ -73,13 +86,15 @@ async def check_alt_text(
     try:
         result = AltTextChecker.check(jinja_environment, image_url, alt_text)
         logger.info("Alt-text evaluation completed.")
-        return JSONResponse(
-            content={"src": image_url, "alt_text": alt_text, "evaluation": result}
-        )
+        safe_result = json_safe({
+            "src": image_url,
+            "alt_text": alt_text,
+            "evaluation": result
+        })
+        return JSONResponse(content=safe_result)
     except Exception as e:
         logger.exception("Error during alt-text check")
         return JSONResponse(content={"error": str(e)}, status_code=500)
-
 
 @app.post("/automlplus/image_tools/run_on_image/")
 async def run_on_image(
@@ -88,24 +103,12 @@ async def run_on_image(
     image_file: UploadFile | None = File(default=None),
     image_url: str | None = Form(default=None),
 ) -> JSONResponse:
-    """Run a VLM on an image and prompt, similar to AltTextChecker but generic.
-
-    Provide either an uploaded image file or an image URL/path.
-    """
     if image_file is None and not image_url:
-        return JSONResponse(
-            content={"error": "Provide image_file or image_url"}, status_code=400
-        )
+        return JSONResponse({"error": "Provide image_file or image_url"}, status_code=400)
     try:
-        image_bytes: bytes | None = None
-        if image_file is not None:
-            try:
-                image_bytes = await image_file.read()
-            finally:
-                try:
-                    await image_file.close()
-                except Exception:
-                    pass
+        image_bytes = await image_file.read() if image_file else None
+        if image_file:
+            await image_file.close()
 
         result = ImagePromptRunner.run(
             image_bytes=image_bytes,
@@ -114,10 +117,14 @@ async def run_on_image(
             model=model,
             jinja_environment=jinja_environment,
         )
-        return JSONResponse(content={"response": result})
+
+        safe_result = json_safe({"response": result})
+        return JSONResponse(content=safe_result)
     except Exception as e:
         logger.exception("Error during image prompt run")
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+        
 @app.post("/automlplus/image_tools/run_on_image_stream/")
 async def run_on_image_stream(
     prompt: str = Form(...),
@@ -231,17 +238,30 @@ async def analyze_web_accessibility_and_readability(
         context=context_str,
     )
 
-    async def result_stream():
-        """Stream results back as JSON lines, merging readability if requested."""
-        async for item in stream_accessibility_results(results):
-            yield item
+    # --- Aggregate results into a single JSON payload (include average + readability) ---
+    # Convert dataclass objects to dicts, resolving any coroutine fields
+    resolved_results = [await resolve_coroutines(r) for r in results]
 
-        try:
-            text = extract_text_from_html_bytes(content_str.encode("utf-8"))
-            if text.strip():
-                readability_scores = ReadabilityAnalyzer.analyze(text)
-                yield (json.dumps({"readability": readability_scores}) + "\n").encode("utf-8")
-        except Exception as e:
-            yield (json.dumps({"readability_error": str(e)}) + "\n").encode("utf-8")
+    # Compute average score
+    scores = [r.get("score") for r in resolved_results if isinstance(r.get("score"), (int, float))]
+    average_score = (sum(scores)/len(scores)) if scores else None
 
-    return StreamingResponse(result_stream(), media_type="application/jsonlines")
+    # Readability analysis
+    readability_scores = None
+    try:
+        text = extract_text_from_html_bytes(content_str.encode("utf-8"))
+        if text.strip():
+            readability_scores = ReadabilityAnalyzer.analyze(text)
+    except Exception as e:
+        readability_scores = {"error": str(e)}
+
+    payload = {
+        "source": source_name,
+        "average_score": average_score,
+        "results": resolved_results,
+        "readability": readability_scores,
+    }
+
+    # Make all text fields JSON-safe
+    safe_payload = json_safe(payload)
+    return JSONResponse(content=safe_payload)

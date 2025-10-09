@@ -1,6 +1,7 @@
 import logging
 import os
-from typing import Dict, List, Tuple
+from math import isfinite
+from typing import Any, Dict, List, Tuple
 
 import textstat  # type: ignore
 from jinja2 import Environment  # type: ignore
@@ -139,15 +140,21 @@ class ReadabilityAnalyzer:
     }
 
     @staticmethod
-    def apply_metric(metric, text: str) -> str:
+    def apply_metric(metric, text: str) -> Any:
         try:
-            return metric(text)
+            value = metric(text)
+            # Normalize to JSON-serializable primitives and avoid NaN/Infinity
+            if isinstance(value, float) and not isfinite(value):
+                return None
+            if isinstance(value, (int, float, str)):
+                return value
+            return str(value)
         except Exception:
             logger.warning("Metric failed: %s", metric.__name__)
             return "N/A"
 
     @classmethod
-    def analyze(cls, text: str) -> Dict[str, str]:
+    def analyze(cls, text: str) -> Dict[str, Any]:
         logger.info("Running readability metrics")
         return {
             name: cls.apply_metric(metric, text) for name, metric in cls.METRICS.items()

@@ -241,8 +241,8 @@ def test_web_url_guidelines() -> None:
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
-        # "url=https://alfie-project.eu",
-        "url=https://aiod.eu",
+        "url=https://alfie-project.eu",
+        # "url=https://aiod.eu",
         # "-F",
         # "extra_file_input=@./sample_data/wcag_guidelines.txt",
     ]

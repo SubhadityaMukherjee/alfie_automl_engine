@@ -253,10 +253,10 @@ class ChatHandler:
     @staticmethod
     def _get_azure_client():
         """Initialize Azure AI Foundry chat client."""
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT_LARGE_MODEL")
         api_key = os.getenv("AZURE_OPENAI_KEY")
         if not endpoint or not api_key:
-            raise RuntimeError("Missing AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_KEY environment variables")
+            raise RuntimeError("Missing AZURE_OPENAI_ENDPOINT_LARGE_MODEL or AZURE_OPENAI_KEY environment variables")
         return ChatCompletionsClient(endpoint=endpoint, credential=AzureKeyCredential(api_key))
 
     @staticmethod
