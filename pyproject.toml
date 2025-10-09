@@ -41,6 +41,9 @@ dependencies = [
     "jupyter>=1.1.1",
     "openpyxl>=3.1.5",
     "python-dotenv>=1.1.1",
+    "openai>=2.2.0",
+    "azure-ai-inference>=1.0.0b9",
+    "json5>=0.12.1",
 ]
 
 [dependency-groups]

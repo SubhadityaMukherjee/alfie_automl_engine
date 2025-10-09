@@ -1,8 +1,9 @@
 import asyncio
 import json
 import re
+import os
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Dict, Iterable, List, cast
+from typing import Any, Dict, List
 
 from bs4 import BeautifulSoup
 
@@ -60,8 +61,27 @@ async def _process_single_chunk(
                 end_line=end,
             )
 
-            response_raw = await ChatHandler.chat(prompt, context=context, stream=False)
+            backend = os.getenv("MODEL_BACKEND", "ollama").lower()
+            model_env = os.getenv("WEB_ACCESSIBILITY_CHAT_MODEL")
+            # Default model depends on backend
+            if model_env and model_env.strip():
+                model = model_env
+            else:
+                model = "gpt-4o-mini" if backend == "azure" else "gemma3:4b"
+            response_raw = await ChatHandler.chat(
+                prompt,
+                context=context,
+                backend=backend,
+                model=model,
+                stream=False,
+            )
             response_text = response_raw if isinstance(response_raw, str) else ""
+            # Normalize LLM text to avoid embedded newlines and odd whitespace sequences in JSON
+            def _normalize_text(text: str) -> str:
+                # Collapse all whitespace (including newlines, tabs) to single spaces
+                return re.sub(r"\s+", " ", text).strip()
+
+            response_text = _normalize_text(response_text)
 
             score_match = re.search(
                 r"\bScore[:\s]*([0-9]+(?:\.[0-9]+)?)", response_text, re.IGNORECASE
@@ -73,6 +93,9 @@ async def _process_single_chunk(
             for src, alt in images:
                 try:
                     result = AltTextChecker.check(jinja_environment, src, alt)
+                    # Ensure alt-text evaluation is a compact, JSON-friendly string
+                    if isinstance(result, str):
+                        result = _normalize_text(result)
                     image_feedback.append(
                         {"src": src, "alt_text": alt, "result": result}
                     )
@@ -112,6 +135,7 @@ async def run_accessibility_pipeline(
 ) -> List[ChunkResult]:
     """Split HTML into chunks and process them concurrently with a semaphore."""
     chunks, ranges = split_chunks(content, chunk_size)
+    print(f"Processing the website in {len(chunks)} chunks")
     sem = asyncio.Semaphore(concurrency)
     tasks = [
         _process_single_chunk(
@@ -140,24 +164,24 @@ async def resolve_coroutines(obj: Any) -> Any:
     else:
         return obj
 
-
 async def stream_accessibility_results(results):
     """
-    Stream results safely as JSON lines, awaiting any nested coroutines.
+    Stream results as a single JSON array instead of JSONL.
     """
+    resolved = []
     for item in results:
-        # Await top-level coroutine if needed
         if asyncio.iscoroutine(item):
             try:
                 item = await item
             except Exception as e:
-                yield (json.dumps({"error": str(e)}) + "\n").encode("utf-8")
+                resolved.append({"error": str(e)})
                 continue
 
-        # Recursively resolve any nested coroutines
         try:
             data = await resolve_coroutines(item)
         except Exception as e:
             data = {"error": f"Failed to resolve item: {e}"}
 
-        yield (json.dumps(data) + "\n").encode("utf-8")
+        resolved.append(data)
+
+    yield json.dumps(resolved, indent=2).encode("utf-8")
