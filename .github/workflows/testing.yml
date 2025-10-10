@@ -1,5 +1,6 @@
 name: Testing using pytest
 
+on: push
 jobs:
   uv-example:
     name: python
