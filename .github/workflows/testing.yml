@@ -17,5 +17,7 @@ jobs:
         run: uv sync --locked --all-extras --dev
 
       - name: Run tests
+        env:
+          JINJAPATH: app/core/prompt_templates
         # For example, using `pytest`
         run: uv run pytest tests
