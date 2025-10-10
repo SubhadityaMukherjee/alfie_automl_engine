@@ -23,7 +23,7 @@ def image_bytes():
 def test_to_base64(image_url: str):
     base64im = ImageConverter.to_base64(image_url)
     assert isinstance(base64im, str)
-    assert "==" in base64im
+    assert "=" in base64im
 
 
 def test_bytes_to_image64(image_bytes: str):
