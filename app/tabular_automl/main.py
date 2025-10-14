@@ -18,6 +18,9 @@ from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+import pickle
+import json
+from datetime import datetime
 from app.core.chat_handler import ChatHandler
 from app.tabular_automl.modules import AutoMLTrainer
 from app.tabular_automl.services import (create_session_directory, load_table,
@@ -403,99 +406,120 @@ async def find_best_model_for_mvp(
     ] = "classification",
     time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10,
 ) -> JSONResponse:
+    """
+    Fetch dataset metadata and file from AutoDW, validate it,
+    and run AutoML training to find and upload the best model.
+    """
 
-    """
-    Fetch dataset metadata and file from AutoDW, validate it, 
-    and run AutoML training to find the best model.
-    """
+    autodw_base = f"http://localhost:{autodw_port_url}"
+    metadata_url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
+    download_url = f"{metadata_url}/download"
+    upload_url = f"{autodw_base}/ai-models/upload/single/{user_id}"
 
     try:
-        # Fetch dataset metadata
-        auto_dw_metadata_url = f"http://localhost:{autodw_port_url}/datasets/{user_id}/{dataset_id}"
-        auto_dw_download_url = f"{auto_dw_metadata_url}/download"
-
-        logger.debug(f"Fetching metadata from {auto_dw_metadata_url}")
-        metadata_response = requests.get(auto_dw_metadata_url, timeout=15)
-
-        if metadata_response.status_code != 200:
-            return JSONResponse(
-                status_code=metadata_response.status_code,
-                content={"error": "Failed to fetch dataset metadata from AutoDW."},
-            )
-
+        # --- 1. Fetch dataset metadata ---
+        logger.debug(f"Fetching dataset metadata: {metadata_url}")
+        metadata_response = requests.get(metadata_url, timeout=15)
+        metadata_response.raise_for_status()
         metadata = metadata_response.json()
+
         file_type = metadata.get("file_type")
         original_filename = metadata.get("original_filename", "train.csv")
-        valid_types = ["csv", "tsv", "parquet"]
 
-        if file_type not in valid_types:
+        if file_type not in {"csv", "tsv", "parquet"}:
             return JSONResponse(
                 status_code=400,
-                content={"error": f"Invalid file type '{file_type}'. Must be one of {valid_types}."},
+                content={"error": f"Unsupported file type '{file_type}'."}
             )
 
-        # Download dataset file
-        logger.debug(f"Downloading dataset from {auto_dw_download_url}")
-        download_response = requests.get(auto_dw_download_url, stream=True, timeout=30)
-        if download_response.status_code != 200:
-            return JSONResponse(
-                status_code=download_response.status_code,
-                content={"error": "Failed to download dataset file from AutoDW."},
-            )
+        # --- 2. Download dataset file ---
+        logger.debug(f"Downloading dataset file: {download_url}")
+        with requests.get(download_url, stream=True, timeout=30) as resp:
+            resp.raise_for_status()
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = Path(tmp_dir)
+                dataset_path = tmp_path / original_filename
 
-        # Save file to temporary directory
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_dir_path = Path(tmp_dir)
-            train_path = tmp_dir_path / original_filename
-
-            with open(train_path, "wb") as f:
-                for chunk in download_response.iter_content(chunk_size=8192):
-                    if chunk:
+                with open(dataset_path, "wb") as f:
+                    for chunk in resp.iter_content(8192):
                         f.write(chunk)
 
-            logger.debug(f"Dataset saved to {train_path}")
+                logger.info(f"Dataset saved to {dataset_path}")
 
-            # Validate tabular inputs
-            validation_error = validate_tabular_inputs(
-                train_path=train_path,
-                target_column_name=target_column_name,
-                time_stamp_column_name=time_stamp_column_name,
-                task_type=task_type,
-            )
+                # --- 3. Validate inputs ---
+                validation_error = validate_tabular_inputs(
+                    train_path=dataset_path,
+                    target_column_name=target_column_name,
+                    time_stamp_column_name=time_stamp_column_name,
+                    task_type=task_type,
+                )
+                if validation_error:
+                    return JSONResponse(status_code=400, content={"error": validation_error})
 
-            if validation_error:
-                logger.error(f"Validation failed: {validation_error}")
-                return JSONResponse(status_code=400, content={"error": validation_error})
+                # --- 4. Train AutoML model ---
+                save_model_path = tmp_path / "automl_model"
+                os.makedirs(save_model_path, exist_ok=True)
 
-            # Train AutoML model
-            save_model_path = tmp_dir_path / "automl_model"
-            os.makedirs(save_model_path, exist_ok=True)
+                trainer = AutoMLTrainer(save_model_path=save_model_path)
+                train_df = load_table(dataset_path)
 
-            trainer = AutoMLTrainer(save_model_path=save_model_path)
-            train_df = load_table(train_path)
+                leaderboard, predictor = trainer.train(
+                    train_df=train_df,
+                    test_df=None,
+                    target_column=target_column_name,
+                    time_limit=int(time_budget),
+                )
 
-            leaderboard = trainer.train(
-                train_df=train_df,
-                test_df=None,
-                target_column=target_column_name,
-                time_limit=int(time_budget),
-            )
+                # --- 5. Serialize predictor ---
+                predictor_path = save_model_path / "predictor.pkl"
+                with open(predictor_path, "wb") as f:
+                    pickle.dump(predictor, f)
 
-            logger.debug("AutoML training complete")
+                # Convert leaderboard safely
+                if isinstance(leaderboard, pd.DataFrame):
+                    leaderboard_json = leaderboard.to_dict(orient="records")
+                    leaderboard_str = leaderboard.to_markdown()
+                else:
+                    leaderboard_json = {"result": str(leaderboard)}
+                    leaderboard_str = str(leaderboard)
 
-            # Return results
-            leaderboard_str = (
-                leaderboard.to_markdown() if isinstance(leaderboard, pd.DataFrame) else str(leaderboard)
-            )
+                # --- 6. Upload trained model to AutoDW ---
+                model_id = f"automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"
 
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "message": "AutoML training completed successfully.",
-                    "leaderboard": leaderboard_str,
-                },
-            )
+                with open(predictor_path, "rb") as f:
+                    files = {"file": (predictor_path.name, f, "application/octet-stream")}
+                    data = {
+                        "model_id": model_id,
+                        "name": f"AutoML Model - {model_id}",
+                        "description": "AutoML trained model for tabular data",
+                        "framework": "sklearn",
+                        "model_type": task_type,
+                        "training_dataset": str(dataset_id),
+                        "leaderboard": json.dumps(leaderboard_json),  # ensure JSON-safe
+                    }
 
+                    logger.debug(f"Uploading model to {upload_url}")
+                    upload_resp = requests.post(upload_url, files=files, data=data, timeout=120)
+
+                    if upload_resp.status_code >= 400:
+                        logger.error(f"Model upload failed: {upload_resp.text}")
+                        return JSONResponse(
+                            status_code=upload_resp.status_code,
+                            content={"error": f"Failed to upload model: {upload_resp.text}"}
+                        )
+
+        logger.info("AutoML training completed and model uploaded successfully.")
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": "AutoML training completed successfully and model uploaded to AutoDW",
+                "leaderboard": leaderboard_str,
+            },
+        )
+
+    except requests.RequestException as e:
+        logger.exception("Network or HTTP error during AutoDW communication")
+        return JSONResponse(status_code=502, content={"error": f"AutoDW communication failed: {e}"})
     except Exception as e:
-        logger.exception("Error during AutoML training")
+        logger.exception("Unexpected error during AutoML training or upload")
         return JSONResponse(status_code=500, content={"error": str(e)})

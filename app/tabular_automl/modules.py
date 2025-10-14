@@ -24,7 +24,7 @@ class AutoMLTrainer:
         DatasetClass=TabularDataset,
         PredictorClass=TabularPredictor,
     ):
-        self.save_model_path: str = save_model_path
+        self.save_model_path: Path = save_model_path
         self.DatasetClass = DatasetClass
         self.PredictorClass = PredictorClass
         logger.debug(f"Automl trainer, model path {self.save_model_path}")
@@ -35,7 +35,7 @@ class AutoMLTrainer:
         test_df: pd.DataFrame | None,
         target_column: str,
         time_limit: int,
-    ) -> pd.DataFrame | str:
+    ) -> tuple[pd.DataFrame | str, TabularPredictor]:
         """Train AutoGluon Tabular and return leaderboard or error."""
         final_train_df, final_test_df = self.train_test_split(
             test_df=test_df, train_df=train_df
@@ -48,8 +48,12 @@ class AutoMLTrainer:
             label=target_column, path=self.save_model_path
         ).fit(train_data=train_dataset, time_limit=time_limit)
 
+        save_path_clone_opt = self.save_model_path/ '-clone-opt'
+        path_clone_opt = predictor.clone_for_deployment(path=str(save_path_clone_opt))
+        predictor_clone_opt = self.PredictorClass.load(path=path_clone_opt)
+
         try:
-            return predictor.leaderboard(test_dataset)
+            return predictor.leaderboard(test_dataset), predictor_clone_opt
         except Exception as e:
             logger.error(f"AutoML trainer failed {e}")
             return str(e)
