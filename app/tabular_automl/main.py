@@ -9,8 +9,10 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
+import requests
 
 import pandas as pd
+import tempfile
 from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
@@ -30,6 +32,7 @@ load_dotenv(find_dotenv())
 app = FastAPI()
 
 TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "http://localhost:8001")
+autodw_port_url = os.getenv("AUTODW_DATASETS_PORT", 8000)
 
 
 @asynccontextmanager
@@ -376,4 +379,123 @@ async def find_best_model_for_mvp(
 
     except Exception as e:
         logger.error(f"Could not find best model {e}")
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+@app.post("/automl_tabular/best_model/")
+async def find_best_model_for_mvp(
+    user_id : Annotated[int, Form(..., description = "User id from AutoDW")],
+    dataset_id : Annotated[int, Form(..., description = "User id from AutoDW")],
+
+    target_column_name: Annotated[
+        str, Form(..., description="Name of the target column")
+    ] = "",
+    time_stamp_column_name: Annotated[
+        str | None,
+        Form(..., description="Timestamp column (required for time-series tasks)"),
+    ] = None,
+    task_type: Annotated[
+        str,
+        Form(
+            ...,
+            description="Type of ML task",
+            examples=["classification", "regression", "time_series"],
+        ),
+    ] = "classification",
+    time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10,
+) -> JSONResponse:
+
+    """
+    Fetch dataset metadata and file from AutoDW, validate it, 
+    and run AutoML training to find the best model.
+    """
+
+    try:
+        # Fetch dataset metadata
+        auto_dw_metadata_url = f"http://localhost:{autodw_port_url}/datasets/{user_id}/{dataset_id}"
+        auto_dw_download_url = f"{auto_dw_metadata_url}/download"
+
+        logger.debug(f"Fetching metadata from {auto_dw_metadata_url}")
+        metadata_response = requests.get(auto_dw_metadata_url, timeout=15)
+
+        if metadata_response.status_code != 200:
+            return JSONResponse(
+                status_code=metadata_response.status_code,
+                content={"error": "Failed to fetch dataset metadata from AutoDW."},
+            )
+
+        metadata = metadata_response.json()
+        file_type = metadata.get("file_type")
+        original_filename = metadata.get("original_filename", "train.csv")
+        valid_types = ["csv", "tsv", "parquet"]
+
+        if file_type not in valid_types:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Invalid file type '{file_type}'. Must be one of {valid_types}."},
+            )
+
+        # Download dataset file
+        logger.debug(f"Downloading dataset from {auto_dw_download_url}")
+        download_response = requests.get(auto_dw_download_url, stream=True, timeout=30)
+        if download_response.status_code != 200:
+            return JSONResponse(
+                status_code=download_response.status_code,
+                content={"error": "Failed to download dataset file from AutoDW."},
+            )
+
+        # Save file to temporary directory
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_dir_path = Path(tmp_dir)
+            train_path = tmp_dir_path / original_filename
+
+            with open(train_path, "wb") as f:
+                for chunk in download_response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+
+            logger.debug(f"Dataset saved to {train_path}")
+
+            # Validate tabular inputs
+            validation_error = validate_tabular_inputs(
+                train_path=train_path,
+                target_column_name=target_column_name,
+                time_stamp_column_name=time_stamp_column_name,
+                task_type=task_type,
+            )
+
+            if validation_error:
+                logger.error(f"Validation failed: {validation_error}")
+                return JSONResponse(status_code=400, content={"error": validation_error})
+
+            # Train AutoML model
+            save_model_path = tmp_dir_path / "automl_model"
+            os.makedirs(save_model_path, exist_ok=True)
+
+            trainer = AutoMLTrainer(save_model_path=save_model_path)
+            train_df = load_table(train_path)
+
+            leaderboard = trainer.train(
+                train_df=train_df,
+                test_df=None,
+                target_column=target_column_name,
+                time_limit=int(time_budget),
+            )
+
+            logger.debug("AutoML training complete")
+
+            # Return results
+            leaderboard_str = (
+                leaderboard.to_markdown() if isinstance(leaderboard, pd.DataFrame) else str(leaderboard)
+            )
+
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "AutoML training completed successfully.",
+                    "leaderboard": leaderboard_str,
+                },
+            )
+
+    except Exception as e:
+        logger.exception("Error during AutoML training")
         return JSONResponse(status_code=500, content={"error": str(e)})
