@@ -19,19 +19,19 @@ PID_FILE = "processes.pid"
 
 SERVICES = {
     "webfromfile": {
-        "port": 8000,
+        "port": 8003,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})",
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8003)})",
     },
     "webfromurl": {
-        "port": 8000,
+        "port": 8003,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})",
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8003)})",
     },
     "im2web": {
-        "port": 8000,
+        "port": 8003,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8000)})",
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8003)})",
     },
     "tabular": {
         "port": 8001,
@@ -292,19 +292,20 @@ def test_tabularmvp() -> None:
         print(cp.stdout)
     print()
 
-
 def test_tabular() -> None:
-    print("=== Testing AutoML Tabular - get_user_input ===")
+    print("=== Testing AutoML Tabular From AutoDW ===")
     cmd = [
         "curl",
         "-s",
         "-X",
         "POST",
-        "http://localhost:8001/automl_tabular/get_user_input/",
+        "http://localhost:8001/automl_tabular/best_model/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
-        "train_csv=@./sample_data/knot_theory/train.csv",
+        "user_id=1",
+        "-F",
+        "dataset_id=1",
         "-F",
         "target_column_name=signature",
         "-F",
@@ -314,34 +315,15 @@ def test_tabular() -> None:
     ]
     cp = run(cmd, capture_output=True, check=False)
     data = parse_json(cp.stdout or "")
+    print(data)
     if data:
         print(json.dumps(data, indent=2, ensure_ascii=False))
+        session_id = data.get("session_id")
+        if session_id:
+            print(f"Session stored in DB: {session_id}")
     else:
         print(cp.stdout)
-    session_id = data.get("session_id")
-    if session_id:
-        print("=== Testing AutoML Tabular - find_best_model ===")
-        cmd2 = [
-            "curl",
-            "-s",
-            "-X",
-            "POST",
-            "http://localhost:8001/automl_tabular/find_best_model/",
-            "-H",
-            "Content-Type: application/json",
-            "-d",
-            json.dumps({"session_id": session_id}),
-        ]
-        cp2 = run(cmd2, capture_output=True, check=False)
-        data2 = parse_json(cp2.stdout or "")
-        if data2:
-            print(json.dumps(data2, indent=2, ensure_ascii=False))
-        else:
-            print(cp2.stdout)
-    else:
-        print("Failed to get valid session_id from tabular get_user_input")
     print()
-
 
 def test_visionmvp() -> None:
     print("=== Testing AutoML Vision - get_user_input ===")
