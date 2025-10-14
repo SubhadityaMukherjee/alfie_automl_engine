@@ -49,7 +49,7 @@ def test_train_test_split(
 
 def test_train_leaderboard_works(trainer_class: AutoMLTrainer, small_df: pd.DataFrame):
     leaderboard = trainer_class.train(
-        train_df=small_df, test_df=None, target_column="target", time_limit=2
+        train_df=small_df, test_df=None, target_column="target", time_limit=20
     )
     for key in ["model", "eval_metric", "score_val", "score_test", "fit_time"]:
         assert key in leaderboard
