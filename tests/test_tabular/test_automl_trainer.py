@@ -1,6 +1,6 @@
 import shutil
 import tempfile
-
+from pathlib import Path
 import pandas as pd
 import pytest
 
@@ -16,7 +16,7 @@ def trainer_class():
 
 
 def test_check_if_save_model_path_exists(trainer_class: AutoMLTrainer):
-    assert type(trainer_class.save_model_path) == str
+    assert type(str(trainer_class.save_model_path)) == str
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def test_train_test_split(
 
 
 def test_train_leaderboard_works(trainer_class: AutoMLTrainer, small_df: pd.DataFrame):
-    leaderboard = trainer_class.train(
+    leaderboard, _ = trainer_class.train(
         train_df=small_df, test_df=None, target_column="target", time_limit=20
     )
     for key in ["model", "eval_metric", "score_val", "score_test", "fit_time"]:

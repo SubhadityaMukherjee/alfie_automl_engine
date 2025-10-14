@@ -24,7 +24,7 @@ class AutoMLTrainer:
         DatasetClass=TabularDataset,
         PredictorClass=TabularPredictor,
     ):
-        self.save_model_path: Path = save_model_path
+        self.save_model_path: Path = Path(save_model_path)
         self.DatasetClass = DatasetClass
         self.PredictorClass = PredictorClass
         logger.debug(f"Automl trainer, model path {self.save_model_path}")
@@ -58,7 +58,7 @@ class AutoMLTrainer:
             logger.error(f"AutoML trainer failed {e}")
             return str(e)
 
-    def train_test_split(self, test_df: pd.DataFrame | None, train_df: pd.DataFrame):
+    def train_test_split(self, test_df: pd.DataFrame | None, train_df: pd.DataFrame|None = None):
         if test_df is None:
             logger.debug(f"Test dataset not found, creating split")
             final_train_df = train_df.sample(
