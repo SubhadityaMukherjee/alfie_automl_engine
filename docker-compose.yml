@@ -1,6 +1,6 @@
 services:
   automlplus:
-    image: gitlab.catalink.eu:5050/external/alfie_eu/alfie/automl_engine:latest
+    image: ${GITLAB_REGISTRY}/automl_engine:latest
     container_name: alfie_automlplus
     command: bash -lc "uv run uvicorn app.automlplus.main:app --reload --host 0.0.0.0 --port ${AUTOML_PLUS_PORT}"
     ports:
@@ -16,7 +16,7 @@ services:
     restart: always
 
   tabular:
-    image: gitlab.catalink.eu:5050/external/alfie_eu/alfie/automl_engine:latest
+    image: ${GITLAB_REGISTRY}/automl_engine:latest
     container_name: alfie_automl_tabular
     command: bash -lc "uv run uvicorn app.tabular_automl.main:app --reload --host 0.0.0.0 --port ${TABULAR_AUTOML_PORT}"
     ports:
@@ -32,7 +32,7 @@ services:
     restart: always
 
   vision:
-    image: gitlab.catalink.eu:5050/external/alfie_eu/alfie/automl_engine:latest
+    image: ${GITLAB_REGISTRY}/automl_engine:latest
     container_name: alfie_automl_vision
     command: bash -lc "uv run uvicorn app.vision_automl.main:app --reload --host 0.0.0.0 --port ${VISION_AUTOML_PORT}"
     ports:
