@@ -1,0 +1,414 @@
+a<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALFIE Test Services</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .content {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 20px;
+        }
+
+        .sidebar {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            height: fit-content;
+        }
+
+        .sidebar h2 {
+            font-size: 1.1em;
+            margin-bottom: 15px;
+            color: #333;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+
+        .checkbox-item label {
+            cursor: pointer;
+            flex: 1;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #ee5a52;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+        }
+
+        .btn-secondary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .output-panel {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .output-header {
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            padding: 15px 20px;
+            border-radius: 10px 10px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .output-header h2 {
+            font-size: 1.1em;
+            color: #333;
+            margin: 0;
+        }
+
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ddd;
+            margin-right: 8px;
+        }
+
+        .status-indicator.running {
+            background: #4CAF50;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+            }
+        }
+
+        #output {
+            flex: 1;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #333;
+            line-height: 1.6;
+            overflow-y: auto;
+            max-height: 600px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        #output:empty::before {
+            content: "Output will appear here...";
+            color: #999;
+        }
+
+        .select-all {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+            margin-bottom: 10px;
+        }
+
+        .select-all input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .select-all label {
+            cursor: pointer;
+            flex: 1;
+            font-weight: 600;
+            color: #333;
+        }
+
+        @media (max-width: 768px) {
+            .content {
+                grid-template-columns: 1fr;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            #output {
+                max-height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 ALFIE Test Services</h1>
+            <p>Run and monitor automated tests</p>
+        </header>
+
+        <div class="content">
+            <div class="sidebar">
+                <h2>Services</h2>
+                
+                <div class="select-all">
+                    <input type="checkbox" id="selectAll">
+                    <label for="selectAll">Select All</label>
+                </div>
+
+                <div class="checkbox-group" id="servicesContainer"></div>
+
+                <div class="button-group">
+                    <button class="btn-primary" id="runBtn">▶ Run Tests</button>
+                    <button class="btn-secondary" id="stopBtn" disabled>⏹ Stop</button>
+                </div>
+            </div>
+
+            <div class="output-panel">
+                <div class="output-header">
+                    <div>
+                        <span class="status-indicator" id="statusIndicator"></span>
+                        <h2>Test Output</h2>
+                    </div>
+                    <small id="statusText" style="color: #666;">Ready</small>
+                </div>
+                <div id="output"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const services = {{ services | tojson }};
+        let isRunning = false;
+        let pollInterval = null;
+
+        // Initialize checkboxes
+        function initializeCheckboxes() {
+            const container = document.getElementById('servicesContainer');
+            container.innerHTML = '';
+            
+            services.forEach(service => {
+                const label = document.createElement('label');
+                label.className = 'checkbox-item';
+                label.innerHTML = `
+                    <input type="checkbox" class="service-checkbox" value="${service}" checked>
+                    <span>${service}</span>
+                `;
+                container.appendChild(label);
+            });
+
+            // Add change listeners
+            document.querySelectorAll('.service-checkbox').forEach(cb => {
+                cb.addEventListener('change', updateSelectAll);
+            });
+        }
+
+        // Update select all checkbox
+        function updateSelectAll() {
+            const checkboxes = document.querySelectorAll('.service-checkbox');
+            const selectAll = document.getElementById('selectAll');
+            selectAll.checked = Array.from(checkboxes).every(cb => cb.checked);
+        }
+
+        // Select all functionality
+        document.getElementById('selectAll').addEventListener('change', function() {
+            document.querySelectorAll('.service-checkbox').forEach(cb => {
+                cb.checked = this.checked;
+            });
+        });
+
+        // Get selected services
+        function getSelectedServices() {
+            return Array.from(document.querySelectorAll('.service-checkbox:checked'))
+                .map(cb => cb.value);
+        }
+
+        // Append to output
+        function appendOutput(text) {
+            const output = document.getElementById('output');
+            output.textContent += text + '\n';
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // Clear output
+        function clearOutput() {
+            document.getElementById('output').textContent = '';
+        }
+
+        // Update status
+        function setStatus(running, message) {
+            isRunning = running;
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            const runBtn = document.getElementById('runBtn');
+            const stopBtn = document.getElementById('stopBtn');
+
+            if (running) {
+                indicator.classList.add('running');
+                statusText.textContent = message;
+                runBtn.disabled = true;
+                stopBtn.disabled = false;
+            } else {
+                indicator.classList.remove('running');
+                statusText.textContent = message;
+                runBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        }
+
+        // Poll for output
+        function pollOutput() {
+            fetch('/api/output')
+                .then(r => r.json())
+                .then(data => {
+                    data.messages.forEach(msg => appendOutput(msg));
+                })
+                .catch(err => console.error('Poll error:', err));
+        }
+
+        // Run tests
+        document.getElementById('runBtn').addEventListener('click', async () => {
+            const selected = getSelectedServices();
+            if (selected.length === 0) {
+                alert('Please select at least one service');
+                return;
+            }
+
+            clearOutput();
+            setStatus(true, 'Running tests...');
+            appendOutput('Starting ALFIE tests...\n');
+
+            try {
+                const response = await fetch('/api/run-tests', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ targets: selected })
+                });
+
+                if (!response.ok) throw new Error('Failed to start tests');
+
+                // Start polling for output
+                pollInterval = setInterval(pollOutput, 500);
+            } catch (err) {
+                appendOutput(`Error: ${err.message}`);
+                setStatus(false, 'Error');
+            }
+        });
+
+        // Stop tests
+        document.getElementById('stopBtn').addEventListener('click', async () => {
+            try {
+                const response = await fetch('/api/stop', { method: 'POST' });
+                if (!response.ok) throw new Error('Failed to stop');
+                
+                if (pollInterval) clearInterval(pollInterval);
+                setStatus(false, 'Stopped');
+            } catch (err) {
+                appendOutput(`Error stopping: ${err.message}`);
+            }
+        });
+
+        // Initialize on load
+        window.addEventListener('load', () => {
+            initializeCheckboxes();
+            updateSelectAll();
+        });
+    </script>
+</body>
+</html>
