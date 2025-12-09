@@ -4,28 +4,33 @@ Provides endpoints to accept user data/config, validate inputs, store
 session metadata, and trigger AutoML training using AutoGluon.
 """
 
+import json
 import logging
 import os
+import pickle
+import shutil
+import tempfile
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
-import requests
 
 import pandas as pd
-import tempfile
+import requests
 from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-import pickle
-import json
-from datetime import datetime
 from app.core.chat_handler import ChatHandler
 from app.tabular_automl.modules import AutoMLTrainer
-from app.tabular_automl.services import (create_session_directory, load_table,
-                                         save_upload, store_session_in_db,
-                                         validate_tabular_inputs)
+from app.tabular_automl.services import (
+    create_session_directory,
+    load_table,
+    save_upload,
+    store_session_in_db,
+    validate_tabular_inputs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +61,8 @@ class SessionRequest(BaseModel):
 
 @app.post("/automl_tabular/best_model/")
 async def find_best_model_for_mvp(
-    user_id : Annotated[int, Form(..., description = "User id from AutoDW")],
-    dataset_id : Annotated[int, Form(..., description = "User id from AutoDW")],
-
+    user_id: Annotated[int, Form(..., description="User id from AutoDW")],
+    dataset_id: Annotated[int, Form(..., description="User id from AutoDW")],
     target_column_name: Annotated[
         str, Form(..., description="Name of the target column")
     ] = "",
@@ -83,7 +87,7 @@ async def find_best_model_for_mvp(
 
     This endpoint:
       1. Fetches dataset metadata and file from AutoDW using the provided user and dataset IDs.
-      2. Validates dataset integrity and user-specified parameters such as target column, 
+      2. Validates dataset integrity and user-specified parameters such as target column,
          timestamp column (if applicable), and task type.
       3. Trains an AutoML model on the dataset within a specified time budget.
       4. Serializes and uploads the best-performing model and leaderboard results back to AutoDW.
@@ -118,9 +122,9 @@ async def find_best_model_for_mvp(
 
     Notes:
         - Only "csv", "tsv", and "parquet" dataset formats are supported.
-        - A temporary directory is used for dataset download, model training, 
+        - A temporary directory is used for dataset download, model training,
           and serialization before upload.
-        - The leaderboard is returned both as a markdown string and as JSON 
+        - The leaderboard is returned both as a markdown string and as JSON
           when uploaded to AutoDW.
     """
 
@@ -142,7 +146,7 @@ async def find_best_model_for_mvp(
         if file_type not in {"csv", "tsv", "parquet"}:
             return JSONResponse(
                 status_code=400,
-                content={"error": f"Unsupported file type '{file_type}'."}
+                content={"error": f"Unsupported file type '{file_type}'."},
             )
 
         # --- 2. Download dataset file ---
@@ -167,7 +171,9 @@ async def find_best_model_for_mvp(
                     task_type=task_type,
                 )
                 if validation_error:
-                    return JSONResponse(status_code=400, content={"error": validation_error})
+                    return JSONResponse(
+                        status_code=400, content={"error": validation_error}
+                    )
 
                 # --- 4. Train AutoML model ---
                 save_model_path = tmp_path / "automl_model"
@@ -188,6 +194,13 @@ async def find_best_model_for_mvp(
                 with open(predictor_path, "wb") as f:
                     pickle.dump(predictor, f)
 
+                zip_path = tmp_path / "automl_predictor.zip"
+                shutil.make_archive(
+                    base_name=str(zip_path).replace(".zip", ""),
+                    format="zip",
+                    root_dir=save_model_path,
+                )
+
                 # Convert leaderboard safely
                 if isinstance(leaderboard, pd.DataFrame):
                     leaderboard_json = leaderboard.to_dict(orient="records")
@@ -199,8 +212,8 @@ async def find_best_model_for_mvp(
                 # --- 6. Upload trained model to AutoDW ---
                 model_id = f"automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"
 
-                with open(predictor_path, "rb") as f:
-                    files = {"file": (predictor_path.name, f, "application/octet-stream")}
+                with open(zip_path, "rb") as f:
+                    files = {"file": (zip_path.name, f, "application/octet-stream")}
                     data = {
                         "model_id": model_id,
                         "name": f"AutoML Model - {model_id}",
@@ -212,13 +225,17 @@ async def find_best_model_for_mvp(
                     }
 
                     logger.debug(f"Uploading model to {upload_url}")
-                    upload_resp = requests.post(upload_url, files=files, data=data, timeout=120)
+                    upload_resp = requests.post(
+                        upload_url, files=files, data=data, timeout=120
+                    )
 
                     if upload_resp.status_code >= 400:
                         logger.error(f"Model upload failed: {upload_resp.text}")
                         return JSONResponse(
                             status_code=upload_resp.status_code,
-                            content={"error": f"Failed to upload model: {upload_resp.text}"}
+                            content={
+                                "error": f"Failed to upload model: {upload_resp.text}"
+                            },
                         )
 
         logger.info("AutoML training completed and model uploaded successfully.")
@@ -232,7 +249,9 @@ async def find_best_model_for_mvp(
 
     except requests.RequestException as e:
         logger.exception("Network or HTTP error during AutoDW communication")
-        return JSONResponse(status_code=502, content={"error": f"AutoDW communication failed: {e}"})
+        return JSONResponse(
+            status_code=502, content={"error": f"AutoDW communication failed: {e}"}
+        )
     except Exception as e:
         logger.exception("Unexpected error during AutoML training or upload")
         return JSONResponse(status_code=500, content={"error": str(e)})
