@@ -38,11 +38,12 @@ Replace `8000` with the relevant service port.
 
 | Service     | Port | Uvicorn Target                | Description                             |
 | ----------- | ---- | ----------------------------- | --------------------------------------- |
-| webfromfile | 8000 | `app.automlplus.main:app`     | Website accessibility (HTML file input) |
-| webfromurl  | 8000 | `app.automlplus.main:app`     | Website accessibility (URL input)       |
-| im2web      | 8000 | `app.automlplus.main:app`     | Image-to-Website tool                   |
+| webfromfile | 8003 | `app.automlplus.main:app`     | Website accessibility (HTML file input) |
+| webfromurl  | 8003 | `app.automlplus.main:app`     | Website accessibility (URL input)       |
+| im2web      | 8003 | `app.automlplus.main:app`     | Image-to-Website tool                   |
 | tabular     | 8001 | `app.tabular_automl.main:app` | AutoML for tabular datasets             |
 | vision      | 8002 | `app.vision_automl.main:app`  | AutoML for vision datasets              |
+| AutoDW      | 8000 | `autodw service`  | AutoDW|
 
 ---
 
@@ -53,7 +54,7 @@ Run each service in its own shell:
 ### Webfromfile / Webfromurl / Im2web (port 8000)
 
 ```bash
-uv run uvicorn app.automlplus.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn app.automlplus.main:app --reload --host 0.0.0.0 --port 8003
 ```
 
 ### Tabular (port 8001)
@@ -114,33 +115,82 @@ curl -sN -X POST http://localhost:8000/automlplus/image_tools/run_on_image_strea
 ---
 
 ### Test: AutoML Tabular
-- Tabular AutoML
-- The first call for each is to interface with AutoDW (When this is possible)
-- Required options are the target_column, and type of task (classification or regression) and the time budget in seconds
-- Input can be any file that can be read by pandas
-- Train/test/val split will be automatically done
+- !!!Note: This requires AutoDW to be running on the side, without this nothing will work.
+This test demonstrates the workflow for running a tabular AutoML job using the FastAPI backend integrated with AutoDW.
+- Supports tabular datasets fetched directly from AutoDW.
+Requires:
+- user_id (AutoDW user identifier)
+- dataset_id (AutoDW dataset identifier)
+- target_column_name
+- task_type (classification, regression, time_series)
+- time_budget in seconds
 
-#### Step 1: Start a session
+The system automatically:
+- Fetches dataset metadata
+- Downloads the dataset file
+- Validates inputs
+- Performs AutoML training
+- Uploads the trained model + leaderboard back to AutoDW
 
+Supported dataset formats: CSV, TSV, Parquet
+
+#### Trigger AutoML Training + Best Model Search
+The entire process is handled by a single endpoint: `POST /automl_tabular/best_model/`
+
+Example cURL Command
 ```bash
-curl -s -X POST http://localhost:8001/automl_tabular/get_user_input/ \
+curl -s -X POST "http://localhost:8001/automl_tabular/best_model/" \
   -H "Content-Type: multipart/form-data" \
-  -F "train_csv=@./sample_data/knot_theory/train.csv" \
+  -F "user_id=101" \
+  -F "dataset_id=55" \
   -F "target_column_name=signature" \
   -F "task_type=classification" \
+  -F "time_stamp_column_name=" \
   -F "time_budget=30"
 ```
 
-This returns a JSON with a `session_id`.
-
-#### Step 2: Train and find best model
-
-```bash
-curl -s -X POST http://localhost:8001/automl_tabular/find_best_model/ \
-  -H "Content-Type: application/json" \
-  -d '{"session_id": "REPLACE_WITH_SESSION_ID"}'
+#### What This Does
+- Fetches dataset metadata from AutoDW
+- Downloads dataset file
+- Validates:
+  - Dataset structure
+  - Target column
+  - Timestamp column (if time-series)
+  - Task type
+- Performs AutoML training within the time budget
+- Serializes and uploads:
+  - The best model
+  - Leaderboard as JSON + Markdown
+- Successful Response Example
+```json
+{
+  "message": "AutoML training completed successfully and model uploaded to AutoDW",
+  "leaderboard": "| model | score | ... |"
+}
 ```
+#### Error Handling
+- 400 – Validation Errors
+  - Target column missing
+  - Unsupported file format
+  - Task type invalid
+  - Timestamp column missing for time-series
+- 502 – AutoDW Communication Failure
+  - Metadata request fails
+  - File download fails
+- 500 – Unexpected Failures
+  - Training crashes
+  - Serialization issues
+  - Unexpected runtime errors
 
+#### Notes
+- Only csv, tsv, and parquet formats are supported.
+- All data is handled in a temporary directory isolated per request.
+- The AutoML leaderboard is uploaded to AutoDW as both JSON and Markdown.
+- The uploaded model includes metadata such as:
+- model_type
+- training_dataset
+- framework
+- description
 ---
 
 ### Test: AutoML Vision
@@ -188,4 +238,3 @@ curl -s -X POST http://localhost:8002/automl_vision/find_best_model/ \
   -H "Content-Type: application/json" \
   -d '{"session_id": "REPLACE_WITH_SESSION_ID"}'
 ```
-
