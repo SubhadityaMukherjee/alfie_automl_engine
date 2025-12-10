@@ -18,7 +18,7 @@ from typing import Annotated
 import pandas as pd
 import requests
 from dotenv import find_dotenv, load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import Header, FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -41,6 +41,7 @@ app = FastAPI()
 
 TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "http://localhost:8001")
 autodw_port_url = os.getenv("AUTODW_DATASETS_PORT", 8000)
+autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
 
 
 @asynccontextmanager
@@ -61,8 +62,8 @@ class SessionRequest(BaseModel):
 
 @app.post("/automl_tabular/best_model/")
 async def find_best_model_for_mvp(
-    user_id: Annotated[int, Form(..., description="User id from AutoDW")],
-    dataset_id: Annotated[int, Form(..., description="User id from AutoDW")],
+    user_id: Annotated[str, Form(..., description="User id from AutoDW")],
+    dataset_id: Annotated[str, Form(..., description="User id from AutoDW")],
     target_column_name: Annotated[
         str, Form(..., description="Name of the target column")
     ] = "",
@@ -79,6 +80,9 @@ async def find_best_model_for_mvp(
         ),
     ] = "classification",
     time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10,
+    # Task ID will be eventually deprecated. Currently, it is sent to the AutoDW
+    # when creating model because AutoDW then sends Kafka task complete message.
+    task_id: Annotated[str | None, Header(alias="X-Task-ID")] = None,
 ) -> JSONResponse:
     """
     Fetch dataset metadata and file from AutoDW, validate it,
@@ -93,8 +97,8 @@ async def find_best_model_for_mvp(
       4. Serializes and uploads the best-performing model and leaderboard results back to AutoDW.
 
     Args:
-        user_id (int): Unique user identifier from AutoDW.
-        dataset_id (int): Unique dataset identifier from AutoDW.
+        user_id (str): Unique user identifier from AutoDW.
+        dataset_id (str): Unique dataset identifier from AutoDW.
         target_column_name (str): Name of the target column in the dataset.
         time_stamp_column_name (str | None): Name of the timestamp column for time-series tasks.
         task_type (str): Type of ML task. One of {"classification", "regression", "time_series"}.
@@ -128,7 +132,7 @@ async def find_best_model_for_mvp(
           when uploaded to AutoDW.
     """
 
-    autodw_base = f"http://localhost:{autodw_port_url}"
+    autodw_base = autodw_url
     metadata_url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
     download_url = f"{metadata_url}/download"
     upload_url = f"{autodw_base}/ai-models/upload/single/{user_id}"
@@ -223,10 +227,11 @@ async def find_best_model_for_mvp(
                         "training_dataset": str(dataset_id),
                         "leaderboard": json.dumps(leaderboard_json),  # ensure JSON-safe
                     }
+                    headers = {"X-Task-ID": task_id} if task_id else None
 
                     logger.debug(f"Uploading model to {upload_url}")
                     upload_resp = requests.post(
-                        upload_url, files=files, data=data, timeout=120
+                        upload_url, headers=headers, files=files, data=data, timeout=120
                     )
 
                     if upload_resp.status_code >= 400:
