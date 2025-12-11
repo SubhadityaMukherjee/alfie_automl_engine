@@ -35,7 +35,7 @@ class AutoMLTrainer:
         test_df: pd.DataFrame | None,
         target_column: str,
         time_limit: int,
-    ) -> tuple[pd.DataFrame | str, TabularPredictor]:
+    ) -> tuple[pd.DataFrame | str, TabularPredictor] | str:
         """Train AutoGluon Tabular and return leaderboard or error."""
         final_train_df, final_test_df = self.train_test_split(
             test_df=test_df, train_df=train_df
@@ -45,12 +45,12 @@ class AutoMLTrainer:
         test_dataset = self.DatasetClass(final_test_df)
 
         predictor = self.PredictorClass(
-            label=target_column, path=self.save_model_path
+            label=target_column, path=str(self.save_model_path)
         ).fit(train_data=train_dataset, time_limit=time_limit)
 
-        save_path_clone_opt = self.save_model_path/ '-clone-opt'
+        save_path_clone_opt = self.save_model_path / "-clone-opt"
         path_clone_opt = predictor.clone_for_deployment(path=str(save_path_clone_opt))
-        predictor_clone_opt = self.PredictorClass.load(path=path_clone_opt)
+        predictor_clone_opt = self.PredictorClass.load(path=str(path_clone_opt))
 
         try:
             return predictor.leaderboard(test_dataset), predictor_clone_opt
@@ -58,15 +58,21 @@ class AutoMLTrainer:
             logger.error(f"AutoML trainer failed {e}")
             return str(e)
 
-    def train_test_split(self, test_df: pd.DataFrame | None, train_df: pd.DataFrame|None = None):
+    def train_test_split(
+        self, test_df: pd.DataFrame | None, train_df: pd.DataFrame | None = None
+    ):
         if test_df is None:
-            logger.debug(f"Test dataset not found, creating split")
-            final_train_df = train_df.sample(
-                frac=DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE, random_state=42
-            )
-            final_test_df = train_df.drop(index=final_train_df.index.tolist())
+            logger.debug("Test dataset not found, creating split")
+            if train_df is not None:
+                final_train_df = train_df.sample(
+                    frac=DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE, random_state=42
+                )
+                final_test_df = train_df.drop(index=final_train_df.index.tolist())
+            else:
+                logger.error("Train df is empty")
+                return str("Train df is empty")
         else:
-            logger.debug(f"Test dataset found")
+            logger.debug("Test dataset found")
             final_train_df = train_df
             final_test_df = test_df
         return final_train_df, final_test_df
