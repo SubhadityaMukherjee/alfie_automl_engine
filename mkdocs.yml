@@ -46,7 +46,7 @@ plugins:
       default_handler: python
       handlers:
         python:
-          paths: [app]
+          # paths: [app/, app/core]
           load_external_modules: true
           options:
             docstring_section_style: table

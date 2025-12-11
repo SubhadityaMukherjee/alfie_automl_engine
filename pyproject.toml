@@ -45,6 +45,8 @@ dependencies = [
     "azure-ai-inference>=1.0.0b9",
     "json5>=0.12.1",
     "flask>=3.1.2",
+    "mkdocstrings>=0.30.1",
+    "mkdocs-awesome-pages-plugin>=2.10.1",
 ]
 
 [dependency-groups]
