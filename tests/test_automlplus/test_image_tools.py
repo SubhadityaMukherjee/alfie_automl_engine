@@ -1,18 +1,20 @@
-import pytest
+import os
 from unittest.mock import patch
+
+import pytest
+from dotenv import find_dotenv, load_dotenv
+from jinja2 import Environment, FileSystemLoader
 
 from app.automlplus.imagetools import ImagePromptRunner
 from app.automlplus.utils import ImageConverter
 from app.core.chat_handler import ChatHandler
-from dotenv import find_dotenv, load_dotenv
-import os
 
-from jinja2 import Environment, FileSystemLoader
 load_dotenv(find_dotenv())
 
 jinja_path = os.getenv("JINJAPATH")
 if not jinja_path:
     raise RuntimeError("JINJAPATH environment variable is not set")
+
 
 @pytest.fixture
 def fake_image_bytes():
@@ -22,6 +24,7 @@ def fake_image_bytes():
 @pytest.fixture
 def fake_image_b64():
     return "ZmFrZV9pbWFnZQ=="  # "fake_image" in base64
+
 
 @pytest.fixture
 def jinja_template_example():
@@ -65,6 +68,7 @@ def test_build_messages_with_jinja(jinja_template_example):
     assert messages[1]["content"] == prompt
     assert messages[1]["images"] == [image_b64]
 
+
 @patch.object(ChatHandler, "chat_sync_messages", return_value="ok_response")
 @patch.object(ImageConverter, "bytes_to_base64", return_value="fake_b64")
 def test_run_with_image_bytes(mock_to_b64, mock_chat):
@@ -86,7 +90,9 @@ def test_run_with_image_path(mock_to_b64, mock_chat):
 
 
 def test_run_raises_value_error_when_no_input():
-    with pytest.raises(ValueError, match="Provide either image_bytes or image_path_or_url"):
+    with pytest.raises(
+        ValueError, match="Provide either image_bytes or image_path_or_url"
+    ):
         ImagePromptRunner.run(prompt="test")
 
 
@@ -113,7 +119,9 @@ def test_run_calls_resolve_model(mock_b64, mock_chat, mock_resolve):
     mock_chat.assert_called_once()
 
 
-@patch.object(ChatHandler, "chat_stream_messages_sync", return_value=["chunk1", "chunk2"])
+@patch.object(
+    ChatHandler, "chat_stream_messages_sync", return_value=["chunk1", "chunk2"]
+)
 @patch.object(ImageConverter, "to_base64", return_value="fake_b64")
 def test_run_stream_with_path(mock_to_b64, mock_stream):
     result = ImagePromptRunner.run_stream(
@@ -134,5 +142,7 @@ def test_run_stream_with_bytes(mock_b64, mock_stream):
 
 
 def test_run_stream_raises_value_error_when_no_input():
-    with pytest.raises(ValueError, match="Provide either image_bytes or image_path_or_url"):
+    with pytest.raises(
+        ValueError, match="Provide either image_bytes or image_path_or_url"
+    ):
         ImagePromptRunner.run_stream(prompt="hi")

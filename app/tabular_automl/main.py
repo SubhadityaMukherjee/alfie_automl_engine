@@ -24,13 +24,9 @@ from pydantic import BaseModel
 
 from app.core.chat_handler import ChatHandler
 from app.tabular_automl.modules import AutoMLTrainer
-from app.tabular_automl.services import (
-    create_session_directory,
-    load_table,
-    save_upload,
-    store_session_in_db,
-    validate_tabular_inputs,
-)
+from app.tabular_automl.services import (create_session_directory, load_table,
+                                         save_upload, store_session_in_db,
+                                         validate_tabular_inputs)
 
 logger = logging.getLogger(__name__)
 
@@ -42,22 +38,6 @@ app = FastAPI()
 TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "http://localhost:8001")
 autodw_port_url = os.getenv("AUTODW_DATASETS_PORT", 8000)
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Initialize resources
-    await ChatHandler.init()
-    yield
-    # Cleanup resources
-    pass
-
-
-# # NOTE : I AM NOT SURE IF THE AUTODW WILL HANDLE THIS PART FIRST :/
-class SessionRequest(BaseModel):
-    """Payload for initiating model search/training for a session."""
-
-    session_id: str
 
 
 def convert_leaderboard_safely(leaderboard):
@@ -74,7 +54,10 @@ def convert_leaderboard_safely(leaderboard):
 async def find_best_model_for_mvp(
     user_id: Annotated[str, Form(..., description="User id from AutoDW")],
     dataset_id: Annotated[str, Form(..., description="User id from AutoDW")],
-    dataset_version: Annotated[str|None, Form(..., description="Optional dataset version selection from AutoDW")] = None,
+    dataset_version: Annotated[
+        str | None,
+        Form(..., description="Optional dataset version selection from AutoDW"),
+    ] = None,
     target_column_name: Annotated[
         str, Form(..., description="Name of the target column")
     ] = "",
@@ -94,7 +77,6 @@ async def find_best_model_for_mvp(
     # Task ID will be eventually deprecated. Currently, it is sent to the AutoDW
     # when creating model because AutoDW then sends Kafka task complete message.
     task_id: Annotated[str | None, Header(alias="X-Task-ID")] = None,
-    # dataset_version: Annotated[str | None, Header(alias="X-Task-ID")] = None,
 ) -> JSONResponse:
     """
     Fetch dataset metadata and file from AutoDW, validate it,
@@ -222,7 +204,9 @@ async def find_best_model_for_mvp(
                     root_dir=save_model_path,
                 )
 
-                leaderboard_json, leaderboard_str = convert_leaderboard_safely(leaderboard)
+                leaderboard_json, leaderboard_str = convert_leaderboard_safely(
+                    leaderboard
+                )
 
                 # --- 6. Upload trained model to AutoDW ---
                 model_id = f"automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"

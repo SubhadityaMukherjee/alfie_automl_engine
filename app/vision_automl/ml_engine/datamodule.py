@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 from typing import Any, Callable
 
 import pandas as pd
@@ -10,7 +10,6 @@ from torch.utils.data import DataLoader
 from transformers import AutoImageProcessor
 
 from .dataset import ImageClassificationFromCSVDataset
-
 
 # --- Environment Setup ---
 load_dotenv(find_dotenv())
@@ -149,7 +148,9 @@ class ClassificationData:
             logger.error("Processor not initialized. Call setup() first.")
             raise RuntimeError("Processor not initialized. Call setup() first.")
 
-        pixel_values = self.processor(images=list(images), return_tensors="pt").pixel_values
+        pixel_values = self.processor(
+            images=list(images), return_tensors="pt"
+        ).pixel_values
         logger.debug("Collated batch with %d samples", len(labels))
 
         return {
@@ -173,7 +174,9 @@ class ClassificationData:
     def val_dataloader(self) -> DataLoader:
         """Return validation dataloader."""
         if self.val_dataset is None:
-            raise RuntimeError("Validation dataset not initialized. Call setup() first.")
+            raise RuntimeError(
+                "Validation dataset not initialized. Call setup() first."
+            )
         logger.info("Creating validation dataloader (batch_size=%d)", self.batch_size)
         return DataLoader(
             self.val_dataset,
@@ -195,4 +198,3 @@ class ClassificationData:
             num_workers=self.num_workers,
             collate_fn=self._collate_fn,
         )
-

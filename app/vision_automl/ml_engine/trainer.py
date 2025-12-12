@@ -1,6 +1,7 @@
-import time
 import logging
+import time
 from typing import Any
+
 import lightning as L
 import torch
 from torch import nn, optim
@@ -18,18 +19,24 @@ if not logger.handlers:
 class EarlyStopping:
     """Simple early stopping callback based on monitored metric."""
 
-    def __init__(self, monitor: str = "val_loss", patience: int = 3, min_delta: float = 0.0) -> None:
+    def __init__(
+        self, monitor: str = "val_loss", patience: int = 3, min_delta: float = 0.0
+    ) -> None:
         self.monitor: str = monitor
         self.patience: int = patience
         self.min_delta: float = min_delta
         self.best: float = float("inf")
         self.counter: int = 0
 
-    def on_epoch_end(self, trainer: "FabricTrainer", epoch: int, logs: dict[str, float]) -> None:
+    def on_epoch_end(
+        self, trainer: "FabricTrainer", epoch: int, logs: dict[str, float]
+    ) -> None:
         """Update state after epoch; may signal stopping on trainer."""
         current: float | None = logs.get(self.monitor)
         if current is None:
-            logger.warning(f"Metric '{self.monitor}' not found in logs. Skipping early stopping check.")
+            logger.warning(
+                f"Metric '{self.monitor}' not found in logs. Skipping early stopping check."
+            )
             return
 
         if current < self.best - self.min_delta:
@@ -83,7 +90,9 @@ class FabricTrainer:
         """Instantiate model and optimizer and prepare loaders with Fabric."""
         logger.info("Setting up model and optimizer.")
         self.model: nn.Module = self.model_class(**self.model_kwargs)
-        self.optimizer: optim.Optimizer = self.optimizer_class(self.model.parameters(), **self.optimizer_kwargs)
+        self.optimizer: optim.Optimizer = self.optimizer_class(
+            self.model.parameters(), **self.optimizer_kwargs
+        )
 
         train_loader: Any = self.datamodule.train_dataloader()
         val_loader: Any = self.datamodule.val_dataloader()
@@ -99,14 +108,19 @@ class FabricTrainer:
         labels: torch.Tensor
 
         if isinstance(batch, dict):
-            pixel_values = batch["pixel_values"].to(self.fabric.device, dtype=self.input_dtype)
+            pixel_values = batch["pixel_values"].to(
+                self.fabric.device, dtype=self.input_dtype
+            )
             labels = batch["labels"].to(self.fabric.device, dtype=self.target_dtype)
         else:
             imgs, batch_labels = batch
             pixel_values = imgs.to(self.fabric.device, dtype=self.input_dtype)
             labels = batch_labels.to(self.fabric.device, dtype=self.target_dtype)
 
-        moved_batch: dict[str, torch.Tensor] = {"pixel_values": pixel_values, "labels": labels}
+        moved_batch: dict[str, torch.Tensor] = {
+            "pixel_values": pixel_values,
+            "labels": labels,
+        }
         return moved_batch
 
     def _check_time_limit(self, start_time: float) -> bool:
@@ -123,7 +137,9 @@ class FabricTrainer:
         running_loss: float = 0.0
         batch_count: int = len(self.train_loader)
 
-        for batch in tqdm(self.train_loader, desc=f"Epoch {epoch+1} Training", leave=False):
+        for batch in tqdm(
+            self.train_loader, desc=f"Epoch {epoch+1} Training", leave=False
+        ):
             if self._check_time_limit(start_time):
                 return running_loss / max(1, batch_count)
 
@@ -196,7 +212,11 @@ class FabricTrainer:
         for epoch in range(self.epochs):
             train_loss: float = self.train_epoch(epoch, start_time)
             val_loss, val_acc = self.validate(start_time)
-            logs: dict[str, float] = {"train_loss": train_loss, "val_loss": val_loss, "val_acc": val_acc}
+            logs: dict[str, float] = {
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "val_acc": val_acc,
+            }
 
             for cb in self.callbacks:
                 cb.on_epoch_end(self, epoch, logs)
@@ -206,4 +226,3 @@ class FabricTrainer:
 
         logger.info("Training complete. Running test evaluation.")
         return self.test()
-

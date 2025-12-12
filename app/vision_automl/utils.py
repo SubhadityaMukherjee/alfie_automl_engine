@@ -1,18 +1,19 @@
-
 import logging
 import os
 import shutil
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 from fastapi import UploadFile
 from huggingface_hub import HfApi
-from typing import Any
 
 # -------------------------------------------------
 # Helpers
 # -------------------------------------------------
 logger = logging.getLogger(__name__)
+
+
 def normalize_dataframe_filenames(
     df: pd.DataFrame, filename_column: str, csv_path: Path
 ) -> pd.DataFrame:
@@ -27,7 +28,9 @@ def normalize_dataframe_filenames(
         df.to_csv(csv_path, index=False)
         logger.debug("Normalized filenames saved to %s", csv_path)
     else:
-        logger.warning("Filename column '%s' not found during normalization", filename_column)
+        logger.warning(
+            "Filename column '%s' not found during normalization", filename_column
+        )
     return df
 
 
@@ -88,7 +91,9 @@ def collect_missing_files(
     return missing_files
 
 
-def get_num_params_if_available(repo_id: str, revision: str|None = None) -> int|None:
+def get_num_params_if_available(
+    repo_id: str, revision: str | None = None
+) -> int | None:
     """Try to retrieve number of parameters for a HF model, if available."""
     logger.debug("Fetching parameter count for model %s", repo_id)
     api = HfApi()
@@ -134,6 +139,7 @@ def search_hf_for_pytorch_models_with_estimated_parameters(
     logger.info("Found %d models with parameter info", len(results))
     return results
 
+
 def save_upload(upload_file: UploadFile, destination: Path) -> None:
     """
     Save a FastAPI UploadFile to a destination path.
@@ -151,7 +157,10 @@ def save_upload(upload_file: UploadFile, destination: Path) -> None:
     except Exception as e:
         raise RuntimeError(f"Failed to save uploaded file {upload_file.filename}: {e}")
 
-def sort_models_by_size(models: list[dict[str, Any]], size_tier: str) -> list[dict[str, Any]]:
+
+def sort_models_by_size(
+    models: list[dict[str, Any]], size_tier: str
+) -> list[dict[str, Any]]:
     """Filter and sort models by size tier based on estimated parameter counts."""
     logger.info("Sorting models by size tier: %s", size_tier)
     tier = str(size_tier).strip().lower()
@@ -178,6 +187,6 @@ def sort_models_by_size(models: list[dict[str, Any]], size_tier: str) -> list[di
         logger.warning("No models matched tier '%s'; falling back to all models", tier)
         filtered = models
 
-    return sorted(filtered, key=lambda m: (m.get("num_params") is None, m.get("num_params", 0)))
-
-
+    return sorted(
+        filtered, key=lambda m: (m.get("num_params") is None, m.get("num_params", 0))
+    )

@@ -292,6 +292,7 @@ def test_tabularmvp() -> None:
         print(cp.stdout)
     print()
 
+
 def test_tabular() -> None:
     print("=== Testing AutoML Tabular From AutoDW ===")
     cmd = [
@@ -324,6 +325,7 @@ def test_tabular() -> None:
     else:
         print(cp.stdout)
     print()
+
 
 def test_visionmvp() -> None:
     print("=== Testing AutoML Vision - get_user_input ===")
