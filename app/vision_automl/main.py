@@ -25,19 +25,12 @@ from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
 from torch import nn, optim
 
 from app.core.chat_handler import ChatHandler
-from app.vision_automl.ml_engine import (
-    ClassificationData,
-    ClassificationModel,
-    FabricTrainer,
-)
+from app.vision_automl.ml_engine import (ClassificationData,
+                                         ClassificationModel, FabricTrainer)
 from app.vision_automl.utils import (
-    collect_missing_files,
-    normalize_dataframe_filenames,
-    resolve_images_root,
-    save_upload,
-    search_hf_for_pytorch_models_with_estimated_parameters,
-    sort_models_by_size,
-)
+    collect_missing_files, normalize_dataframe_filenames, resolve_images_root,
+    save_upload, search_hf_for_pytorch_models_with_estimated_parameters,
+    sort_models_by_size)
 
 logger = logging.getLogger(__name__)
 
