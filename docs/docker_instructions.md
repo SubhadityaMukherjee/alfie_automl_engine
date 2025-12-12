@@ -3,12 +3,18 @@
 ## Running everything
 - Simply do `docker compose up` in the main folder (assuming you have docker installed)
 - After that you can `curl` any of the services you want
+- For information on the ports, please look at your .env file
 - eg: Website Accessibility (HTML file input)
 
 ```bash
-curl -sN -X POST http://localhost:8000/automlplus/web_access/analyze/ \
+curl -s -X POST "http://localhost:8001/automl_tabular/best_model/" \
   -H "Content-Type: multipart/form-data" \
-  -F "file=@./sample_data/test.html"
+  -F "user_id=1" \
+  -F "dataset_id=2" \
+  -F "target_column_name=signature" \
+  -F "task_type=classification" \
+  -F "time_stamp_column_name=" \
+  -F "time_budget=30"
 ```
 
 ## Pushing to repo
