@@ -18,7 +18,7 @@ from typing import Annotated
 import pandas as pd
 import requests
 from dotenv import find_dotenv, load_dotenv
-from fastapi import FastAPI, File, Form, Header, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile, Request, Header
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -52,6 +52,7 @@ def convert_leaderboard_safely(leaderboard):
 
 @app.post("/automl_tabular/best_model/")
 async def find_best_model_for_mvp(
+    request: Request,
     user_id: Annotated[str, Form(..., description="User id from AutoDW")],
     dataset_id: Annotated[str, Form(..., description="User id from AutoDW")],
     dataset_version: Annotated[
@@ -76,7 +77,6 @@ async def find_best_model_for_mvp(
     time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10,
     # Task ID will be eventually deprecated. Currently, it is sent to the AutoDW
     # when creating model because AutoDW then sends Kafka task complete message.
-    task_id: Annotated[str | None, Header(alias="X-Task-ID")] = None,
 ) -> JSONResponse:
     """
     Fetch dataset metadata and file from AutoDW, validate it,
@@ -210,6 +210,13 @@ async def find_best_model_for_mvp(
 
                 # --- 6. Upload trained model to AutoDW ---
                 model_id = f"automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"
+                # Get X-Task-ID from request headers if present
+                task_id = request.headers.get("X-Task-ID")
+                headers = {}
+                if task_id:
+                    headers["X-Task-ID"] = task_id
+                    logger.debug(f"Including X-Task-ID header: {task_id}")
+
 
                 with open(zip_path, "rb") as f:
                     files = {"file": (zip_path.name, f, "application/octet-stream")}
@@ -222,7 +229,6 @@ async def find_best_model_for_mvp(
                         "training_dataset": str(dataset_id),
                         "leaderboard": json.dumps(leaderboard_json),  # ensure JSON-safe
                     }
-                    headers = {"X-Task-ID": task_id} if task_id else None
 
                     logger.debug(f"Uploading model to {upload_url}")
                     upload_resp = requests.post(
