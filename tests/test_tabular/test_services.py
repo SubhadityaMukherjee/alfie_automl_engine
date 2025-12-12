@@ -5,8 +5,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from app.tabular_automl.services import (create_session_directory, load_table,
-                                         validate_tabular_inputs)
+from app.tabular_automl.services import (
+    create_session_directory,
+    load_table,
+    validate_tabular_inputs,
+)
 
 
 @pytest.fixture

@@ -24,9 +24,13 @@ from pydantic import BaseModel
 
 from app.core.chat_handler import ChatHandler
 from app.tabular_automl.modules import AutoMLTrainer
-from app.tabular_automl.services import (create_session_directory, load_table,
-                                         save_upload, store_session_in_db,
-                                         validate_tabular_inputs)
+from app.tabular_automl.services import (
+    create_session_directory,
+    load_table,
+    save_upload,
+    store_session_in_db,
+    validate_tabular_inputs,
+)
 
 logger = logging.getLogger(__name__)
 
