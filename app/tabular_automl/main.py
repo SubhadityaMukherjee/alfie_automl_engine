@@ -36,7 +36,6 @@ load_dotenv(find_dotenv())
 app = FastAPI()
 
 TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "http://localhost:8001")
-autodw_port_url = os.getenv("AUTODW_DATASETS_PORT", 8000)
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
 
 
