@@ -28,7 +28,8 @@ def fake_image_b64():
 
 @pytest.fixture
 def jinja_template_example():
-    return Environment(loader=FileSystemLoader(jinja_path))
+    if jinja_path is not None:
+        return Environment(loader=FileSystemLoader(jinja_path))
 
 
 def test_default_model_name():

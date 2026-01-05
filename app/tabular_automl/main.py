@@ -18,7 +18,7 @@ from typing import Annotated
 import pandas as pd
 import requests
 from dotenv import find_dotenv, load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile, Request, Header
+from fastapi import FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
@@ -215,7 +215,6 @@ async def find_best_model_for_mvp(
                 if task_id:
                     headers["X-Task-ID"] = task_id
                     logger.debug(f"Including X-Task-ID header: {task_id}")
-
 
                 with open(zip_path, "rb") as f:
                     files = {"file": (zip_path.name, f, "application/octet-stream")}
