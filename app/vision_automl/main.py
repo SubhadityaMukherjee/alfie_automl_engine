@@ -60,10 +60,6 @@ async def find_best_model_for_vision_mvp(
     filename_column: Annotated[
         str, Form(..., description="Name of the CSV column containing image filenames")
     ] = "",
-    target_column_name: Annotated[
-        str,
-        Form(..., description="Name of the CSV column containing labels or targets"),
-    ] = "",
     task_type: Annotated[
         str,
         Form(
