@@ -1,13 +1,13 @@
 from torch import nn
 from transformers import AutoModelForImageClassification
-
+import torch
 
 class ClassificationModel(nn.Module):
     def __init__(
         self,
         model_id: str = "google/vit-base-patch16-224",
         num_classes: int = 2,
-        freeze_backbone: bool = True, # Added this flag
+        freeze_backbone: bool = True,
         id2label: dict | None = None,
         label2id: dict | None = None,
     ):
@@ -25,12 +25,13 @@ class ClassificationModel(nn.Module):
         )
 
         if freeze_backbone:
-            # 1. Freeze all parameters first
             for param in self.model.parameters():
                 param.requires_grad = False
             
-            # 2. Unfreeze only the classification head
-            # For most HF models, this is named 'classifier'
             if hasattr(self.model, "classifier"):
                 for param in self.model.classifier.parameters():
                     param.requires_grad = True
+
+    def forward(self, pixel_values: torch.Tensor):
+        """Forward pass - required for all nn.Module subclasses."""
+        return self.model(pixel_values).logits

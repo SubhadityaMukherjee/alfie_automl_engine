@@ -4,35 +4,14 @@ Handles session intake (CSV + images), validation, storage, model
 selection from Hugging Face Hub, and time-budgeted training.
 """
 
-import datetime
 import logging
 import os
-import shutil
-import uuid
-from collections.abc import Generator
-from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Annotated
 
-import pandas as pd
 from dotenv import find_dotenv, load_dotenv
-import requests
-from fastapi import FastAPI, File, Form, Header, Request, UploadFile
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
-from sqlalchemy import DateTime, Integer, String, create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Mapped, Session, mapped_column, sessionmaker
-from torch import nn, optim
-import tempfile
-from fastapi.concurrency import run_in_threadpool
-import json
-from app.vision_automl.ml_engine.trainer import run_optuna_search
-from app.vision_automl.utils import (
-    collect_missing_files, normalize_dataframe_filenames, resolve_images_root,
-    save_upload, search_hf_for_pytorch_models_with_estimated_parameters,
-    sort_models_by_size)
-
+from app.vision_automl.utils import _fetch_and_extract_dataset, _validate_dataset_structure, _run_automl_optimization, _package_model_artifacts, _prepare_model_metadata, _upload_model_to_autodw, DatasetValidationError, AutodwError
 logger = logging.getLogger(__name__)
 
 load_dotenv(find_dotenv())
@@ -46,390 +25,49 @@ MAX_MODELS_HF = int(os.getenv("MAX_MODELS_HF", 1))
 autodw_port_url = os.getenv("AUTODW_DATASETS_PORT", 8000)
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
 
-@app.post("/automl_vision/best_model/")
 async def find_best_model_for_vision(
     request: Request,
     user_id: Annotated[str, Form(..., description="User id from AutoDW")],
     dataset_id: Annotated[str, Form(..., description="Dataset id from AutoDW")],
-    dataset_version: Annotated[
-        str | None,
-        Form(..., description="Optional dataset version selection from AutoDW"),
-    ] = None,
-    filename_column: Annotated[
-        str, Form(..., description="Filename column in labels.csv")
-    ] = "filename",
-    label_column: Annotated[
-        str, Form(..., description="Label column in labels.csv")
-    ] = "label",
-    task_type: Annotated[
-        str,
-        Form(..., description="Vision task type", examples=["classification"]),
-    ] = "classification",
-    time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 3600,
+    dataset_version: Annotated[str | None, Form(None, description="Optional dataset version")] = None,
+    filename_column: Annotated[str, Form("filename", description="Filename column in labels.csv")] = "filename",
+    label_column: Annotated[str, Form("label", description="Label column in labels.csv")] = "label",
+    task_type: Annotated[str, Form("classification", description="Vision task type")] = "classification",
+    time_budget: Annotated[int, Form(3600, description="Time budget in seconds")] = 3600,
 ) -> JSONResponse:
-
-    autodw_base = autodw_url
-    metadata_url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
-    if dataset_version:
-        metadata_url = f"{metadata_url}/version/{dataset_version}"
-
-    download_url = f"{metadata_url}/download"
-    upload_url = f"{autodw_base}/ai-models/upload/single/{user_id}"
-
+    """
+    Optimized Vision AutoML endpoint that finds and trains the best model.
+    """
     try:
-        # --- 1. Fetch dataset metadata ---
-        logger.debug(f"Fetching dataset metadata: {metadata_url}")
-        metadata_resp = requests.get(metadata_url, timeout=15)
-        metadata_resp.raise_for_status()
-        metadata = metadata_resp.json()
-
-        file_type = metadata.get("file_type")
-        original_filename = metadata.get("original_filename", "dataset.zip")
-
-        if file_type != "zip":
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Vision AutoML requires a ZIP dataset"},
-            )
-
-        # --- 2. Download ZIP dataset ---
-        with requests.get(download_url, stream=True, timeout=60) as resp:
-            resp.raise_for_status()
-
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_path = Path(tmp_dir)
-                zip_path = tmp_path / original_filename
-
-                with open(zip_path, "wb") as f:
-                    for chunk in resp.iter_content(8192):
-                        f.write(chunk)
-
-                logger.info("Dataset ZIP downloaded: %s", zip_path)
-
-                # --- 3. Extract ZIP ---
-                extract_dir = tmp_path / "dataset"
-                extract_dir.mkdir(parents=True, exist_ok=True)
-                shutil.unpack_archive(zip_path, extract_dir)
-
-                # --- 4. Locate labels.csv and images/ ---
-                csv_path = extract_dir / "labels.csv"
-                images_dir = extract_dir / "images"
-
-                if not csv_path.exists():
-                    return JSONResponse(
-                        status_code=400,
-                        content={"error": "labels.csv not found in dataset ZIP"},
-                    )
-
-                if not images_dir.exists():
-                    return JSONResponse(
-                        status_code=400,
-                        content={"error": "images/ directory not found in dataset ZIP"},
-                    )
-
-                images_dir = resolve_images_root(images_dir)
-
-                # --- 5. Load and validate labels.csv ---
-                df = pd.read_csv(csv_path)
-
-                for col, name in [
-                    (filename_column, "Filename"),
-                    (label_column, "Label"),
-                ]:
-                    if col not in df.columns:
-                        msg = f"{name} column '{col}' not found in labels.csv"
-                        logger.error(msg)
-                        return JSONResponse(
-                            status_code=400, content={"error": msg}
-                        )
-
-                # Normalize filenames & validate image existence
-                df = normalize_dataframe_filenames(
-                    df, filename_column, csv_path
-                )
-
-                missing_files = collect_missing_files(
-                    df,
-                    images_dir,
-                    filename_column,
-                    label_column,
-                )
-
-                if missing_files:
-                    preview = missing_files[:5]
-                    msg = (
-                        f"Missing image files: {preview}"
-                        f"{'...' if len(missing_files) > 5 else ''}"
-                    )
-                    logger.warning("%s (%d missing)", msg, len(missing_files))
-                    return JSONResponse(
-                        status_code=400,
-                        content={
-                            "error": msg,
-                            "missing_count": len(missing_files),
-                        },
-                    )
-
-                # --- 6. Run Vision AutoML (Optuna) ---
-                logger.info("Starting vision AutoML optimization")
-
-                result = await run_in_threadpool(
-                    run_optuna_search,
-                    csv_path=csv_path,
-                    images_dir=images_dir,
-                    filename_column=filename_column,
-                    label_column=label_column,
-                    n_trials=25,
-                    timeout=int(time_budget),
-                )
-
-                # --- 7. Package trained artifacts ---
-                model_dir = extract_dir / "vision_model"
-                model_dir.mkdir(exist_ok=True)
-
-                # Assumption: run_optuna_search persists best model internally
-                # If not, this is where you'd explicitly save it
-
-                model_zip_path = tmp_path / "vision_model.zip"
-                shutil.make_archive(
-                    base_name=str(model_zip_path).replace(".zip", ""),
-                    format="zip",
-                    root_dir=model_dir,
-                )
-
-                # --- 8. Upload model to AutoDW ---
-                model_id = f"vision_automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"
-
-                headers = {}
-                task_id = request.headers.get("X-Task-ID")
-                if task_id:
-                    headers["X-Task-ID"] = task_id
-
-                with open(model_zip_path, "rb") as f:
-                    files = {
-                        "file": (
-                            model_zip_path.name,
-                            f,
-                            "application/octet-stream",
-                        )
-                    }
-
-                    data = {
-                        "model_id": model_id,
-                        "name": f"Vision AutoML Model - {model_id}",
-                        "description": "AutoML trained vision model",
-                        "framework": "pytorch",
-                        "model_type": task_type,
-                        "training_dataset": str(dataset_id),
-                        "leaderboard": json.dumps(
-                            {
-                                "best_loss": result["best_value"],
-                                "best_params": result["best_params"],
-                                "trials": result["n_trials"],
-                            }
-                        ),
-                    }
-
-                    upload_resp = requests.post(
-                        upload_url,
-                        headers=headers,
-                        files=files,
-                        data=data,
-                        timeout=120,
-                    )
-
-                    if upload_resp.status_code >= 400:
-                        logger.error("Model upload failed: %s", upload_resp.text)
-                        return JSONResponse(
-                            status_code=upload_resp.status_code,
-                            content={
-                                "error": f"Failed to upload model: {upload_resp.text}"
-                            },
-                        )
-
-        logger.info("Vision AutoML completed successfully")
-
+        dataset_paths = await _fetch_and_extract_dataset(user_id, dataset_id, dataset_version)
+        csv_path, images_dir = dataset_paths
+        
+        dataset_paths = _validate_dataset_structure(csv_path, images_dir, filename_column, label_column)
+        csv_path, images_dir = dataset_paths
+        
+        optuna_result = await _run_automl_optimization(csv_path, images_dir, filename_column, label_column, time_budget)
+        
+        model_zip_path = _package_model_artifacts(optuna_result)
+        model_metadata = _prepare_model_metadata(dataset_id, optuna_result, task_type)
+        
+        upload_result = _upload_model_to_autodw(model_zip_path, model_metadata, request.headers.get("X-Task-ID"))
+        
         return JSONResponse(
             status_code=200,
             content={
                 "message": "Vision AutoML training completed successfully",
-                "best_loss": result["best_value"],
-                "best_params": result["best_params"],
-                "trials": result["n_trials"],
+                "best_loss": optuna_result["best_value"],
+                "best_params": optuna_result["best_params"],
+                "trials": optuna_result["n_trials"],
+                "model_id": upload_result["model_id"],
             },
         )
-
-    except requests.RequestException as e:
-        logger.exception("AutoDW communication error")
-        return JSONResponse(
-            status_code=502,
-            content={"error": f"AutoDW communication failed: {e}"},
-        )
-
+    
+    except DatasetValidationError as e:
+        return JSONResponse(status_code=400, content={"error": str(e)})
+    except AutodwError as e:
+        return JSONResponse(status_code=502, content={"error": f"AutoDW error: {e}"})
     except Exception as e:
         logger.exception("Unexpected error during vision AutoML")
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e)},
-        )
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
-
-
-# @app.post("/automl_vision/best_model_mvp/")
-# async def find_best_model_for_vision_mvp(
-#     csv_file: Annotated[
-#         UploadFile,
-#         File(..., description="CSV file containing image filenames and labels")
-#     ],
-#     images_zip: Annotated[
-#         UploadFile,
-#         File(..., description="ZIP file containing image dataset")
-#     ],
-#     filename_column: Annotated[
-#         str,
-#         Form(..., description="Name of the CSV column containing image filenames")
-#     ],
-#     label_column: Annotated[
-#         str,
-#         Form(..., description="Name of the CSV column containing labels or targets")
-#     ],
-#     task_type: Annotated[
-#         str,
-#         Form(..., description="Type of ML task (e.g., 'classification')", examples=["classification"])
-#     ] = "classification",
-#     time_budget: Annotated[
-#         int,
-#         Form(..., description="Time budget for AutoML training in seconds")
-#     ] = 600,
-#     model_size: Annotated[
-#         str,
-#         Form(..., description="Desired model size hint (e.g., 'small', 'base', 'large')")
-#     ] = "base",
-#     db: Session = Depends(get_db),
-# ) -> JSONResponse:
-#     """
-#     ### Endpoint: `/automl_vision/best_model_mvp/`
-#
-#     **Purpose:**
-#     Single-step AutoML pipeline for image datasets.
-#     Upload CSV + ZIP + metadata, run validation, choose model, train, and return metrics.
-#
-#     ---
-#     #### Input Parameters
-#
-#     * **csv_file:** CSV containing image filenames and labels.
-#     * **images_zip:** ZIP archive of image files.
-#     * **filename_column:** Column in CSV that maps to image filenames.
-#     * **label_column:** Column in CSV with class labels.
-#     * **task_type:** `"classification"` (others can be extended later).
-#     * **time_budget:** Training time in seconds.
-#     * **model_size:** `"small" | "base" | "large"`, selects model candidates.
-#     ---
-#     """
-#     session_id = str(uuid.uuid4())
-#     session_dir = UPLOAD_ROOT / session_id
-#     session_dir.mkdir(parents=True, exist_ok=True)
-#     logger.info("Starting new vision AutoML MVP session: %s", session_id)
-#
-#     try:
-#         # --- Save and validate CSV ---
-#         csv_path = session_dir / "labels.csv"
-#         save_upload(csv_file, csv_path)
-#         df = pd.read_csv(csv_path)
-#
-#         for col, name in [(filename_column, "Filename"), (label_column, "Label")]:
-#             if col not in df.columns:
-#                 msg = f"{name} column '{col}' not found in CSV"
-#                 logger.error(msg)
-#                 return JSONResponse(status_code=400, content={"error": msg})
-#
-#         # --- Save and extract images ---
-#         images_zip_path = session_dir / "images.zip"
-#         save_upload(images_zip, images_zip_path)
-#         images_dir = session_dir / "images"
-#         images_dir.mkdir(exist_ok=True)
-#         shutil.unpack_archive(images_zip_path, images_dir)
-#         images_dir = resolve_images_root(images_dir)
-#
-#         # --- Normalize and validate ---
-#         df = normalize_dataframe_filenames(df, filename_column, csv_path)
-#         missing_files = collect_missing_files(df, images_dir, filename_column, label_column)
-#         if missing_files:
-#             preview = missing_files[:5]
-#             msg = f"Missing image files: {preview}{'...' if len(missing_files) > 5 else ''}"
-#             logger.warning("%s (%d missing)", msg, len(missing_files))
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={"error": msg, "missing_count": len(missing_files)},
-#             )
-#
-#         # --- Store session in DB ---
-#         session_record = AutoMLVisionSession(
-#             session_id=session_id,
-#             csv_file_path=str(csv_path),
-#             images_dir_path=str(images_dir),
-#             filename_column=filename_column,
-#             label_column=label_column,
-#             task_type=task_type,
-#             time_budget=time_budget,
-#             model_size=model_size,
-#         )
-#         db.add(session_record)
-#         db.commit()
-#         logger.info("Session %s stored successfully", session_id)
-#
-#         # --- Model search and selection ---
-#         candidates = search_hf_for_pytorch_models_with_estimated_parameters(
-#             filter="image-classification",
-#             limit=MAX_MODELS_HF,
-#         )
-#         chosen = sort_models_by_size(candidates, model_size)[0] if candidates else None
-#         model_id = chosen["model_id"] if chosen else "google/vit-base-patch16-224"
-#         logger.info("Chosen model for session %s: %s", session_id, model_id)
-#
-#         # --- Initialize DataModule and Trainer ---
-#         datamodule = ClassificationData(
-#             csv_file=str(csv_path),
-#             root_dir=str(images_dir),
-#             img_col=filename_column,
-#             label_col=label_column,
-#             batch_size=64,
-#             hf_model_id=model_id,
-#         )
-#         trainer = FabricTrainer(
-#             datamodule=datamodule,
-#             model_class=ClassificationModel,
-#             model_kwargs={
-#                 "model_id": model_id,
-#                 "num_classes": datamodule.num_classes,
-#                 "id2label": datamodule.id2label,
-#                 "label2id": datamodule.label2id,
-#             },
-#             optimizer_class=optim.AdamW,
-#             optimizer_kwargs={"lr": 0.001},
-#             loss_fn=nn.CrossEntropyLoss(),
-#             epochs=50,
-#             time_limit=float(time_budget),
-#         )
-#
-#         # --- Train and return metrics ---
-#         logger.info("Starting training for session %s", session_id)
-#         test_loss, test_acc = trainer.fit()
-#         logger.info("Training completed: loss=%.4f, acc=%.4f", test_loss, test_acc)
-#
-#         return JSONResponse(
-#             status_code=200,
-#             content={
-#                 "message": "Vision AutoML training completed successfully.",
-#                 "session_id": session_id,
-#                 "chosen_model": model_id,
-#                 "test_loss": test_loss,
-#                 "test_accuracy": test_acc,
-#                 "num_classes": datamodule.num_classes,
-#             },
-#         )
-#
-#     except Exception as e:
-#         db.rollback()
-#         logger.exception("Error during vision AutoML MVP processing: %s", e)
-#         return JSONResponse(status_code=500, content={"error": str(e)})

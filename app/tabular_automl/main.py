@@ -10,7 +10,6 @@ import os
 import pickle
 import shutil
 import tempfile
-from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
@@ -18,14 +17,11 @@ from typing import Annotated
 import pandas as pd
 import requests
 from dotenv import find_dotenv, load_dotenv
-from fastapi import FastAPI, File, Form, Header, Request, UploadFile
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 
-from app.core.chat_handler import ChatHandler
 from app.tabular_automl.modules import AutoMLTrainer
-from app.tabular_automl.services import (create_session_directory, load_table,
-                                         save_upload, store_session_in_db,
+from app.tabular_automl.services import (load_table,
                                          validate_tabular_inputs)
 
 logger = logging.getLogger(__name__)
