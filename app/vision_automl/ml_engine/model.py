@@ -1,6 +1,7 @@
+import torch
 from torch import nn
 from transformers import AutoModelForImageClassification
-import torch
+
 
 class ClassificationModel(nn.Module):
     def __init__(
@@ -17,7 +18,7 @@ class ClassificationModel(nn.Module):
             "id2label": id2label or {i: str(i) for i in range(num_classes)},
             "label2id": label2id or {str(i): i for i in range(num_classes)},
         }
-        
+
         self.model = AutoModelForImageClassification.from_pretrained(
             model_id,
             ignore_mismatched_sizes=True,
@@ -27,7 +28,7 @@ class ClassificationModel(nn.Module):
         if freeze_backbone:
             for param in self.model.parameters():
                 param.requires_grad = False
-            
+
             if hasattr(self.model, "classifier"):
                 for param in self.model.classifier.parameters():
                     param.requires_grad = True

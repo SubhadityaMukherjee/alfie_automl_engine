@@ -1,8 +1,8 @@
 import logging
 import os
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch
 from dotenv import find_dotenv, load_dotenv
 from jinja2 import Environment, FileSystemLoader, utils
 

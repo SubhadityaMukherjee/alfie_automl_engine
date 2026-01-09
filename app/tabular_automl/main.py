@@ -21,8 +21,7 @@ from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
 
 from app.tabular_automl.modules import AutoMLTrainer
-from app.tabular_automl.services import (load_table,
-                                         validate_tabular_inputs)
+from app.tabular_automl.services import load_table, validate_tabular_inputs
 
 logger = logging.getLogger(__name__)
 

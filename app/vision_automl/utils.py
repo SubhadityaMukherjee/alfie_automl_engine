@@ -1,28 +1,23 @@
+import datetime
+import json
 import logging
 import os
 import shutil
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi import UploadFile
-from huggingface_hub import HfApi
-import datetime
-import logging
-import os
-import shutil
-from pathlib import Path
-
-import pandas as pd
-from dotenv import find_dotenv, load_dotenv
 import requests
+from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, UploadFile
-import tempfile
 from fastapi.concurrency import run_in_threadpool
-import json
+from huggingface_hub import HfApi
+
 from app.vision_automl.ml_engine.trainer import run_optuna_search
-from app.vision_automl.utils import (
-    collect_missing_files, normalize_dataframe_filenames, resolve_images_root)
+from app.vision_automl.utils import (collect_missing_files,
+                                     normalize_dataframe_filenames,
+                                     resolve_images_root)
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +215,6 @@ def sort_models_by_size(
     )
 
 
-
 class DatasetValidationError(ValueError):
     """Custom exception for dataset validation failures."""
 
@@ -237,23 +231,25 @@ async def _fetch_and_extract_dataset(
     metadata_url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
     if dataset_version:
         metadata_url += f"/version/{dataset_version}"
-    
+
     metadata = _fetch_json(metadata_url, timeout=15)
     _validate_zip_dataset(metadata)
-    
+
     download_url = f"{metadata_url}/download"
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp_path = Path(tmp_dir)
-        zip_path = await _download_zip(download_url, tmp_path / metadata["original_filename"])
-        
-        extract_dir = tmp_path / metadata["original_filename"].replace('.zip', '')
+        zip_path = await _download_zip(
+            download_url, tmp_path / metadata["original_filename"]
+        )
+
+        extract_dir = tmp_path / metadata["original_filename"].replace(".zip", "")
         extract_dir.mkdir(exist_ok=True)
         shutil.unpack_archive(zip_path, extract_dir)
-        
+
         dataset_root = _find_valid_dataset_root(extract_dir)
         csv_path = _find_csv_file(dataset_root)
         images_dir = _find_or_resolve_images_dir(dataset_root, csv_path)
-        
+
         return csv_path, images_dir
 
 
@@ -265,10 +261,12 @@ def _validate_zip_dataset(metadata: dict) -> None:
 
 async def _download_zip(url: str, zip_path: Path) -> Path:
     """Download ZIP file with streaming and gzip support."""
-    with requests.get(url, stream=True, timeout=60, headers={'Accept-Encoding': 'gzip, deflate'}) as resp:
+    with requests.get(
+        url, stream=True, timeout=60, headers={"Accept-Encoding": "gzip, deflate"}
+    ) as resp:
         resp.raise_for_status()
         with open(zip_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=1024*1024):
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
                 f.write(chunk)
     return zip_path
 
@@ -276,8 +274,11 @@ async def _download_zip(url: str, zip_path: Path) -> Path:
 def _find_valid_dataset_root(extract_dir: Path) -> Path:
     """Find first valid dataset folder (skip __MACOSX, hidden dirs)."""
     real_dirs = [
-        child for child in extract_dir.iterdir()
-        if child.is_dir() and child.name != "__MACOSX" and not child.name.startswith('.')
+        child
+        for child in extract_dir.iterdir()
+        if child.is_dir()
+        and child.name != "__MACOSX"
+        and not child.name.startswith(".")
     ]
     if not real_dirs:
         raise DatasetValidationError("No valid dataset folder found")
@@ -287,7 +288,8 @@ def _find_valid_dataset_root(extract_dir: Path) -> Path:
 def _find_csv_file(dataset_root: Path) -> Path:
     """Find labels.csv or metadata.csv using rglob."""
     csv_candidates = [
-        p for p in dataset_root.rglob("*")
+        p
+        for p in dataset_root.rglob("*")
         if p.is_file() and p.name in ("labels.csv", "metadata.csv")
     ]
     if not csv_candidates:
@@ -300,9 +302,11 @@ def _find_or_resolve_images_dir(dataset_root: Path, csv_path: Path) -> Path:
     images_candidates = [
         p for p in dataset_root.rglob("*") if p.is_dir() and p.name == "images"
     ]
-    images_dir = images_candidates[0] if images_candidates else (csv_path.parent / "images")
+    images_dir = (
+        images_candidates[0] if images_candidates else (csv_path.parent / "images")
+    )
     resolved_dir = resolve_images_root(images_dir)
-    
+
     if not resolved_dir.exists():
         raise DatasetValidationError("images/ directory not found in dataset ZIP")
     return resolved_dir
@@ -313,36 +317,47 @@ def _validate_dataset_structure(
 ) -> tuple[Path, Path]:
     """Load CSV and validate structure and image files."""
     df = pd.read_csv(csv_path)
-    
+
     _validate_csv_columns(df, filename_column, label_column)
     df = normalize_dataframe_filenames(df, filename_column, csv_path)
-    
+
     missing_files = collect_missing_files(df, images_dir, filename_column, label_column)
     if missing_files:
         preview = missing_files[:5]
         raise DatasetValidationError(
             f"Missing {len(missing_files)} image files: {preview}{'...' if len(missing_files) > 5 else ''}"
         )
-    
+
     return csv_path, images_dir
 
 
-def _validate_csv_columns(df: pd.DataFrame, filename_column: str, label_column: str) -> None:
+def _validate_csv_columns(
+    df: pd.DataFrame, filename_column: str, label_column: str
+) -> None:
     """Validate required CSV columns exist."""
     for col, name in [(filename_column, "Filename"), (label_column, "Label")]:
         if col not in df.columns:
-            raise DatasetValidationError(f"{name} column '{col}' not found in labels.csv")
+            raise DatasetValidationError(
+                f"{name} column '{col}' not found in labels.csv"
+            )
 
 
 async def _run_automl_optimization(
-    csv_path: Path, images_dir: Path, filename_column: str, label_column: str, time_budget: int
+    csv_path: Path,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+    time_budget: int,
 ) -> dict:
     """Run Optuna optimization in threadpool."""
     return await run_in_threadpool(
         run_optuna_search,
-        csv_path=csv_path, images_dir=images_dir,
-        filename_column=filename_column, label_column=label_column,
-        n_trials=25, timeout=time_budget,
+        csv_path=csv_path,
+        images_dir=images_dir,
+        filename_column=filename_column,
+        label_column=label_column,
+        n_trials=25,
+        timeout=time_budget,
     )
 
 
@@ -352,16 +367,18 @@ def _package_model_artifacts(result: dict) -> Path:
         tmp_path = Path(tmp_dir)
         model_dir = tmp_path / "vision_model"
         model_dir.mkdir(exist_ok=True)
-        
+
         # Note: Assumes run_optuna_search saves model to current working dir
         # You may need to copy files from result or specify model save path
-        
+
         model_zip_path = tmp_path / "vision_model.zip"
         shutil.make_archive(str(model_zip_path).replace(".zip", ""), "zip", model_dir)
         return model_zip_path
 
 
-def _prepare_model_metadata(dataset_id: str, optuna_result: dict, task_type: str) -> dict:
+def _prepare_model_metadata(
+    dataset_id: str, optuna_result: dict, task_type: str
+) -> dict:
     """Prepare metadata for model upload."""
     return {
         "model_id": f"vision_automl_{dataset_id}_{int(datetime.utcnow().timestamp())}",
@@ -370,24 +387,30 @@ def _prepare_model_metadata(dataset_id: str, optuna_result: dict, task_type: str
         "framework": "pytorch",
         "model_type": task_type,
         "training_dataset": str(dataset_id),
-        "leaderboard": json.dumps({
-            "best_loss": optuna_result["best_value"],
-            "best_params": optuna_result["best_params"],
-            "trials": optuna_result["n_trials"],
-        }),
+        "leaderboard": json.dumps(
+            {
+                "best_loss": optuna_result["best_value"],
+                "best_params": optuna_result["best_params"],
+                "trials": optuna_result["n_trials"],
+            }
+        ),
     }
 
 
-def _upload_model_to_autodw(model_zip_path: Path, metadata: dict, task_id: str | None = None) -> dict:
+def _upload_model_to_autodw(
+    model_zip_path: Path, metadata: dict, task_id: str | None = None
+) -> dict:
     """Upload model ZIP to AutoDW."""
     upload_url = f"{autodw_url}/ai-models/upload/single/{metadata['model_id']}"
-    
+
     headers = {"X-Task-ID": task_id} if task_id else {}
     with open(model_zip_path, "rb") as f:
         files = {"file": (model_zip_path.name, f, "application/octet-stream")}
-        resp = requests.post(upload_url, headers=headers, files=files, data=metadata, timeout=120)
+        resp = requests.post(
+            upload_url, headers=headers, files=files, data=metadata, timeout=120
+        )
         resp.raise_for_status()
-    
+
     logger.info("Model uploaded successfully: %s", metadata["model_id"])
     metadata["model_id"] = resp.json().get("model_id", metadata["model_id"])
     return metadata

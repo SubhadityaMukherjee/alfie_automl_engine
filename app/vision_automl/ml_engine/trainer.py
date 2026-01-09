@@ -1,13 +1,13 @@
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 import lightning as L
+import optuna
 import torch
 from torch import nn, optim
 from tqdm import tqdm
-from pathlib import Path
-import optuna
 
 from app.vision_automl.ml_engine.datamodule import ClassificationData
 from app.vision_automl.ml_engine.model import ClassificationModel
@@ -236,6 +236,7 @@ class FabricTrainer:
 
         return self.test()
 
+
 def optuna_objective(
     trial: optuna.Trial,
     *,
@@ -297,6 +298,7 @@ def optuna_objective(
 
     # We optimize validation loss proxy via test loss
     return test_loss
+
 
 def run_optuna_search(
     *,
