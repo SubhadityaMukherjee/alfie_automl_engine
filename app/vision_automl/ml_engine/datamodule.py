@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 from typing import Any, Callable
 
 import pandas as pd
@@ -38,8 +39,8 @@ class ClassificationData:
 
     def __init__(
         self,
-        csv_file: str,
-        root_dir: str,
+        csv_file: Path,
+        root_dir: Path,
         img_col: str = "filename",
         label_col: str = "label",
         batch_size: int = DEFAULT_BATCH_SIZE,
@@ -51,8 +52,8 @@ class ClassificationData:
         seed: int = 42,
         hf_model_id: str = DEFAULT_IMAGE_CLASSIFIER_HF_ID,
     ) -> None:
-        self.csv_file: str = csv_file
-        self.root_dir: str = root_dir
+        self.csv_file = Path(csv_file)
+        self.root_dir = Path(root_dir)
         self.img_col: str = img_col
         self.label_col: str = label_col
         self.batch_size: int = batch_size

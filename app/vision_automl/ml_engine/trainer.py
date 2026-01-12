@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -244,14 +245,41 @@ def optuna_objective(
     images_dir: Path,
     filename_column: str,
     label_column: str,
+    model_size: str,  # New parameter
 ):
     # -------------------------
-    # Search space
+    # Search space by model size
     # -------------------------
-    model_id = trial.suggest_categorical(
-        "model_id",
-        ["google/efficientnet-b0", "google/vit-base-patch16-224"],
-    )
+    if model_size == "small":
+        model_id = trial.suggest_categorical(
+            "model_id",
+            [
+                "google/efficientnet-b0",
+                "google/mobilenet_v2_1.0_224",
+                # "google/mobilenet_v3_small",
+            ],
+        )
+    elif model_size == "medium":
+        model_id = trial.suggest_categorical(
+            "model_id",
+            [
+                "google/efficientnet-b0",
+                "google/vit-base-patch16-224",
+                # "google/efficientnet-b1",
+                # "microsoft/swin-tiny-patch4-window7-224",
+            ],
+        )
+    else:  # large
+        model_id = trial.suggest_categorical(
+            "model_id",
+            [
+                "google/vit-base-patch16-224",
+                "google/efficientnet-b4",
+                # "microsoft/swin-base-patch4-window7-224",
+                # "facebook/dino-vits16",
+            ],
+        )
+    
 
     lr = trial.suggest_float("lr", 1e-5, 3e-3, log=True)
     batch_size = trial.suggest_categorical("batch_size", [16, 32, 64])
@@ -261,8 +289,8 @@ def optuna_objective(
     # Data
     # -------------------------
     datamodule = ClassificationData(
-        csv_file=str(csv_path),
-        root_dir=str(images_dir),
+        csv_file=csv_path,
+        root_dir=images_dir,
         img_col=filename_column,
         label_col=label_column,
         batch_size=batch_size,
@@ -299,16 +327,20 @@ def optuna_objective(
     # We optimize validation loss proxy via test loss
     return test_loss
 
-
 def run_optuna_search(
     *,
     csv_path: Path,
     images_dir: Path,
     filename_column: str,
     label_column: str,
-    n_trials: int = 20,
+    n_trials: int = 3,
     timeout: int | None = None,
+    model_size: str = "small",
+    workdir: Path,
 ):
+    run_dir = workdir / "optuna"
+    run_dir.mkdir(exist_ok=True)
+
     pruner = optuna.pruners.MedianPruner(
         n_startup_trials=3,
         n_warmup_steps=2,
@@ -329,6 +361,7 @@ def run_optuna_search(
             images_dir=images_dir,
             filename_column=filename_column,
             label_column=label_column,
+            model_size=model_size,
         ),
         n_trials=n_trials,
         timeout=timeout,
@@ -338,4 +371,5 @@ def run_optuna_search(
         "best_value": study.best_value,
         "best_params": study.best_params,
         "n_trials": len(study.trials),
+        "model_dir": run_dir / f"trial_{study.best_trial.number}",
     }

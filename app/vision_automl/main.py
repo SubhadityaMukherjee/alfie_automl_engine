@@ -11,7 +11,10 @@ from typing import Annotated
 from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
-
+from contextlib import contextmanager
+from pathlib import Path
+import shutil
+import tempfile
 from app.vision_automl.utils import (AutodwError, DatasetValidationError,
                                      _fetch_and_extract_dataset,
                                      _package_model_artifacts,
@@ -33,62 +36,80 @@ MAX_MODELS_HF = int(os.getenv("MAX_MODELS_HF", 1))
 autodw_port_url = os.getenv("AUTODW_DATASETS_PORT", 8000)
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
 
+@contextmanager
+def dataset_workspace(prefix: str):
+    path = Path(tempfile.mkdtemp(prefix=f"{prefix}_"))
+    try:
+        yield path
+    finally:
+        shutil.rmtree(path, ignore_errors=True)
 
+@app.post("/automl_vision/best_model/")
 async def find_best_model_for_vision(
     request: Request,
     user_id: Annotated[str, Form(..., description="User id from AutoDW")],
     dataset_id: Annotated[str, Form(..., description="Dataset id from AutoDW")],
     dataset_version: Annotated[
-        str | None, Form(None, description="Optional dataset version")
+        str | None, Form(..., description="Optional dataset version")
     ] = None,
     filename_column: Annotated[
-        str, Form("filename", description="Filename column in labels.csv")
+        str, Form(..., description="Filename column in labels.csv")
     ] = "filename",
     label_column: Annotated[
-        str, Form("label", description="Label column in labels.csv")
+        str, Form(..., description="Label column in labels.csv")
     ] = "label",
     task_type: Annotated[
-        str, Form("classification", description="Vision task type")
+        str, Form(..., description="Vision task type")
     ] = "classification",
     time_budget: Annotated[
-        int, Form(3600, description="Time budget in seconds")
+        int, Form(..., description="Time budget in seconds")
     ] = 3600,
+    model_size: Annotated[
+        str, Form(..., description="Model size: small/medium/large")
+    ] = "small",
 ) -> JSONResponse:
     """
     Optimized Vision AutoML endpoint that finds and trains the best model.
     """
     try:
-        dataset_paths = await _fetch_and_extract_dataset(
-            user_id, dataset_id, dataset_version
-        )
-        csv_path, images_dir = dataset_paths
+        with dataset_workspace(f"automl_{dataset_id}") as workdir:
+            csv_path, images_dir = await _fetch_and_extract_dataset(
+            user_id, dataset_id, dataset_version, workdir
+            )
 
-        dataset_paths = _validate_dataset_structure(
-            csv_path, images_dir, filename_column, label_column
-        )
-        csv_path, images_dir = dataset_paths
+            csv_path, images_dir = _validate_dataset_structure(
+                csv_path, images_dir, filename_column, label_column
+            )
 
-        optuna_result = await _run_automl_optimization(
-            csv_path, images_dir, filename_column, label_column, time_budget
-        )
+            optuna_result = await _run_automl_optimization(
+                csv_path,
+                images_dir,
+                filename_column,
+                label_column,
+                time_budget,
+                model_size,
+                workdir=workdir
+            )
 
-        model_zip_path = _package_model_artifacts(optuna_result)
-        model_metadata = _prepare_model_metadata(dataset_id, optuna_result, task_type)
+            model_zip_path = _package_model_artifacts(optuna_result, workdir)
 
-        upload_result = _upload_model_to_autodw(
-            model_zip_path, model_metadata, request.headers.get("X-Task-ID")
-        )
+            model_metadata = _prepare_model_metadata(
+                dataset_id, optuna_result, task_type
+            )
 
-        return JSONResponse(
-            status_code=200,
-            content={
-                "message": "Vision AutoML training completed successfully",
-                "best_loss": optuna_result["best_value"],
-                "best_params": optuna_result["best_params"],
-                "trials": optuna_result["n_trials"],
-                "model_id": upload_result["model_id"],
-            },
-        )
+            upload_result = _upload_model_to_autodw(
+                model_zip_path, model_metadata, request.headers.get("X-Task-ID")
+            )
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "message": "Vision AutoML training completed successfully",
+                    "best_loss": optuna_result["best_value"],
+                    "best_params": optuna_result["best_params"],
+                    "trials": optuna_result["n_trials"],
+                    "model_id": upload_result["model_id"],
+                },
+            )
 
     except DatasetValidationError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})

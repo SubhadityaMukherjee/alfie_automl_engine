@@ -15,10 +15,6 @@ from fastapi.concurrency import run_in_threadpool
 from huggingface_hub import HfApi
 
 from app.vision_automl.ml_engine.trainer import run_optuna_search
-from app.vision_automl.utils import (collect_missing_files,
-                                     normalize_dataframe_filenames,
-                                     resolve_images_root)
-
 logger = logging.getLogger(__name__)
 
 load_dotenv(find_dotenv())
@@ -77,41 +73,26 @@ def resolve_images_root(images_dir: Path) -> Path:
 
     return images_dir
 
-
-def collect_missing_files(
-    df: pd.DataFrame,
-    images_dir: Path,
-    filename_column: str,
-    label_column: str,
-) -> list[str]:
-    """Return list of filenames that do not exist in the extracted images."""
-    logger.info("Checking for missing image files...")
-    missing_files: list[str] = []
+def collect_missing_files(df, images_dir, filename_col, label_col):
+    missing = []
     for _, row in df.iterrows():
-        raw_filename = str(row[filename_column])
-        label = str(row[label_column])
-        basename = os.path.basename(raw_filename.replace("\\", "/"))
-
-        candidates = [
-            images_dir / label / basename,
-            images_dir / basename,
-            images_dir / raw_filename,
-        ]
-
-        if any(path.exists() for path in candidates):
+        filename = row[filename_col]
+        
+        # First try direct path
+        img_path = images_dir / filename
+        if img_path.exists():
             continue
+            
+        # Then search subdirectories for exact match
+        matches = list(images_dir.rglob(filename))
+        if len(matches) == 1:
+            continue  # Found exactly one match anywhere in subfolders
+        elif len(matches) > 1:
+            logger.warning("Multiple matches for %s: %s", filename, matches)
+        
+        missing.append(filename)
+    return missing
 
-        try:
-            found_any = next(images_dir.rglob(basename), None) is not None
-        except Exception as e:
-            logger.debug("Error searching recursively for %s: %s", basename, e)
-            found_any = False
-
-        if not found_any:
-            missing_files.append(raw_filename)
-
-    logger.info("Missing %d files", len(missing_files))
-    return missing_files
 
 
 def get_num_params_if_available(
@@ -222,11 +203,12 @@ class DatasetValidationError(ValueError):
 class AutodwError(Exception):
     """Custom exception for AutoDW communication failures."""
 
-
 async def _fetch_and_extract_dataset(
-    user_id: str, dataset_id: str, dataset_version: str | None
+    user_id: str,
+    dataset_id: str,
+    dataset_version: str | None,
+    workdir: Path,
 ) -> tuple[Path, Path]:
-    """Download and extract ZIP dataset from AutoDW."""
     autodw_base = autodw_url
     metadata_url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
     if dataset_version:
@@ -235,23 +217,22 @@ async def _fetch_and_extract_dataset(
     metadata = _fetch_json(metadata_url, timeout=15)
     _validate_zip_dataset(metadata)
 
-    download_url = f"{metadata_url}/download"
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_path = Path(tmp_dir)
-        zip_path = await _download_zip(
-            download_url, tmp_path / metadata["original_filename"]
-        )
+    zip_path = await _download_zip(
+        f"{metadata_url}/download",
+        workdir / metadata["original_filename"],
+    )
 
-        extract_dir = tmp_path / metadata["original_filename"].replace(".zip", "")
-        extract_dir.mkdir(exist_ok=True)
-        shutil.unpack_archive(zip_path, extract_dir)
+    extract_dir = workdir / "dataset"
+    extract_dir.mkdir(exist_ok=True)
 
-        dataset_root = _find_valid_dataset_root(extract_dir)
-        csv_path = _find_csv_file(dataset_root)
-        images_dir = _find_or_resolve_images_dir(dataset_root, csv_path)
+    shutil.unpack_archive(zip_path, extract_dir)
 
-        return csv_path, images_dir
+    dataset_root = _find_valid_dataset_root(extract_dir)
 
+    csv_path = _find_csv_file(dataset_root)
+    images_dir = _find_or_resolve_images_dir(dataset_root, csv_path)
+
+    return csv_path, images_dir
 
 def _validate_zip_dataset(metadata: dict) -> None:
     """Validate dataset metadata for ZIP format."""
@@ -340,16 +321,15 @@ def _validate_csv_columns(
             raise DatasetValidationError(
                 f"{name} column '{col}' not found in labels.csv"
             )
-
-
 async def _run_automl_optimization(
     csv_path: Path,
     images_dir: Path,
     filename_column: str,
     label_column: str,
     time_budget: int,
+    model_size: str,
+    workdir: Path,
 ) -> dict:
-    """Run Optuna optimization in threadpool."""
     return await run_in_threadpool(
         run_optuna_search,
         csv_path=csv_path,
@@ -358,22 +338,23 @@ async def _run_automl_optimization(
         label_column=label_column,
         n_trials=25,
         timeout=time_budget,
+        model_size=model_size,
+        workdir=workdir,
     )
 
 
-def _package_model_artifacts(result: dict) -> Path:
-    """Package trained model artifacts into ZIP."""
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        tmp_path = Path(tmp_dir)
-        model_dir = tmp_path / "vision_model"
-        model_dir.mkdir(exist_ok=True)
+def _package_model_artifacts(result: dict, workdir: Path) -> Path:
+    model_dir = workdir / "model"
+    model_dir.mkdir(exist_ok=True)
+    model_zip_path = workdir / "vision_model.zip"
+    shutil.make_archive(
+        str(model_zip_path).replace(".zip", ""),
+        "zip",
+        model_dir,
+    )
 
-        # Note: Assumes run_optuna_search saves model to current working dir
-        # You may need to copy files from result or specify model save path
+    return model_zip_path
 
-        model_zip_path = tmp_path / "vision_model.zip"
-        shutil.make_archive(str(model_zip_path).replace(".zip", ""), "zip", model_dir)
-        return model_zip_path
 
 
 def _prepare_model_metadata(

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Optional, Union
 
 import pandas as pd
@@ -13,13 +14,13 @@ class ImageClassificationFromCSVDataset(Dataset):
 
     def __init__(
         self,
-        csv_file: Union[str, pd.DataFrame],
-        root_dir: str,
+        csv_file: Union[Path, pd.DataFrame],
+        root_dir: Path,
         img_col: str = "image",
         label_col: str = "label",
         transform: Optional[T.Compose] = None,
     ):
-        if isinstance(csv_file, str):
+        if isinstance(csv_file, Path):
             self.label_csv = pd.read_csv(csv_file)
         elif isinstance(csv_file, pd.DataFrame):
             self.label_csv = csv_file.reset_index(drop=True)
@@ -54,23 +55,36 @@ class ImageClassificationFromCSVDataset(Dataset):
         return len(self.label_csv)
 
     def __getitem__(self, idx):
-        """Return a single sample as (image, label)."""
         if torch.is_tensor(idx):
             idx = idx.item()
-        label = int(self.label_csv.iloc[idx][self.label_col])
 
-        # Handle both flat and hierarchical directory structures
-        filename = self.label_csv.iloc[idx][self.img_col]
-        label_name = self.idx_to_class[label]
+        row = self.label_csv.iloc[idx]
+        label_idx = int(row[self.label_col])
+        label_name = self.idx_to_class[label_idx]
 
-        # First try: images are in subdirectories by label (e.g., root_dir/label/filename)
-        img_path = os.path.join(self.root_dir, label_name, filename)
+        filename = str(row[self.img_col]).strip()
 
-        # If that doesn't exist, try flat structure (e.g., root_dir/filename)
-        if not os.path.exists(img_path):
-            img_path = os.path.join(self.root_dir, filename)
+        img_path = (
+            self.root_dir
+            / label_name
+            / filename
+        )
+        if not img_path.exists():
+            print(os.listdir(self.root_dir))
+            print(os.listdir(self.root_dir/label_name))
+
+
+            raise FileNotFoundError(
+                f"Image not found\n"
+                f"Expected path: {img_path}\n"
+                f"root_dir: {self.root_dir}\n"
+                f"label_name: {label_name}\n"
+                f"filename: {repr(filename)}"
+            )
 
         img = Image.open(img_path).convert("RGB")
+
         if self.transform:
             img = self.transform(img)
-        return img, torch.tensor(label, dtype=torch.long)
+
+        return img, torch.tensor(label_idx, dtype=torch.long)
