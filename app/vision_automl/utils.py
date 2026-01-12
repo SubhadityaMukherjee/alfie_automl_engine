@@ -15,6 +15,7 @@ from fastapi.concurrency import run_in_threadpool
 from huggingface_hub import HfApi
 
 from app.vision_automl.ml_engine.trainer import run_optuna_search
+
 logger = logging.getLogger(__name__)
 
 load_dotenv(find_dotenv())
@@ -73,26 +74,26 @@ def resolve_images_root(images_dir: Path) -> Path:
 
     return images_dir
 
+
 def collect_missing_files(df, images_dir, filename_col, label_col):
     missing = []
     for _, row in df.iterrows():
         filename = row[filename_col]
-        
+
         # First try direct path
         img_path = images_dir / filename
         if img_path.exists():
             continue
-            
+
         # Then search subdirectories for exact match
         matches = list(images_dir.rglob(filename))
         if len(matches) == 1:
             continue  # Found exactly one match anywhere in subfolders
         elif len(matches) > 1:
             logger.warning("Multiple matches for %s: %s", filename, matches)
-        
+
         missing.append(filename)
     return missing
-
 
 
 def get_num_params_if_available(
@@ -203,6 +204,7 @@ class DatasetValidationError(ValueError):
 class AutodwError(Exception):
     """Custom exception for AutoDW communication failures."""
 
+
 async def _fetch_and_extract_dataset(
     user_id: str,
     dataset_id: str,
@@ -233,6 +235,7 @@ async def _fetch_and_extract_dataset(
     images_dir = _find_or_resolve_images_dir(dataset_root, csv_path)
 
     return csv_path, images_dir
+
 
 def _validate_zip_dataset(metadata: dict) -> None:
     """Validate dataset metadata for ZIP format."""
@@ -321,6 +324,8 @@ def _validate_csv_columns(
             raise DatasetValidationError(
                 f"{name} column '{col}' not found in labels.csv"
             )
+
+
 async def _run_automl_optimization(
     csv_path: Path,
     images_dir: Path,
@@ -336,7 +341,7 @@ async def _run_automl_optimization(
         images_dir=images_dir,
         filename_column=filename_column,
         label_column=label_column,
-        n_trials=25,
+        n_trials=min(25, time_budget // 60),
         timeout=time_budget,
         model_size=model_size,
         workdir=workdir,
@@ -356,13 +361,12 @@ def _package_model_artifacts(result: dict, workdir: Path) -> Path:
     return model_zip_path
 
 
-
 def _prepare_model_metadata(
     dataset_id: str, optuna_result: dict, task_type: str
 ) -> dict:
     """Prepare metadata for model upload."""
     return {
-        "model_id": f"vision_automl_{dataset_id}_{int(datetime.utcnow().timestamp())}",
+        "model_id": f"vision_automl_{dataset_id}_{int(datetime.datetime.utcnow().timestamp())}",
         "name": f"Vision AutoML Model - {dataset_id}",
         "description": "AutoML trained vision model",
         "framework": "pytorch",

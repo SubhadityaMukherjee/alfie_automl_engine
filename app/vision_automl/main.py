@@ -15,13 +15,16 @@ from contextlib import contextmanager
 from pathlib import Path
 import shutil
 import tempfile
-from app.vision_automl.utils import (AutodwError, DatasetValidationError,
-                                     _fetch_and_extract_dataset,
-                                     _package_model_artifacts,
-                                     _prepare_model_metadata,
-                                     _run_automl_optimization,
-                                     _upload_model_to_autodw,
-                                     _validate_dataset_structure)
+from app.vision_automl.utils import (
+    AutodwError,
+    DatasetValidationError,
+    _fetch_and_extract_dataset,
+    _package_model_artifacts,
+    _prepare_model_metadata,
+    _run_automl_optimization,
+    _upload_model_to_autodw,
+    _validate_dataset_structure,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,7 @@ MAX_MODELS_HF = int(os.getenv("MAX_MODELS_HF", 1))
 autodw_port_url = os.getenv("AUTODW_DATASETS_PORT", 8000)
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
 
+
 @contextmanager
 def dataset_workspace(prefix: str):
     path = Path(tempfile.mkdtemp(prefix=f"{prefix}_"))
@@ -43,6 +47,7 @@ def dataset_workspace(prefix: str):
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=True)
+
 
 @app.post("/automl_vision/best_model/")
 async def find_best_model_for_vision(
@@ -61,9 +66,7 @@ async def find_best_model_for_vision(
     task_type: Annotated[
         str, Form(..., description="Vision task type")
     ] = "classification",
-    time_budget: Annotated[
-        int, Form(..., description="Time budget in seconds")
-    ] = 3600,
+    time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 60,
     model_size: Annotated[
         str, Form(..., description="Model size: small/medium/large")
     ] = "small",
@@ -74,7 +77,7 @@ async def find_best_model_for_vision(
     try:
         with dataset_workspace(f"automl_{dataset_id}") as workdir:
             csv_path, images_dir = await _fetch_and_extract_dataset(
-            user_id, dataset_id, dataset_version, workdir
+                user_id, dataset_id, dataset_version, workdir
             )
 
             csv_path, images_dir = _validate_dataset_structure(
@@ -88,7 +91,7 @@ async def find_best_model_for_vision(
                 label_column,
                 time_budget,
                 model_size,
-                workdir=workdir
+                workdir=workdir,
             )
 
             model_zip_path = _package_model_artifacts(optuna_result, workdir)

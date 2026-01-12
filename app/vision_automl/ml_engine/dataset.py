@@ -64,15 +64,10 @@ class ImageClassificationFromCSVDataset(Dataset):
 
         filename = str(row[self.img_col]).strip()
 
-        img_path = (
-            self.root_dir
-            / label_name
-            / filename
-        )
+        img_path = self.root_dir / label_name / filename
         if not img_path.exists():
             print(os.listdir(self.root_dir))
-            print(os.listdir(self.root_dir/label_name))
-
+            print(os.listdir(self.root_dir / label_name))
 
             raise FileNotFoundError(
                 f"Image not found\n"

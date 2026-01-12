@@ -245,11 +245,13 @@ def optuna_objective(
     images_dir: Path,
     filename_column: str,
     label_column: str,
-    model_size: str,  # New parameter
+    model_size: str,
+    timeout_per_trial: float | None,
 ):
     # -------------------------
     # Search space by model size
     # -------------------------
+    trial_start = time.time()
     if model_size == "small":
         model_id = trial.suggest_categorical(
             "model_id",
@@ -279,7 +281,6 @@ def optuna_objective(
                 # "facebook/dino-vits16",
             ],
         )
-    
 
     lr = trial.suggest_float("lr", 1e-5, 3e-3, log=True)
     batch_size = trial.suggest_categorical("batch_size", [16, 32, 64])
@@ -322,10 +323,13 @@ def optuna_objective(
     # -------------------------
     # Train
     # -------------------------
-    test_loss, test_acc = trainer.fit(trial=trial)
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
 
+    test_loss, test_acc = trainer.fit(trial=trial)
     # We optimize validation loss proxy via test loss
     return test_loss
+
 
 def run_optuna_search(
     *,
@@ -341,9 +345,10 @@ def run_optuna_search(
     run_dir = workdir / "optuna"
     run_dir.mkdir(exist_ok=True)
 
-    pruner = optuna.pruners.MedianPruner(
-        n_startup_trials=3,
-        n_warmup_steps=2,
+    pruner = optuna.pruners.SuccessiveHalvingPruner(
+        min_resource=10,  # min steps/epochs before pruning
+        reduction_factor=3,  # aggressively prune
+        min_early_stopping_rate=0,
     )
 
     sampler = optuna.samplers.TPESampler(seed=42)
@@ -353,6 +358,7 @@ def run_optuna_search(
         sampler=sampler,
         pruner=pruner,
     )
+    timeout_per_trial = timeout / max(n_trials, 1) if timeout else None
 
     study.optimize(
         lambda trial: optuna_objective(
@@ -362,6 +368,7 @@ def run_optuna_search(
             filename_column=filename_column,
             label_column=label_column,
             model_size=model_size,
+            timeout_per_trial=timeout_per_trial,
         ),
         n_trials=n_trials,
         timeout=timeout,
