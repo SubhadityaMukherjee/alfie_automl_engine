@@ -5,9 +5,11 @@ import pytest
 import textstat
 from pytest import MonkeyPatch
 
-from app.automlplus.website_accessibility.modules import (AltTextChecker,
-                                                          ReadabilityAnalyzer,
-                                                          split_chunks)
+from app.automlplus.website_accessibility.modules import (
+    AltTextChecker,
+    ReadabilityAnalyzer,
+    split_chunks,
+)
 
 logger = logging.getLogger(__name__)
 

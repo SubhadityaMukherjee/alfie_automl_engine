@@ -1,11 +1,17 @@
 import logging
+import os
 import time
+from pathlib import Path
 from typing import Any
 
 import lightning as L
+import optuna
 import torch
 from torch import nn, optim
 from tqdm import tqdm
+
+from app.vision_automl.ml_engine.datamodule import ClassificationData
+from app.vision_automl.ml_engine.model import ClassificationModel
 
 # Configure module-level logger
 logger = logging.getLogger(__name__)
@@ -204,15 +210,20 @@ class FabricTrainer:
         logger.info(f"Test Results - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
         return avg_loss, accuracy
 
-    def fit(self) -> tuple[float, float]:
-        """Run the full training loop and return test metrics."""
+    def fit(self, trial: optuna.Trial | None = None) -> tuple[float, float]:
         logger.info("Starting training loop.")
         start_time: float = time.time()
 
         for epoch in range(self.epochs):
-            train_loss: float = self.train_epoch(epoch, start_time)
+            train_loss = self.train_epoch(epoch, start_time)
             val_loss, val_acc = self.validate(start_time)
-            logs: dict[str, float] = {
+
+            if trial is not None:
+                trial.report(val_loss, step=epoch)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
+
+            logs = {
                 "train_loss": train_loss,
                 "val_loss": val_loss,
                 "val_acc": val_acc,
@@ -224,5 +235,148 @@ class FabricTrainer:
             if self._check_time_limit(start_time):
                 break
 
-        logger.info("Training complete. Running test evaluation.")
         return self.test()
+
+
+def optuna_objective(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+    model_size: str,
+    timeout_per_trial: float | None,
+):
+    # -------------------------
+    # Search space by model size
+    # -------------------------
+    trial_start = time.time()
+    if model_size == "small":
+        model_id = trial.suggest_categorical(
+            "model_id",
+            [
+                "google/efficientnet-b0",
+                "google/mobilenet_v2_1.0_224",
+                # "google/mobilenet_v3_small",
+            ],
+        )
+    elif model_size == "medium":
+        model_id = trial.suggest_categorical(
+            "model_id",
+            [
+                "google/efficientnet-b0",
+                "google/vit-base-patch16-224",
+                # "google/efficientnet-b1",
+                # "microsoft/swin-tiny-patch4-window7-224",
+            ],
+        )
+    else:  # large
+        model_id = trial.suggest_categorical(
+            "model_id",
+            [
+                "google/vit-base-patch16-224",
+                "google/efficientnet-b4",
+                # "microsoft/swin-base-patch4-window7-224",
+                # "facebook/dino-vits16",
+            ],
+        )
+
+    lr = trial.suggest_float("lr", 1e-5, 3e-3, log=True)
+    batch_size = trial.suggest_categorical("batch_size", [16, 32, 64])
+    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
+
+    # -------------------------
+    # Data
+    # -------------------------
+    datamodule = ClassificationData(
+        csv_file=csv_path,
+        root_dir=images_dir,
+        img_col=filename_column,
+        label_col=label_column,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    # -------------------------
+    # Trainer
+    # -------------------------
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=ClassificationModel,
+        model_kwargs={
+            "model_id": model_id,
+            "num_classes": datamodule.num_classes,
+            "id2label": datamodule.id2label,
+            "label2id": datamodule.label2id,
+        },
+        optimizer_class=optim.AdamW,
+        optimizer_kwargs={
+            "lr": lr,
+            "weight_decay": weight_decay,
+        },
+        loss_fn=nn.CrossEntropyLoss(),
+        epochs=20,  # short by design (Optuna!)
+        callbacks=[EarlyStopping(patience=3)],
+    )
+
+    # -------------------------
+    # Train
+    # -------------------------
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, test_acc = trainer.fit(trial=trial)
+    # We optimize validation loss proxy via test loss
+    return test_loss
+
+
+def run_optuna_search(
+    *,
+    csv_path: Path,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+    n_trials: int = 3,
+    timeout: int | None = None,
+    model_size: str = "small",
+    workdir: Path,
+):
+    run_dir = workdir / "optuna"
+    run_dir.mkdir(exist_ok=True)
+
+    pruner = optuna.pruners.SuccessiveHalvingPruner(
+        min_resource=10,  # min steps/epochs before pruning
+        reduction_factor=3,  # aggressively prune
+        min_early_stopping_rate=0,
+    )
+
+    sampler = optuna.samplers.TPESampler(seed=42)
+
+    study = optuna.create_study(
+        direction="minimize",
+        sampler=sampler,
+        pruner=pruner,
+    )
+    timeout_per_trial = timeout / max(n_trials, 1) if timeout else None
+
+    study.optimize(
+        lambda trial: optuna_objective(
+            trial,
+            csv_path=csv_path,
+            images_dir=images_dir,
+            filename_column=filename_column,
+            label_column=label_column,
+            model_size=model_size,
+            timeout_per_trial=timeout_per_trial,
+        ),
+        n_trials=n_trials,
+        timeout=timeout,
+    )
+
+    return {
+        "best_value": study.best_value,
+        "best_params": study.best_params,
+        "n_trials": len(study.trials),
+        "model_dir": run_dir / f"trial_{study.best_trial.number}",
+    }

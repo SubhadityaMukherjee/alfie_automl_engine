@@ -12,11 +12,15 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
 from app.automlplus.imagetools import ImagePromptRunner
-from app.automlplus.website_accessibility.modules import (AltTextChecker,
-                                                          ReadabilityAnalyzer)
+from app.automlplus.website_accessibility.modules import (
+    AltTextChecker,
+    ReadabilityAnalyzer,
+)
 from app.automlplus.website_accessibility.services import (
-    extract_text_from_html_bytes, resolve_coroutines,
-    run_accessibility_pipeline)
+    extract_text_from_html_bytes,
+    resolve_coroutines,
+    run_accessibility_pipeline,
+)
 from app.core.chat_handler import ChatHandler
 
 # Module logger

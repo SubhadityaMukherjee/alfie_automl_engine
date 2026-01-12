@@ -2,10 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from app.tabular_automl.models import (TabularSupervisedClassificationTask,
-                                       TabularSupervisedRegressionTask,
-                                       TabularSupervisedTimeSeriesTask,
-                                       TabularTask)
+from app.tabular_automl.models import (
+    TabularSupervisedClassificationTask,
+    TabularSupervisedRegressionTask,
+    TabularSupervisedTimeSeriesTask,
+    TabularTask,
+)
 
 
 @pytest.mark.parametrize(
