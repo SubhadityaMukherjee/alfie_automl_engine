@@ -51,7 +51,7 @@ async def find_best_model_for_mvp(
     dataset_id: Annotated[str, Form(..., description="User id from AutoDW")],
     dataset_version: Annotated[
         str | None,
-        Form(..., description="Optional dataset version selection from AutoDW"),
+        Form(description="Dataset version (e.g., 'v1', 'v2')"),
     ] = None,
     target_column_name: Annotated[
         str, Form(..., description="Name of the target column")
@@ -220,6 +220,7 @@ async def find_best_model_for_mvp(
                         "framework": "sklearn",
                         "model_type": task_type,
                         "training_dataset": str(dataset_id),
+                        "training_dataset_version": dataset_version or metadata.get("version", "v1"),
                         "leaderboard": json.dumps(leaderboard_json),  # ensure JSON-safe
                     }
 

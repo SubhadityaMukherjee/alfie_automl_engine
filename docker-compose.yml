@@ -1,6 +1,8 @@
 services:
   automlplus:
-    image: ${GITLAB_REGISTRY}/automl_engine:latest
+    build:
+      context: .
+      dockerfile: app/Dockerfile
     container_name: alfie_automlplus
     command: bash -lc "uv run --no-sync uvicorn app.automlplus.main:app --reload --host 0.0.0.0 --port ${AUTOML_PLUS_PORT}"
     ports:
@@ -33,7 +35,9 @@ services:
     restart: always
 
   vision:
-    image: ${GITLAB_REGISTRY}/automl_engine:latest
+    build:
+      context: .
+      dockerfile: app/Dockerfile
     container_name: alfie_automl_vision
     command: bash -lc "uv run --no-sync uvicorn app.vision_automl.main:app --reload --host 0.0.0.0 --port ${VISION_AUTOML_PORT}"
     ports:
