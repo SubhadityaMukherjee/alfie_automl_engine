@@ -165,51 +165,108 @@ curl -s -X POST "http://localhost:8001/automl_tabular/best_model/" \
 - training_dataset
 - framework
 - description
+
+## AutoML Vision
+
+The AutoML Vision pipeline supports **end-to-end image classification training** using a CSV file for labels and a ZIP archive containing images. The system automatically handles **train/validation/test splitting**, model selection, training, and best-model selection within a given time budget.
+****
+### Key Features
+
+* Fully functional AutoML pipeline for **vision classification**
+* Automatic train / validation / test split
+* Session-based workflow (input collection → training)
+* Configurable time budget and model size
+* Designed to integrate with AutoDW once full dataset APIs are available
+
+## Input Requirements
+
+### 1. Images ZIP (`images_zip`)
+
+Images must be provided in a ZIP archive with the following structure:
+
+```
+images.zip
+└── main_folder/
+    ├── category1/
+    │   ├── image1.png
+    │   ├── image2.jpg
+    ├── category2/
+    │   ├── image3.jpeg
+    |-- metadata.csv
+```
+
+* Folder names may correspond to labels, but **labels are ultimately taken from the CSV**
+* This format is currently required and may later be replaced by a standardized format (e.g. Croissant)
+
+### 2. CSV File (`csv_file`)
+
+The CSV must contain **exactly two required columns**:
+
+| filename   | label |
+| ---------- | ----- |
+| image1.png | cat   |
+| image2.png | dog   |
+
+* `filename`: image filename only (no paths)
+* `label`: class label
+* Filenames must match the image files in the ZIP
+
 ---
 
-### Test: AutoML Vision
-- THIS IS A WIP, AND DOES NOT WORK AS INTENDED AT THE MOMENT
-- AutoML for vision
-- Train/test/val split will be automatically done
-- The first call for each is to interface with AutoDW (When this is possible)
-- The required options are the csv file with labels, a zip of images, the filename column, label column name, task type, time budget and model size
-    - image_zip
-        - Images in a VERY specific format (for now, probably will be replaced with croissant or similar format later
-        - main folder
-            - category1
-                - image1.png (images of type jpg, png, jpeg)
-                - image2.png 
-        
-    - csv_file should contain two columns - one with the file name (no path, just the file name), and 
-        |filename|label|
-        |---|---|
-        |image1.png|cat|
-        |image2.png|dog|
-    - time budget in seconds
-    - model size is either small,medium or large (based on number of parameters)
-        - MODEL_SMALL_MAX_PARAM_SIZE=50000000
-        - MODEL_MEDIUM_MAX_PARAM_SIZE=200000000
+### 3. Additional Parameters
 
-#### Step 1: Start a session
+| Parameter         | Description                         |
+| ----------------- | ----------------------------------- |
+| `filename_column` | Name of the filename column in CSV  |
+| `label_column`    | Name of the label column in CSV     |
+| `task_type`       | Currently supports `classification` |
+| `time_budget`     | Training time budget (seconds)      |
+| `model_size`      | One of `small`, `medium`, `large`   |
+
+#### Model Size Mapping
+
+* `small`: ≤ 50M parameters
+* `medium`: ≤ 200M parameters
+* `large`: > 200M parameters
+
+---
+
+## API Workflow
+
+The AutoML Vision pipeline uses a **two-step session-based workflow**.
+
+## Step 1: Start a Vision AutoML Session
+
+Uploads data, validates inputs, and initializes a training session.
 
 ```bash
 curl -s -X POST http://localhost:8002/automl_vision/get_user_input/ \
   -H "Content-Type: multipart/form-data" \
-  -F "csv_file=@./sample_data/Garbage_Dataset_Classification/metadata.csv" \
-  -F "images_zip=@./sample_data/Garbage_Dataset_Classification/images.zip" \
   -F "filename_column=filename" \
   -F "label_column=label" \
   -F "task_type=classification" \
   -F "time_budget=10" \
-  -F "model_size=medium"
+  -F "model_size=small"
 ```
 
-This returns a JSON with a `session_id`.
+## Step 2: Train and Find the Best Model
 
-#### Step 2: Train and find best model
+Triggers training using the previously created session.
 
 ```bash
 curl -s -X POST http://localhost:8002/automl_vision/find_best_model/ \
   -H "Content-Type: application/json" \
   -d '{"session_id": "REPLACE_WITH_SESSION_ID"}'
 ```
+
+### What Happens Internally
+
+* Dataset is split into train / validation / test
+* Candidate vision models are trained within the time budget
+* Best-performing model is selected automatically
+* Metrics and training artifacts are produced
+* Best model will be uploaded to AutoDW
+
+## Notes & Current Limitations
+
+* Image ZIP structure is currently strict
