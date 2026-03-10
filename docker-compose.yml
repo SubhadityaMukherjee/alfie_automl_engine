@@ -35,6 +35,7 @@ services:
     restart: always
 
   vision:
+    image: ${GITLAB_REGISTRY}/automl_engine:latest
     build:
       context: .
       dockerfile: app/Dockerfile
