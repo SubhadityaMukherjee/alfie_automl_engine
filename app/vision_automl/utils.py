@@ -210,30 +210,30 @@ async def _fetch_and_extract_dataset(
     dataset_id: str,
     dataset_version: str | None,
     workdir: Path,
+    split: str | None = None,
 ) -> tuple[Path, Path]:
     autodw_base = autodw_url
     metadata_url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
     if dataset_version:
         metadata_url += f"/version/{dataset_version}"
-
     metadata = _fetch_json(metadata_url, timeout=15)
     _validate_zip_dataset(metadata)
 
+    download_url = f"{metadata_url}/download"
+    has_split = bool(metadata.get("custom_metadata", {}).get("split"))
+    if split and has_split:
+        download_url += f"?split={split}"
+
     zip_path = await _download_zip(
-        f"{metadata_url}/download",
+        download_url,
         workdir / metadata["original_filename"],
     )
-
     extract_dir = workdir / "dataset"
     extract_dir.mkdir(exist_ok=True)
-
     shutil.unpack_archive(zip_path, extract_dir)
-
     dataset_root = _find_valid_dataset_root(extract_dir)
-
     csv_path = _find_csv_file(dataset_root)
     images_dir = _find_or_resolve_images_dir(dataset_root, csv_path)
-
     return csv_path, images_dir
 
 

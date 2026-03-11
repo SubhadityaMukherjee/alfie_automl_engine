@@ -52,7 +52,7 @@ async def find_best_model_for_mvp(
     dataset_version: Annotated[
         str | None,
         Form(description="Dataset version (e.g., 'v1', 'v2')"),
-    ] = None,
+    ] = "",
     target_column_name: Annotated[
         str, Form(..., description="Name of the target column")
     ] = "",
@@ -69,6 +69,12 @@ async def find_best_model_for_mvp(
         ),
     ] = "classification",
     time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10,
+    dataset_split: Annotated[
+        str | None,
+        Form(
+            description="Dataset split to use for training (e.g., 'train'). If omitted, the full dataset is used."
+        ),
+    ] = None,
     # Task ID will be eventually deprecated. Currently, it is sent to the AutoDW
     # when creating model because AutoDW then sends Kafka task complete message.
 ) -> JSONResponse:
@@ -92,6 +98,8 @@ async def find_best_model_for_mvp(
         time_stamp_column_name (str | None): Name of the timestamp column for time-series tasks.
         task_type (str): Type of ML task. One of {"classification", "regression", "time_series"}.
         time_budget (int): Time budget for AutoML training, in seconds.
+        dataset_split (str | None): If provided and the dataset has splits, download only this
+            split (e.g., "train"). If omitted, the full dataset is downloaded.
 
     Returns:
         JSONResponse: A structured response indicating success or failure.
@@ -119,6 +127,8 @@ async def find_best_model_for_mvp(
           and serialization before upload.
         - The leaderboard is returned both as a markdown string and as JSON
           when uploaded to AutoDW.
+        - If the dataset has train/test/drift splits, pass dataset_split="train" to
+          train only on the training split. The Kafka consumer sets this automatically.
     """
 
     autodw_base = autodw_url
@@ -146,8 +156,27 @@ async def find_best_model_for_mvp(
                 content={"error": f"Unsupported file type '{file_type}'."},
             )
 
-        # --- 2. Download dataset file ---
-        logger.debug(f"Downloading dataset file: {download_url}")
+        # --- 2. Determine download URL (use split if dataset has one and split was requested) ---
+        has_split = bool(metadata.get("custom_metadata", {}).get("split"))
+        effective_split = (
+            dataset_split
+            if (has_split and dataset_split in ("train", "test", "drift"))
+            else None
+        )
+        if effective_split:
+            download_url = f"{download_url}?split={effective_split}"
+            logger.info(
+                f"Dataset has splits; downloading '{effective_split}' split from: {download_url}"
+            )
+        else:
+            if dataset_split and not has_split:
+                logger.warning(
+                    f"dataset_split='{dataset_split}' was requested but dataset has no splits; "
+                    "downloading full dataset."
+                )
+            logger.debug(f"Downloading full dataset file: {download_url}")
+
+        # --- 3. Download dataset file ---
         with requests.get(download_url, stream=True, timeout=30) as resp:
             resp.raise_for_status()
             with tempfile.TemporaryDirectory() as tmp_dir:
@@ -160,7 +189,7 @@ async def find_best_model_for_mvp(
 
                 logger.info(f"Dataset saved to {dataset_path}")
 
-                # --- 3. Validate inputs ---
+                # --- 4. Validate inputs ---
                 validation_error = validate_tabular_inputs(
                     train_path=dataset_path,
                     target_column_name=target_column_name,
@@ -172,7 +201,7 @@ async def find_best_model_for_mvp(
                         status_code=400, content={"error": validation_error}
                     )
 
-                # --- 4. Train AutoML model ---
+                # --- 5. Train AutoML model ---
                 save_model_path = tmp_path / "automl_model"
                 os.makedirs(save_model_path, exist_ok=True)
 
@@ -186,7 +215,7 @@ async def find_best_model_for_mvp(
                     time_limit=int(time_budget),
                 )
 
-                # --- 5. Serialize predictor ---
+                # --- 6. Serialize predictor ---
                 predictor_path = save_model_path / "predictor.pkl"
                 with open(predictor_path, "wb") as f:
                     pickle.dump(predictor, f)
@@ -202,7 +231,7 @@ async def find_best_model_for_mvp(
                     leaderboard
                 )
 
-                # --- 6. Upload trained model to AutoDW ---
+                # --- 7. Upload trained model to AutoDW ---
                 model_id = f"automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"
                 # Get X-Task-ID from request headers if present
                 task_id = request.headers.get("X-Task-ID")
@@ -220,7 +249,8 @@ async def find_best_model_for_mvp(
                         "framework": "sklearn",
                         "model_type": task_type,
                         "training_dataset": str(dataset_id),
-                        "training_dataset_version": dataset_version or metadata.get("version", "v1"),
+                        "training_dataset_version": dataset_version
+                        or metadata.get("version", "v1"),
                         "leaderboard": json.dumps(leaderboard_json),  # ensure JSON-safe
                     }
 

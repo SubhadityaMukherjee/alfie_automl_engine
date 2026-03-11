@@ -48,7 +48,6 @@ def dataset_workspace(prefix: str):
     finally:
         shutil.rmtree(path, ignore_errors=True)
 
-
 @app.post("/automl_vision/best_model/")
 async def find_best_model_for_vision(
     request: Request,
@@ -70,14 +69,30 @@ async def find_best_model_for_vision(
     model_size: Annotated[
         str, Form(..., description="Model size: small/medium/large")
     ] = "small",
+    dataset_split: Annotated[
+        str | None,
+        Form(description="Dataset split to use for training (e.g., 'train'). If omitted, the full dataset is used."),
+    ] = None,
 ) -> JSONResponse:
     """
     Optimized Vision AutoML endpoint that finds and trains the best model.
     """
     try:
         with dataset_workspace(f"automl_{dataset_id}") as workdir:
+            # --- Resolve effective split (mirrors tabular + Kafka consumer logic) ---
+            metadata = await _fetch_dataset_metadata(user_id, dataset_id, dataset_version)
+            has_split = bool(metadata.get("custom_metadata", {}).get("split"))
+            effective_split = dataset_split if (has_split and dataset_split in ("train", "test", "drift")) else None
+            if effective_split:
+                logger.info(f"Dataset has splits; using '{effective_split}' split for training")
+            elif dataset_split and not has_split:
+                logger.warning(
+                    f"dataset_split='{dataset_split}' was requested but dataset has no splits; "
+                    "downloading full dataset."
+                )
+
             csv_path, images_dir = await _fetch_and_extract_dataset(
-                user_id, dataset_id, dataset_version, workdir
+                user_id, dataset_id, dataset_version, workdir, split=effective_split
             )
 
             csv_path, images_dir = _validate_dataset_structure(
@@ -120,4 +135,4 @@ async def find_best_model_for_vision(
         return JSONResponse(status_code=502, content={"error": f"AutoDW error: {e}"})
     except Exception as e:
         logger.exception("Unexpected error during vision AutoML")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(status_code=500, content={"error": str(e)}
