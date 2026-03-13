@@ -4,24 +4,29 @@ Provides endpoints to accept user data/config, validate inputs, store
 session metadata, and trigger AutoML training using AutoGluon.
 """
 
-import json
 import logging
 import os
-import pickle
-import shutil
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-import pandas as pd
 import requests
 from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
 
-from app.tabular_automl.modules import AutoMLTrainer
-from app.tabular_automl.services import load_table, validate_tabular_inputs
+from app.tabular_automl.services import (
+    validate_tabular_inputs,
+    fetch_dataset_metadata,
+    SUPPORTED_FILE_TYPES,
+    resolve_download_url,
+    download_dataset,
+    train_automl,
+    serialize_and_zip_predictor,
+    convert_leaderboard_safely,
+    build_upload_payload,
+    upload_model,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -34,24 +39,13 @@ TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "http://localhost:8001")
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
 
 
-def convert_leaderboard_safely(leaderboard):
-    if isinstance(leaderboard, pd.DataFrame):
-        leaderboard_json = leaderboard.to_dict(orient="records")
-        leaderboard_str = leaderboard.to_markdown()
-    else:
-        leaderboard_json = {"result": str(leaderboard)}
-    leaderboard_str = str(leaderboard)
-    return leaderboard_json, leaderboard_str
-
-
 @app.post("/automl_tabular/best_model/")
 async def find_best_model_for_mvp(
     request: Request,
     user_id: Annotated[str, Form(..., description="User id from AutoDW")],
-    dataset_id: Annotated[str, Form(..., description="User id from AutoDW")],
+    dataset_id: Annotated[str, Form(..., description="Dataset id from AutoDW")],
     dataset_version: Annotated[
-        str | None,
-        Form(description="Dataset version (e.g., 'v1', 'v2')"),
+        str | None, Form(description="Dataset version (e.g., 'v1', 'v2')")
     ] = "",
     target_column_name: Annotated[
         str, Form(..., description="Name of the target column")
@@ -71,202 +65,95 @@ async def find_best_model_for_mvp(
     time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10,
     dataset_split: Annotated[
         str | None,
-        Form(
-            description="Dataset split to use for training (e.g., 'train'). If omitted, the full dataset is used."
-        ),
+        Form(description="Dataset split to use for training (e.g., 'train')."),
     ] = None,
-    # Task ID will be eventually deprecated. Currently, it is sent to the AutoDW
-    # when creating model because AutoDW then sends Kafka task complete message.
 ) -> JSONResponse:
     """
-    Fetch dataset metadata and file from AutoDW, validate it,
-    and run AutoML training to find and upload the best model.
-    Train and upload an AutoML model for a given tabular dataset retrieved from AutoDW.
+    Fetch a tabular dataset from AutoDW, run AutoML training, and upload the best model.
 
-    This endpoint:
-      1. Fetches dataset metadata and file from AutoDW using the provided user and dataset IDs.
-      2. Validates dataset integrity and user-specified parameters such as target column,
-         timestamp column (if applicable), and task type.
-      3. Trains an AutoML model on the dataset within a specified time budget.
-      4. Serializes and uploads the best-performing model and leaderboard results back to AutoDW.
-
-    Args:
-        user_id (str): Unique user identifier from AutoDW.
-        dataset_id (str): Unique dataset identifier from AutoDW.
-        dataset_version (str): Unique dataset version from AutoDW.
-        target_column_name (str): Name of the target column in the dataset.
-        time_stamp_column_name (str | None): Name of the timestamp column for time-series tasks.
-        task_type (str): Type of ML task. One of {"classification", "regression", "time_series"}.
-        time_budget (int): Time budget for AutoML training, in seconds.
-        dataset_split (str | None): If provided and the dataset has splits, download only this
-            split (e.g., "train"). If omitted, the full dataset is downloaded.
+    Steps:
+      1. Fetch dataset metadata from AutoDW.
+      2. Resolve the correct download URL (respecting splits if present).
+      3. Download the dataset file to a temporary directory.
+      4. Validate user-supplied parameters against the dataset.
+      5. Train an AutoML model within the given time budget.
+      6. Serialize and zip the best predictor.
+      7. Upload the model and leaderboard back to AutoDW.
 
     Returns:
-        JSONResponse: A structured response indicating success or failure.
-            - On success (200): Returns a success message and leaderboard summary.
-            - On validation error (400): Returns an error message describing the invalid input.
-            - On AutoDW communication failure (502): Returns an error indicating network issues.
-            - On unexpected failure (500): Returns a general error description.
-
-    Raises:
-        requests.RequestException: If AutoDW metadata or dataset requests fail.
-        Exception: For unexpected runtime or training-related errors.
-
-    Example:
-        HTTP POST /automl_tabular/best_model/
-        Form data:
-            user_id=101
-            dataset_id=55
-            target_column_name="label"
-            task_type="classification"
-            time_budget=600
-
-    Notes:
-        - Only "csv", "tsv", and "parquet" dataset formats are supported.
-        - A temporary directory is used for dataset download, model training,
-          and serialization before upload.
-        - The leaderboard is returned both as a markdown string and as JSON
-          when uploaded to AutoDW.
-        - If the dataset has train/test/drift splits, pass dataset_split="train" to
-          train only on the training split. The Kafka consumer sets this automatically.
+        200 – success message and leaderboard summary.
+        400 – validation error (bad inputs or unsupported file type).
+        502 – AutoDW communication failure.
+        500 – unexpected runtime error.
     """
-
     autodw_base = autodw_url
-    metadata_url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
-
-    if dataset_version is not None:
-        metadata_url = f"{metadata_url}/version/{dataset_version}"
-
-    download_url = f"{metadata_url}/download"
     upload_url = f"{autodw_base}/ai-models/upload/single/{user_id}"
 
     try:
-        # --- 1. Fetch dataset metadata ---
-        logger.debug(f"Fetching dataset metadata: {metadata_url}")
-        metadata_response = requests.get(metadata_url, timeout=15)
-        metadata_response.raise_for_status()
-        metadata = metadata_response.json()
+        # 1. Metadata
+        metadata = fetch_dataset_metadata(
+            autodw_base, user_id, dataset_id, dataset_version
+        )
 
         file_type = metadata.get("file_type")
-        original_filename = metadata.get("original_filename", "train.csv")
-
-        if file_type not in {"csv", "tsv", "parquet"}:
+        if file_type not in SUPPORTED_FILE_TYPES:
             return JSONResponse(
                 status_code=400,
                 content={"error": f"Unsupported file type '{file_type}'."},
             )
 
-        # --- 2. Determine download URL (use split if dataset has one and split was requested) ---
-        has_split = bool(metadata.get("custom_metadata", {}).get("split"))
-        effective_split = (
-            dataset_split
-            if (has_split and dataset_split in ("train", "test", "drift"))
-            else None
+        # 2. Download URL
+        download_url = resolve_download_url(
+            autodw_base, user_id, dataset_id, dataset_version, metadata, dataset_split
         )
-        if effective_split:
-            download_url = f"{download_url}?split={effective_split}"
-            logger.info(
-                f"Dataset has splits; downloading '{effective_split}' split from: {download_url}"
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp_path = Path(tmp_dir)
+            dataset_path = tmp_path / metadata.get("original_filename", "train.csv")
+
+            # 3. Download
+            download_dataset(download_url, dataset_path)
+
+            # 4. Validate
+            validation_error = validate_tabular_inputs(
+                train_path=dataset_path,
+                target_column_name=target_column_name,
+                time_stamp_column_name=time_stamp_column_name,
+                task_type=task_type,
             )
-        else:
-            if dataset_split and not has_split:
-                logger.warning(
-                    f"dataset_split='{dataset_split}' was requested but dataset has no splits; "
-                    "downloading full dataset."
-                )
-            logger.debug(f"Downloading full dataset file: {download_url}")
-
-        # --- 3. Download dataset file ---
-        with requests.get(download_url, stream=True, timeout=30) as resp:
-            resp.raise_for_status()
-            with tempfile.TemporaryDirectory() as tmp_dir:
-                tmp_path = Path(tmp_dir)
-                dataset_path = tmp_path / original_filename
-
-                with open(dataset_path, "wb") as f:
-                    for chunk in resp.iter_content(8192):
-                        f.write(chunk)
-
-                logger.info(f"Dataset saved to {dataset_path}")
-
-                # --- 4. Validate inputs ---
-                validation_error = validate_tabular_inputs(
-                    train_path=dataset_path,
-                    target_column_name=target_column_name,
-                    time_stamp_column_name=time_stamp_column_name,
-                    task_type=task_type,
-                )
-                if validation_error:
-                    return JSONResponse(
-                        status_code=400, content={"error": validation_error}
-                    )
-
-                # --- 5. Train AutoML model ---
-                save_model_path = tmp_path / "automl_model"
-                os.makedirs(save_model_path, exist_ok=True)
-
-                trainer = AutoMLTrainer(save_model_path=save_model_path)
-                train_df = load_table(dataset_path)
-
-                leaderboard, predictor = trainer.train(
-                    train_df=train_df,
-                    test_df=None,
-                    target_column=target_column_name,
-                    time_limit=int(time_budget),
+            if validation_error:
+                return JSONResponse(
+                    status_code=400, content={"error": validation_error}
                 )
 
-                # --- 6. Serialize predictor ---
-                predictor_path = save_model_path / "predictor.pkl"
-                with open(predictor_path, "wb") as f:
-                    pickle.dump(predictor, f)
+            # 5. Train
+            save_model_path = tmp_path / "automl_model"
+            leaderboard, predictor = train_automl(
+                dataset_path,
+                save_model_path,
+                target_column_name,
+                task_type,
+                time_budget,
+            )
 
-                zip_path = tmp_path / "automl_predictor.zip"
-                _ = shutil.make_archive(
-                    base_name=str(zip_path).replace(".zip", ""),
-                    format="zip",
-                    root_dir=save_model_path,
+            # 6. Serialize
+            zip_path = serialize_and_zip_predictor(predictor, save_model_path, tmp_path)
+            leaderboard_json, leaderboard_str = convert_leaderboard_safely(leaderboard)
+
+            # 7. Upload
+            _, payload = build_upload_payload(
+                dataset_id, dataset_version, metadata, task_type, leaderboard_json
+            )
+            upload_resp = upload_model(
+                upload_url, zip_path, payload, request.headers.get("X-Task-ID")
+            )
+
+            if upload_resp.status_code >= 400:
+                logger.error(f"Model upload failed: {upload_resp.text}")
+                return JSONResponse(
+                    status_code=upload_resp.status_code,
+                    content={"error": f"Failed to upload model: {upload_resp.text}"},
                 )
-
-                leaderboard_json, leaderboard_str = convert_leaderboard_safely(
-                    leaderboard
-                )
-
-                # --- 7. Upload trained model to AutoDW ---
-                model_id = f"automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"
-                # Get X-Task-ID from request headers if present
-                task_id = request.headers.get("X-Task-ID")
-                headers = {}
-                if task_id:
-                    headers["X-Task-ID"] = task_id
-                    logger.debug(f"Including X-Task-ID header: {task_id}")
-
-                with open(zip_path, "rb") as f:
-                    files = {"file": (zip_path.name, f, "application/octet-stream")}
-                    data = {
-                        "model_id": model_id,
-                        "name": f"AutoML Model - {model_id}",
-                        "description": "AutoML trained model for tabular data",
-                        "framework": "sklearn",
-                        "model_type": task_type,
-                        "training_dataset": str(dataset_id),
-                        "training_dataset_version": dataset_version
-                        or metadata.get("version", "v1"),
-                        "leaderboard": json.dumps(leaderboard_json),  # ensure JSON-safe
-                    }
-
-                    logger.debug(f"Uploading model to {upload_url}")
-                    upload_resp = requests.post(
-                        upload_url, headers=headers, files=files, data=data, timeout=120
-                    )
-
-                    if upload_resp.status_code >= 400:
-                        logger.error(f"Model upload failed: {upload_resp.text}")
-                        return JSONResponse(
-                            status_code=upload_resp.status_code,
-                            content={
-                                "error": f"Failed to upload model: {upload_resp.text}"
-                            },
-                        )
 
         logger.info("AutoML training completed and model uploaded successfully.")
         return JSONResponse(
