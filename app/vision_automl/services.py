@@ -25,7 +25,6 @@ logger = logging.getLogger(__name__)
 # Constants / config
 # ---------------------------------------------------------------------------
 
-MAX_MODELS_HF = int(os.getenv("MAX_MODELS_HF", 1))
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
 
 

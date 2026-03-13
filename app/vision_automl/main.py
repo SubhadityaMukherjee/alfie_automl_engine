@@ -1,8 +1,6 @@
 """FastAPI endpoints for vision AutoML workflows.
 
 Handles dataset fetch, validation, model training, and upload.
-Structure mirrors tabular_automl/main.py exactly so both pipelines
-share a consistent API shape.
 """
 
 import logging
