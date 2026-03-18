@@ -110,7 +110,7 @@ Generated from `tasklist.md`. Mark tasks complete here and in tasklist.md when d
 
 **Goal:** Delete the legacy SQLite session-tracking code that was used before AutoDW. Everything is now stored in AutoDW.
 
-**Status:** TODO
+**Status:** ✅ DONE
 
 ### Steps
 
