@@ -35,7 +35,6 @@ uv run uvicorn app.automlplus.main:app --reload --port 8003
 
 ```bash
 docker-compose up           # all services + Ollama
-docker-compose up ollama    # just LLM backend
 docker build -f app/Dockerfile -t alfie-automl:latest .
 ```
 

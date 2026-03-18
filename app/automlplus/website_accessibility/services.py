@@ -61,13 +61,9 @@ async def _process_single_chunk(
                 end_line=end,
             )
 
-            backend = os.getenv("MODEL_BACKEND", "ollama").lower()
+            backend = os.getenv("MODEL_BACKEND", "azure").lower()
             model_env = os.getenv("WEB_ACCESSIBILITY_CHAT_MODEL")
-            # Default model depends on backend
-            if model_env and model_env.strip():
-                model = model_env
-            else:
-                model = "gpt-4o-mini" if backend == "azure" else "gemma3:4b"
+            model = model_env.strip() if model_env and model_env.strip() else "gpt-4o-mini"
             response_raw = await ChatHandler.chat(
                 prompt,
                 context=context,

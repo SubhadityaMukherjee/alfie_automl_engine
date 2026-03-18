@@ -10,10 +10,6 @@ services:
     env_file: ".env"
     volumes:
       - automlplus_data:/data
-    depends_on:
-      - ollama
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
     restart: always
 
   tabular:
@@ -25,10 +21,7 @@ services:
     env_file: ".env"
     volumes:
       - tabular_data:/data
-    depends_on:
-      - ollama
     environment:
-      - OLLAMA_HOST=http://ollama:11434
       - "AUTODW_URL=${AUTODW_URL-http://host.docker.internal:8000}"
     extra_hosts:
       - "host.docker.internal=host-gateway"
@@ -46,37 +39,9 @@ services:
     env_file: ".env"
     volumes:
       - vision_data:/data
-    depends_on:
-      - ollama
-    environment:
-      - OLLAMA_HOST=http://ollama:11434
     restart: always
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-      - ./entrypoint.sh:/entrypoint.sh
-    entrypoint: ["/usr/bin/bash", "/entrypoint.sh"]
-    pull_policy: always
-    tty: true
-    restart: always
-    healthcheck:
-      test:
-        - "CMD-SHELL"
-        - |
-          test -f /tmp/ollama_ready && \
-          bash -c '</dev/tcp/localhost/11434'  # Checks if Ollama is accepting connections
-      interval: 10s
-      timeout: 10s
-      retries: 100
-      start_period: 10s
 
 volumes:
-  ollama_data:
   vision_data:
   tabular_data:
   automlplus_data:
