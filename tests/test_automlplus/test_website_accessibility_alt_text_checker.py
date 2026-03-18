@@ -4,10 +4,9 @@ from unittest.mock import patch
 
 import pytest
 from dotenv import find_dotenv, load_dotenv
-from jinja2 import Environment, FileSystemLoader, utils
+from jinja2 import Environment, FileSystemLoader
 
 from app.automlplus.website_accessibility.modules import AltTextChecker
-from app.core.chat_handler import ChatHandler
 
 load_dotenv(find_dotenv())
 
