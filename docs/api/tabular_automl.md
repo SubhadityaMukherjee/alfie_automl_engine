@@ -7,5 +7,3 @@
 ::: app.tabular_automl.modules
 
 ::: app.tabular_automl.services
-
-::: app.tabular_automl.db
