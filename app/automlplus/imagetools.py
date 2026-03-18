@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ImagePromptRunner:
     """Run a VLM on an image and user-provided prompt."""
 
-    DEFAULT_MODEL: str = os.getenv("IMAGE_PROMPT_MODEL", "qwen2.5vl")
+    DEFAULT_MODEL: str = os.getenv("IMAGE_PROMPT_MODEL", "gpt-4o-mini")
 
     @staticmethod
     def _resolve_model(model: str | None) -> str:

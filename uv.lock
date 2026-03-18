@@ -187,7 +187,6 @@ dependencies = [
     { name = "mkdocs-awesome-pages-plugin" },
     { name = "mkdocstrings" },
     { name = "nest-asyncio" },
-    { name = "ollama" },
     { name = "onnx" },
     { name = "openai" },
     { name = "openpyxl" },
@@ -240,7 +239,6 @@ requires-dist = [
     { name = "mkdocs-awesome-pages-plugin", specifier = ">=2.10.1" },
     { name = "mkdocstrings", specifier = ">=0.30.1" },
     { name = "nest-asyncio", specifier = ">=1.6.0" },
-    { name = "ollama", specifier = ">=0.5.1" },
     { name = "onnx", specifier = ">=1.19.0" },
     { name = "openai", specifier = ">=2.2.0" },
     { name = "openpyxl", specifier = ">=3.1.5" },
@@ -3886,19 +3884,6 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/56/9a/fff8376f8e3d084cd1530e1ef7b879bb7d6d265620c95c1b322725c694f4/nvidia_nvtx_cu12-12.6.77-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:b90bed3df379fa79afbd21be8e04a0314336b8ae16768b58f2d34cb1d04cd7d2", size = 89276, upload-time = "2024-11-20T17:38:27.621Z" },
     { url = "https://files.pythonhosted.org/packages/9e/4e/0d0c945463719429b7bd21dece907ad0bde437a2ff12b9b12fee94722ab0/nvidia_nvtx_cu12-12.6.77-py3-none-manylinux2014_x86_64.whl", hash = "sha256:6574241a3ec5fdc9334353ab8c479fe75841dbe8f4532a8fc97ce63503330ba1", size = 89265, upload-time = "2024-10-01T17:00:38.172Z" },
-]
-
-[[package]]
-name = "ollama"
-version = "0.6.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d6/47/f9ee32467fe92744474a8c72e138113f3b529fc266eea76abfdec9a33f3b/ollama-0.6.0.tar.gz", hash = "sha256:da2b2d846b5944cfbcee1ca1e6ee0585f6c9d45a2fe9467cbcd096a37383da2f", size = 50811, upload-time = "2025-09-24T22:46:02.417Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b5/c1/edc9f41b425ca40b26b7c104c5f6841a4537bb2552bfa6ca66e81405bb95/ollama-0.6.0-py3-none-any.whl", hash = "sha256:534511b3ccea2dff419ae06c3b58d7f217c55be7897c8ce5868dfb6b219cf7a0", size = 14130, upload-time = "2025-09-24T22:46:01.19Z" },
 ]
 
 [[package]]

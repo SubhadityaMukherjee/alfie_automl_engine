@@ -223,7 +223,6 @@ def test_image_to_website() -> None:
         "prompt=Recreate this image into a website with HTML/CSS/JS and explain how to run it.",
         "-F",
         "image_file=@./sample_data/websample.png",
-        # Optionally: "-F", "model=qwen2.5vl",
     ]
     cp = run(cmd, capture_output=True, check=False)
     # Streaming text/plain; print raw streamed output

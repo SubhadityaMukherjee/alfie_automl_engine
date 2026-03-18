@@ -1,7 +1,7 @@
 """Chat handling utilities for async LLM requests.
 
 Provides a simple queued interface (`ChatQueue`) and a static facade
-(`ChatHandler`) to interact with local Ollama models, supporting both
+(`ChatHandler`) to interact with Azure AI Inference models, supporting both
 regular and streaming responses.
 """
 
@@ -59,7 +59,7 @@ class ChatQueue:
                 self.queue.task_done()
 
     async def submit(
-        self, message, context="", backend="ollama", model="gemma3:4b", stream=False
+        self, message, context="", backend="azure", model="gpt-4o-mini", stream=False
     ):
         async with self.semaphore:
 
@@ -89,7 +89,7 @@ class ChatHandler:
 
     @staticmethod
     async def chat(
-        message, context="", backend="ollama", model="gemma3:4b", stream=False
+        message, context="", backend="azure", model="gpt-4o-mini", stream=False
     ):
         return await ChatHandler.queue.submit(message, context, backend, model, stream)
 
@@ -97,9 +97,7 @@ class ChatHandler:
     async def dispatch(message, context, backend, model):
         logger.debug(f"Dispatch Chat to backend {backend} with {message}, {context}")
         """Route chat requests to the correct backend."""
-        if backend.lower() == "ollama":
-            return await ChatHandler._ollama_chat(message, context, model)
-        elif backend.lower() == "azure":
+        if backend.lower() == "azure":
             return await ChatHandler._azure_chat(message, context, model)
         else:
             raise ValueError(f"Unknown chat backend: {backend}")
@@ -109,117 +107,69 @@ class ChatHandler:
         logger.debug(
             f"Dispatch Chat Stream to backend {backend} with {message}, {context}"
         )
-        if backend.lower() == "ollama":
-            async for chunk in ChatHandler._ollama_chat_stream(message, context, model):
-                yield chunk
-        elif backend.lower() == "azure":
+        if backend.lower() == "azure":
             async for chunk in ChatHandler._azure_chat_stream(message, context, model):
                 yield chunk
         else:
             raise ValueError(f"Unknown chat backend: {backend}")
 
-    @staticmethod
-    async def _ollama_chat(message, context, model):
-        from ollama import Client
-
-        chat = Client(timeout=120).chat
-        logger.debug("Ollama client init")
-
-        response = chat(
-            model=model,
-            messages=[
-                {"role": "user", "content": message},
-                {"role": "user-hidden", "content": context},
-            ],
-        )
-        return response["message"]["content"].strip()
-
-    @staticmethod
-    async def _ollama_chat_stream(message, context, model):
-        from ollama import Client
-
-        chat = Client(timeout=120).chat
-        logger.debug("Ollama client init stream")
-        stream = chat(
-            model=model,
-            messages=[
-                {"role": "user", "content": message},
-                {"role": "user-hidden", "content": context},
-            ],
-            stream=True,
-        )
-        async for chunk in stream:
-            content = chunk.get("message", {}).get("content", "")
-            if content:
-                yield content
-
     # --- Synchronous helpers for structured message payloads (incl. images) ---
     @staticmethod
     def chat_sync_messages(
-        messages: List[dict], backend: str = "ollama", model: str = "gemma3:4b"
+        messages: List[dict], backend: str = "azure", model: str = "gpt-4o-mini"
     ) -> str:
-        """Synchronously send a list of chat messages (optionally with images) to a backend.
-
-        This is useful for callers that aren't async and need to pass through
-        full message structures, e.g., for VLM prompts that include an
-        "images" field supported by Ollama.
-        """
+        """Synchronously send a list of chat messages (optionally with images) to Azure."""
         logger.debug(f"Dispatch synchronous Chat to backend {backend} with {messages}")
-        backend_lower = backend.lower()
-        if backend_lower == "ollama":
-            return ChatHandler._ollama_chat_messages_sync(messages, model)
-        elif backend_lower == "azure":
+        if backend.lower() == "azure":
             return ChatHandler._azure_chat_messages_sync(messages, model)
         else:
             raise ValueError(f"Unknown chat backend: {backend}")
 
-    @staticmethod
-    def _ollama_chat_messages_sync(messages: List[dict], model: str) -> str:
-        from ollama import Client
-
-        chat = Client(timeout=300).chat
-        logger.debug("Ollama client cht synchronous init")
-        response = chat(
-            model=model,
-            messages=messages,
-        )
-        return response["message"]["content"].strip()
-
     # --- Streaming helpers for structured message payloads (incl. images) ---
     @staticmethod
     def chat_stream_messages_sync(
-        messages: List[dict], backend: str = "ollama", model: str = "gemma3:4b"
+        messages: List[dict], backend: str = "azure", model: str = "gpt-4o-mini"
     ):
         """Synchronously stream a list of chat messages (optionally with images).
 
-        Yields incremental text chunks from the backend as they arrive.
+        Yields incremental text chunks from Azure as they arrive.
         """
-        logger.debug("Stream chat messages sychronously")
-        backend_lower = backend.lower()
-        if backend_lower == "ollama":
-            return ChatHandler._ollama_chat_messages_stream_sync(messages, model)
-        elif backend_lower == "azure":
-            raise NotImplementedError(
-                "Azure chat (messages stream) not implemented yet."
-            )
+        logger.debug("Stream chat messages synchronously")
+        if backend.lower() == "azure":
+            return ChatHandler._azure_chat_messages_stream_sync(messages, model)
         else:
             raise ValueError(f"Unknown chat backend: {backend}")
 
     @staticmethod
-    def _ollama_chat_messages_stream_sync(messages: List[dict], model: str):
-        from ollama import Client
-
-        chat = Client(timeout=300).chat
-        stream = chat(
-            model=model,
-            messages=messages,
-            stream=True,
-        )
-        logger.debug("Ollama client stream in chunks")
-        for chunk in stream:
-            content = (chunk or {}).get("message", {}).get("content", "")
-            if content:
-                yield content
+    def _azure_chat_messages_stream_sync(messages: List[dict], model: str):
+        client = ChatHandler._get_azure_client()
+        azure_msgs = ChatHandler._to_azure_messages(messages)
+        logger.debug("Azure client stream in chunks")
+        stream = client.complete(model=model, messages=azure_msgs, stream=True)
+        for event in stream:
+            if hasattr(event, "delta") and event.delta:
+                delta = event.delta
+                content = getattr(delta, "content", None)
+                if content is None and isinstance(delta, dict):
+                    content = delta.get("content")
+                if isinstance(content, str):
+                    if content:
+                        yield content
+                elif isinstance(content, list):
+                    for item in content:
+                        if isinstance(item, str):
+                            if item:
+                                yield item
+                        elif isinstance(item, dict):
+                            text = item.get("text")
+                            if text:
+                                yield text
+                        else:
+                            text = getattr(item, "text", None)
+                            if text:
+                                yield text
+        if hasattr(stream, "close"):
+            stream.close()
 
     @staticmethod
     def _azure_chat_messages_sync(messages: List[dict], model: str) -> str:
@@ -234,50 +184,45 @@ class ChatHandler:
         """
         client = ChatHandler._get_azure_client()
         logger.debug("Azure client init stream")
-
-        def to_azure_messages(msgs: List[dict]):
-            azure_messages: List[object] = []
-
-            for m in msgs:
-                role = (m.get("role") or "user").lower()
-                text_content = m.get("content")
-                images = m.get("images") or []
-
-                # If no images, fall back to simple text message
-                if not images:
-                    if role == "system":
-                        azure_messages.append(SystemMessage(content=text_content or ""))
-                    else:
-                        azure_messages.append(UserMessage(content=text_content or ""))
-                    continue
-
-                # For image-bearing messages, build a multi-part content list.
-                # Using raw dicts for compatibility across SDK variants.
-                mixed_content: List[object] = []
-                if text_content:
-                    mixed_content.append({"type": "text", "text": text_content})
-                for b64 in images:
-                    if not isinstance(b64, str) or not b64:
-                        continue
-                    mixed_content.append(
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{b64}"},
-                        }
-                    )
-
-                if role == "system":
-                    # Azure doesn't accept images in system role; downgrade to user
-                    azure_messages.append(UserMessage(content=mixed_content))
-                else:
-                    azure_messages.append(UserMessage(content=mixed_content))
-
-            return azure_messages
-
-        azure_msgs = to_azure_messages(messages)
+        azure_msgs = ChatHandler._to_azure_messages(messages)
         logger.debug(f"Azure message dict {azure_msgs}")
         response = client.complete(model=model, messages=azure_msgs)
         return ChatHandler._extract_azure_text_from_response(response)
+
+    @staticmethod
+    def _to_azure_messages(msgs: List[dict]) -> List[object]:
+        """Convert internal message dicts to Azure AI Inference message objects."""
+        azure_messages: List[object] = []
+
+        for m in msgs:
+            role = (m.get("role") or "user").lower()
+            text_content = m.get("content")
+            images = m.get("images") or []
+
+            if not images:
+                if role == "system":
+                    azure_messages.append(SystemMessage(content=text_content or ""))
+                else:
+                    azure_messages.append(UserMessage(content=text_content or ""))
+                continue
+
+            mixed_content: List[object] = []
+            if text_content:
+                mixed_content.append({"type": "text", "text": text_content})
+            for b64 in images:
+                if not isinstance(b64, str) or not b64:
+                    continue
+                mixed_content.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b64}"},
+                    }
+                )
+
+            # Azure doesn't accept images in system role; downgrade to user
+            azure_messages.append(UserMessage(content=mixed_content))
+
+        return azure_messages
 
     @staticmethod
     def _get_azure_client():

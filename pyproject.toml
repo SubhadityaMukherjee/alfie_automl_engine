@@ -14,7 +14,6 @@ dependencies = [
     "jinja2>=3.1.6",
     "lightning>=2.5.1.post0",
     "nest-asyncio>=1.6.0",
-    "ollama>=0.5.1",
     "onnx>=1.19.0",
     "pandas>=2.2.3",
     "pillow>=11.2.1",

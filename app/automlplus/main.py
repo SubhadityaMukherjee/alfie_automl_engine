@@ -36,8 +36,8 @@ if not jinja_path:
 
 jinja_environment = Environment(loader=FileSystemLoader(jinja_path))
 
-LLM_BACKEND = os.getenv("MODEL_BACKEND", "ollama")
-DEFAULT_MODEL = os.getenv("WEB_ACCESSIBILITY_CHAT_MODEL", "gemma3:4b")
+LLM_BACKEND = os.getenv("MODEL_BACKEND", "azure")
+DEFAULT_MODEL = os.getenv("WEB_ACCESSIBILITY_CHAT_MODEL", "gpt-4o-mini")
 
 
 @asynccontextmanager
