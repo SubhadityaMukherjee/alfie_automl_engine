@@ -1,17 +1,15 @@
 import logging
+import os
+import pickle
 import shutil
 import uuid
-from dataclasses import dataclass
 from pathlib import Path
-
-import pandas as pd
-from fastapi import UploadFile
-import requests
-import os
 from datetime import datetime
-import pickle
-from .db import AutoMLSession, SessionLocal
+
 import json
+import pandas as pd
+import requests
+from fastapi import UploadFile
 
 from app.tabular_automl.modules import AutoMLTrainer
 
@@ -85,75 +83,6 @@ def validate_tabular_inputs(
 
     return None
 
-
-def store_session_in_db(
-    session_id: str,
-    train_path: Path,
-    test_path: Path | None,
-    target_column_name: str,
-    time_stamp_column_name: str | None,
-    task_type: str,
-    time_budget: int,
-) -> None:
-    """Persist a new AutoML session in the database."""
-    db = SessionLocal()
-    try:
-        new_session = AutoMLSession(
-            session_id=session_id,
-            train_file_path=str(train_path),
-            test_file_path=str(test_path) if test_path else None,
-            target_column=target_column_name,
-            time_stamp_column_name=time_stamp_column_name,
-            task_type=task_type,
-            time_budget=time_budget,
-        )
-        db.add(new_session)
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    finally:
-        db.close()
-
-
-@dataclass
-class SessionData:
-    """Lightweight container for session metadata retrieved from DB."""
-
-    session_id: str
-    train_file_path: str
-    test_file_path: str | None
-    target_column: str
-    time_stamp_column_name: str | None
-    task_type: str
-    time_budget: int
-
-
-def get_session(session_id: str) -> SessionData | None:
-    """Fetch a session by id, returning typed `SessionData` or None."""
-    db = SessionLocal()
-    try:
-        rec = db.query(AutoMLSession).filter_by(session_id=session_id).first()
-        if rec is None:
-            return None
-        tb_raw = rec.__dict__.get("time_budget")
-        return SessionData(
-            session_id=str(rec.session_id),
-            train_file_path=str(rec.train_file_path),
-            test_file_path=(
-                str(rec.test_file_path) if rec.test_file_path != "" else None
-            ),
-            target_column=str(rec.target_column),
-            time_stamp_column_name=(
-                str(rec.time_stamp_column_name)
-                if rec.time_stamp_column_name != ""
-                else None
-            ),
-            task_type=str(rec.task_type),
-            time_budget=int(tb_raw) if tb_raw is not None else 0,
-        )
-    finally:
-        db.close()
 
 
 def convert_leaderboard_safely(leaderboard):

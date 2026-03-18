@@ -17,7 +17,7 @@
 
 ### Tabular
 
-- (HIGH) remove the old SQL bits from the API and tests, they were used before AutoDW. Now AutoDW is used to store everything
+- ~~(HIGH) remove the old SQL bits from the API and tests, they were used before AutoDW. Now AutoDW is used to store everything~~ ✅ DONE
 
 ### Vision
 
