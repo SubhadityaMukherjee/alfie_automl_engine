@@ -3,10 +3,8 @@ import math
 
 import pytest
 import textstat
-from pytest import MonkeyPatch
 
 from app.automlplus.website_accessibility.modules import (
-    AltTextChecker,
     ReadabilityAnalyzer,
     split_chunks,
 )

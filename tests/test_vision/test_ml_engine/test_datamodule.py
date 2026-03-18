@@ -1,5 +1,4 @@
 """Tests for app/vision_automl/ml_engine/datamodule.py."""
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pandas as pd

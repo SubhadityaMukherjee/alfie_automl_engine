@@ -1,3 +1,4 @@
+.claude/
 *.log
 processes.pid
 .DS_store
