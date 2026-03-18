@@ -14,11 +14,11 @@ cp .env.template .env  # then fill in credentials
 ### Testing
 
 ```bash
-pytest -q                                          # fast tests only (default)
-pytest -q --full                                   # include @pytest.mark.full tests (slow, disk I/O)
-pytest tests/test_vision/ -v                       # specific module
-pytest -k "test_name" -v                           # by name pattern
-python test_services.py                            # integration tests (requires running services)
+uv run pytest -q                                          # fast tests only (default)
+uv run pytest -q --full                                   # include @pytest.mark.full tests (slow, disk I/O)
+uv run pytest tests/test_vision/ -v                       # specific module
+uv run pytest -k "test_name" -v                           # by name pattern
+uv run python test_services.py                            # integration tests (requires running services)
 ```
 
 Tests marked `@pytest.mark.full` are skipped by default — they hit disk (real images, real DataLoaders) and can be slow. Pass `--full` to include them.
