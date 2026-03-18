@@ -4,10 +4,8 @@ import math
 import pytest
 import textstat
 
-from app.automlplus.website_accessibility.modules import (
-    ReadabilityAnalyzer,
-    split_chunks,
-)
+from app.automlplus.website_accessibility.modules import (ReadabilityAnalyzer,
+                                                          split_chunks)
 
 logger = logging.getLogger(__name__)
 

@@ -5,30 +5,25 @@ Handles dataset fetch, validation, model training, and upload.
 
 import logging
 import os
+import shutil
+import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated
-import shutil
-import tempfile
 
 from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
 
-from app.vision_automl.services import (
-    DatasetValidationError,
-    AutodwError,
-    fetch_dataset_metadata,
-    resolve_download_url,
-    download_dataset,
-    extract_and_locate_dataset,
-    validate_vision_inputs,
-    train_automl,
-    serialize_and_zip_model,
-    convert_leaderboard_safely,
-    build_upload_payload,
-    upload_model,
-)
+from app.vision_automl.services import (AutodwError, DatasetValidationError,
+                                        build_upload_payload,
+                                        convert_leaderboard_safely,
+                                        download_dataset,
+                                        extract_and_locate_dataset,
+                                        fetch_dataset_metadata,
+                                        resolve_download_url,
+                                        serialize_and_zip_model, train_automl,
+                                        upload_model, validate_vision_inputs)
 
 logger = logging.getLogger(__name__)
 

@@ -1,12 +1,12 @@
+import json
 import logging
 import os
 import pickle
 import shutil
 import uuid
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
-import json
 import pandas as pd
 import requests
 from fastapi import UploadFile
@@ -82,7 +82,6 @@ def validate_tabular_inputs(
         return f"Invalid task_type '{task_type}'"
 
     return None
-
 
 
 def convert_leaderboard_safely(leaderboard):

@@ -1,15 +1,13 @@
 """Tests for app/vision_automl/models.py Pydantic schemas."""
+
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from app.vision_automl.models import (
-    ImageClassificationTask,
-    ImageMultiLabelClassificationTask,
-    ImageRegressionTask,
-    ImageTask,
-)
+from app.vision_automl.models import (ImageClassificationTask,
+                                      ImageMultiLabelClassificationTask,
+                                      ImageRegressionTask, ImageTask)
 
 
 def test_image_task_defaults():
@@ -26,7 +24,9 @@ def test_image_task_with_test_dir():
 
 
 def test_image_task_with_labels_file():
-    task = ImageTask(train_dir=Path("x"), label_format="csv", labels_file=Path("labels.csv"))
+    task = ImageTask(
+        train_dir=Path("x"), label_format="csv", labels_file=Path("labels.csv")
+    )
     assert task.label_format == "csv"
     assert task.labels_file == Path("labels.csv")
 

@@ -1,10 +1,10 @@
 """Tests for app/vision_automl/ml_engine/trainer.py — EarlyStopping (fast, no ML)."""
+
 from unittest.mock import MagicMock
 
 import pytest
 
 from app.vision_automl.ml_engine.trainer import EarlyStopping
-
 
 # ---------------------------------------------------------------------------
 # EarlyStopping — pure logic, no model/HF downloads needed
@@ -82,6 +82,7 @@ def test_early_stopping_does_not_trigger_before_patience():
 
 def test_early_stopping_missing_metric_skips(caplog):
     import logging
+
     es = EarlyStopping(monitor="val_loss")
     trainer = MagicMock()
     with caplog.at_level(logging.WARNING):

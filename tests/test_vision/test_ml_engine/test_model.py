@@ -1,4 +1,5 @@
 """Tests for app/vision_automl/ml_engine/model.py."""
+
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,10 +8,10 @@ from torch import nn
 
 from app.vision_automl.ml_engine.model import ClassificationModel
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_hf_model(num_classes: int = 2):
     """Return a mock HF model with a classifier head and a forward that returns logits."""

@@ -1,4 +1,5 @@
 """Tests for app/vision_automl/services.py."""
+
 import io
 import json
 import zipfile
@@ -9,26 +10,22 @@ import pandas as pd
 import pytest
 import requests
 
-from app.vision_automl.services import (
-    DatasetValidationError,
-    _build_metadata_url,
-    _find_csv_file,
-    _find_or_resolve_images_dir,
-    _find_valid_dataset_root,
-    build_upload_payload,
-    collect_missing_files,
-    convert_leaderboard_safely,
-    download_dataset,
-    extract_and_locate_dataset,
-    fetch_dataset_metadata,
-    normalize_dataframe_filenames,
-    resolve_download_url,
-    resolve_images_root,
-    serialize_and_zip_model,
-    sort_models_by_size,
-    validate_vision_inputs,
-)
-
+from app.vision_automl.services import (DatasetValidationError,
+                                        _build_metadata_url, _find_csv_file,
+                                        _find_or_resolve_images_dir,
+                                        _find_valid_dataset_root,
+                                        build_upload_payload,
+                                        collect_missing_files,
+                                        convert_leaderboard_safely,
+                                        download_dataset,
+                                        extract_and_locate_dataset,
+                                        fetch_dataset_metadata,
+                                        normalize_dataframe_filenames,
+                                        resolve_download_url,
+                                        resolve_images_root,
+                                        serialize_and_zip_model,
+                                        sort_models_by_size,
+                                        validate_vision_inputs)
 
 # ---------------------------------------------------------------------------
 # normalize_dataframe_filenames
@@ -36,7 +33,9 @@ from app.vision_automl.services import (
 
 
 def test_normalize_filenames_unix_paths(tmp_path):
-    df = pd.DataFrame({"filename": ["some/path/img.png", "other/img2.png"], "label": [0, 1]})
+    df = pd.DataFrame(
+        {"filename": ["some/path/img.png", "other/img2.png"], "label": [0, 1]}
+    )
     csv_path = tmp_path / "labels.csv"
     result = normalize_dataframe_filenames(df, "filename", csv_path)
     assert list(result["filename"]) == ["img.png", "img2.png"]
@@ -44,7 +43,12 @@ def test_normalize_filenames_unix_paths(tmp_path):
 
 
 def test_normalize_filenames_windows_paths(tmp_path):
-    df = pd.DataFrame({"filename": ["C:\\Users\\test\\img.png", "D:\\data\\img2.png"], "label": [0, 1]})
+    df = pd.DataFrame(
+        {
+            "filename": ["C:\\Users\\test\\img.png", "D:\\data\\img2.png"],
+            "label": [0, 1],
+        }
+    )
     csv_path = tmp_path / "labels.csv"
     result = normalize_dataframe_filenames(df, "filename", csv_path)
     assert list(result["filename"]) == ["img.png", "img2.png"]
@@ -209,15 +213,24 @@ def test_resolve_download_url_no_split(fake_metadata):
     assert url == "http://base/datasets/u/d/download"
 
 
-def test_resolve_download_url_with_split_and_metadata_has_split(fake_metadata_with_splits):
-    url = resolve_download_url("http://base", "u", "d", None, fake_metadata_with_splits, "train")
+def test_resolve_download_url_with_split_and_metadata_has_split(
+    fake_metadata_with_splits,
+):
+    url = resolve_download_url(
+        "http://base", "u", "d", None, fake_metadata_with_splits, "train"
+    )
     assert url == "http://base/datasets/u/d/download?split=train"
 
 
-def test_resolve_download_url_split_requested_but_no_metadata_split(fake_metadata, caplog):
+def test_resolve_download_url_split_requested_but_no_metadata_split(
+    fake_metadata, caplog
+):
     import logging
+
     with caplog.at_level(logging.WARNING):
-        url = resolve_download_url("http://base", "u", "d", None, fake_metadata, "train")
+        url = resolve_download_url(
+            "http://base", "u", "d", None, fake_metadata, "train"
+        )
     assert "?split=" not in url
     assert "no splits" in caplog.text or "downloading full" in caplog.text.lower()
 
@@ -343,12 +356,15 @@ def test_find_or_resolve_images_dir_raises_when_not_found(tmp_path):
 def _make_dataset_zip(tmp_path: Path) -> Path:
     buf = io.BytesIO()
     from PIL import Image
+
     Image.new("RGB", (10, 10)).save(buf, format="PNG")
     png_bytes = buf.getvalue()
 
     zip_path = tmp_path / "dataset.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr("my_dataset/labels.csv", "filename,label\nimg0.png,cat\nimg1.png,dog\n")
+        zf.writestr(
+            "my_dataset/labels.csv", "filename,label\nimg0.png,cat\nimg1.png,dog\n"
+        )
         zf.writestr("my_dataset/images/img0.png", png_bytes)
         zf.writestr("my_dataset/images/img1.png", png_bytes)
     return zip_path
@@ -368,6 +384,7 @@ def test_extract_and_locate_dataset_valid_zip(tmp_path):
 def test_extract_and_locate_dataset_missing_csv_raises(tmp_path):
     buf = io.BytesIO()
     from PIL import Image
+
     Image.new("RGB", (10, 10)).save(buf, format="PNG")
     png_bytes = buf.getvalue()
 
@@ -420,7 +437,9 @@ def test_validate_vision_inputs_missing_label_column(synthetic_images_dir):
 
 
 def test_validate_vision_inputs_unreadable_csv(tmp_path):
-    result = validate_vision_inputs(tmp_path / "nonexistent.csv", tmp_path, "filename", "label")
+    result = validate_vision_inputs(
+        tmp_path / "nonexistent.csv", tmp_path, "filename", "label"
+    )
     assert result is not None
     assert "Could not read labels CSV" in result
 
@@ -429,12 +448,15 @@ def test_validate_vision_inputs_missing_images(tmp_path):
     images_dir = tmp_path / "images"
     images_dir.mkdir()
     from PIL import Image
+
     Image.new("RGB", (10, 10)).save(images_dir / "img0.png")
 
-    df = pd.DataFrame({
-        "filename": ["img0.png", "missing1.png", "missing2.png"],
-        "label": ["cat", "cat", "dog"],
-    })
+    df = pd.DataFrame(
+        {
+            "filename": ["img0.png", "missing1.png", "missing2.png"],
+            "label": ["cat", "cat", "dog"],
+        }
+    )
     csv_path = tmp_path / "labels.csv"
     df.to_csv(csv_path, index=False)
 
@@ -447,10 +469,12 @@ def test_validate_vision_inputs_missing_images(tmp_path):
 def test_validate_vision_inputs_many_missing_files_truncated(tmp_path):
     images_dir = tmp_path / "images"
     images_dir.mkdir()
-    df = pd.DataFrame({
-        "filename": [f"missing{i}.png" for i in range(10)],
-        "label": ["cat"] * 10,
-    })
+    df = pd.DataFrame(
+        {
+            "filename": [f"missing{i}.png" for i in range(10)],
+            "label": ["cat"] * 10,
+        }
+    )
     csv_path = tmp_path / "labels.csv"
     df.to_csv(csv_path, index=False)
     result = validate_vision_inputs(csv_path, images_dir, "filename", "label")
@@ -556,13 +580,17 @@ def test_convert_leaderboard_safely_empty_dict():
 
 
 def test_build_upload_payload_returns_tuple(fake_metadata):
-    model_id, data = build_upload_payload("ds1", "v1", fake_metadata, "classification", {"best_loss": 0.1})
+    model_id, data = build_upload_payload(
+        "ds1", "v1", fake_metadata, "classification", {"best_loss": 0.1}
+    )
     assert isinstance(model_id, str)
     assert isinstance(data, dict)
 
 
 def test_build_upload_payload_model_id_prefix(fake_metadata):
-    model_id, _ = build_upload_payload("my_dataset", "v1", fake_metadata, "classification", {})
+    model_id, _ = build_upload_payload(
+        "my_dataset", "v1", fake_metadata, "classification", {}
+    )
     assert model_id.startswith("vision_automl_my_dataset_")
 
 

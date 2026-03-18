@@ -7,7 +7,8 @@ from typing import Any, Dict, List
 
 from bs4 import BeautifulSoup
 
-from app.automlplus.website_accessibility.modules import AltTextChecker, split_chunks
+from app.automlplus.website_accessibility.modules import (AltTextChecker,
+                                                          split_chunks)
 from app.core.chat_handler import ChatHandler
 from app.core.utils import render_template
 
@@ -63,7 +64,9 @@ async def _process_single_chunk(
 
             backend = os.getenv("MODEL_BACKEND", "azure").lower()
             model_env = os.getenv("WEB_ACCESSIBILITY_CHAT_MODEL")
-            model = model_env.strip() if model_env and model_env.strip() else "gpt-4o-mini"
+            model = (
+                model_env.strip() if model_env and model_env.strip() else "gpt-4o-mini"
+            )
             response_raw = await ChatHandler.chat(
                 prompt,
                 context=context,

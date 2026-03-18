@@ -1,4 +1,5 @@
 """Tests for app/vision_automl/ml_engine/datamodule.py."""
+
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -9,10 +10,10 @@ from torch.utils.data import DataLoader
 
 from app.vision_automl.ml_engine.datamodule import ClassificationData
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_mock_processor():
     """Return a mock AutoImageProcessor that produces pixel_values tensors."""
@@ -27,6 +28,7 @@ def _make_mock_processor():
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def data_module(large_class_structured_dir):

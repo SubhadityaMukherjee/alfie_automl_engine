@@ -15,18 +15,15 @@ from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
 
-from app.tabular_automl.services import (
-    validate_tabular_inputs,
-    fetch_dataset_metadata,
-    SUPPORTED_FILE_TYPES,
-    resolve_download_url,
-    download_dataset,
-    train_automl,
-    serialize_and_zip_predictor,
-    convert_leaderboard_safely,
-    build_upload_payload,
-    upload_model,
-)
+from app.tabular_automl.services import (SUPPORTED_FILE_TYPES,
+                                         build_upload_payload,
+                                         convert_leaderboard_safely,
+                                         download_dataset,
+                                         fetch_dataset_metadata,
+                                         resolve_download_url,
+                                         serialize_and_zip_predictor,
+                                         train_automl, upload_model,
+                                         validate_tabular_inputs)
 
 logger = logging.getLogger(__name__)
 

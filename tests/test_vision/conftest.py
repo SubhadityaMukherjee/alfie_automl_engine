@@ -1,4 +1,5 @@
 """Shared fixtures for vision_automl tests."""
+
 from pathlib import Path
 
 import pandas as pd
