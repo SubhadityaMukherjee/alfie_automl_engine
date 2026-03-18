@@ -48,7 +48,7 @@ class ImageClassificationFromCSVDataset(Dataset):
         else:
             self.classes = sorted(self.label_csv[self.label_col].unique().tolist())
             self.class_to_idx = {cls: cls for cls in self.classes}
-            self.idx_to_class = {idx: cls for cls in self.classes}
+            self.idx_to_class = {cls: cls for cls in self.classes}
 
     def __len__(self):
         """Return number of samples."""
