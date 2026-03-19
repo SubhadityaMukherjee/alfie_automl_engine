@@ -9,13 +9,10 @@ from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
-from app.automlplus.imagetools import ImagePromptRunner
-from app.automlplus.website_accessibility.modules import (
-    AltTextChecker,
-    ReadabilityAnalyzer,
-)
-from app.automlplus.website_accessibility.services import (
-    extract_text_from_html_bytes,
+from app.automlplus.tools.vlm import AltTextChecker, ImagePromptRunner
+from app.automlplus.tools.static import ReadabilityAnalyzer
+from app.automlplus.utils import extract_text_from_html_bytes, json_safe
+from app.automlplus.website_accessibility.pipeline import (
     resolve_coroutines,
     run_accessibility_pipeline,
 )
@@ -29,23 +26,6 @@ if not _jinja_path:
     raise RuntimeError("JINJAPATH environment variable is not set")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
-
-
-def json_safe(data: Any) -> Any:
-    """Recursively convert string values to JSON-safe strings."""
-    if isinstance(data, dict):
-        return {k: json_safe(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [json_safe(v) for v in data]
-    elif isinstance(data, str):
-        return (
-            data.replace("\\", "\\\\")
-            .replace('"', '\\"')
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-        )
-    else:
-        return data
 
 
 @router.post("/image_tools/image_to_website/")
