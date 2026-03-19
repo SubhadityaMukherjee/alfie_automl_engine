@@ -1,17 +1,108 @@
-import bisect
+"""VLM (Vision Language Model) tools for AutoML+.
+
+A VLM task involves passing one or more images together with a text prompt to a
+multimodal language model and processing its response. The classes here cover two
+use-cases:
+
+- ``ImagePromptRunner`` — general-purpose: run or stream any user-supplied prompt
+  over an image (file upload or URL).
+- ``AltTextChecker`` — specialised: evaluate whether provided alt text accurately
+  describes an image, using a structured VLM prompt defined in Jinja2 templates.
+"""
+
 import logging
 import os
-from math import isfinite
-from typing import Any, Dict, List, Tuple
 
-import textstat  # type: ignore
-from jinja2 import Environment  # type: ignore
+from dotenv import find_dotenv, load_dotenv
+from jinja2 import Environment
 
 from app.automlplus.utils import ImageConverter
 from app.core.chat_handler import ChatHandler
 from app.core.utils import render_template
 
+load_dotenv(find_dotenv())
 logger = logging.getLogger(__name__)
+
+
+class ImagePromptRunner:
+    """Run a VLM on an image and user-provided prompt."""
+
+    DEFAULT_MODEL: str = os.getenv("IMAGE_PROMPT_MODEL", "gpt-4o-mini")
+
+    @staticmethod
+    def _resolve_model(model: str | None) -> str:
+        if not model or not str(model).strip():
+            return ImagePromptRunner.DEFAULT_MODEL
+        return model
+
+    @staticmethod
+    def build_messages(
+        jinja_environment: Environment | None, image_b64: str, prompt: str
+    ) -> list[dict[str, str | list[str] | list[None]]]:
+        messages: list[dict[str, str | list[str] | list[None]]] = []
+        if jinja_environment is not None:
+            try:
+                system_prompt = render_template(
+                    jinja_environment, "image_to_website_prompt.txt"
+                )
+                messages.append({"role": "system", "content": system_prompt})
+            except Exception as e:
+                raise e
+        messages.append({"role": "user", "content": prompt, "images": [image_b64]})
+        return messages
+
+    @staticmethod
+    def run(
+        image_bytes: bytes | None = None,
+        image_path_or_url: str | None = None,
+        prompt: str = "",
+        model: str | None = None,
+        jinja_environment: Environment | None = None,
+    ) -> str:
+        model_name = ImagePromptRunner._resolve_model(model)
+        try:
+            if image_bytes is None and not image_path_or_url:
+                raise ValueError("Provide either image_bytes or image_path_or_url")
+
+            image_b64 = (
+                ImageConverter.bytes_to_base64(image_bytes)
+                if image_bytes is not None
+                else ImageConverter.to_base64(str(image_path_or_url))
+            )
+
+            messages = ImagePromptRunner.build_messages(
+                jinja_environment, image_b64, prompt
+            )
+
+            return ChatHandler.chat_sync_messages(messages=messages, model=model_name)
+        except Exception as e:
+            logger.exception("ImagePromptRunner failed")
+            raise e
+
+    @staticmethod
+    def run_stream(
+        image_bytes: bytes | None = None,
+        image_path_or_url: str | None = None,
+        prompt: str = "",
+        model: str | None = None,
+        jinja_environment: Environment | None = None,
+    ) -> str:
+        """Stream VLM output for an image+prompt interaction. Yields incremental text chunks."""
+        model_name = ImagePromptRunner._resolve_model(model)
+        if image_bytes is None and not image_path_or_url:
+            raise ValueError("Provide either image_bytes or image_path_or_url")
+
+        image_b64 = (
+            ImageConverter.bytes_to_base64(image_bytes)
+            if image_bytes is not None
+            else ImageConverter.to_base64(str(image_path_or_url))
+        )
+        messages = ImagePromptRunner.build_messages(
+            jinja_environment, image_b64, prompt
+        )
+        return ChatHandler.chat_stream_messages_sync(
+            messages=messages, model=model_name
+        )
 
 
 class AltTextChecker:
@@ -32,7 +123,6 @@ class AltTextChecker:
         candidate = model.strip()
         lower = candidate.lower().replace(" ", "")
 
-        # Normalize common GPT-4o mini aliases
         if lower in {"gpt40-mini", "gpt4o-mini"}:
             return "gpt-4o-mini"
 
@@ -41,7 +131,7 @@ class AltTextChecker:
     @staticmethod
     def _build_messages(
         jinja_environment: Environment, image_b64: str, alt_text: str
-    ) -> List[dict]:
+    ) -> list[dict]:
         """Construct the message payload for the VLM call."""
         return [
             {
@@ -61,9 +151,9 @@ class AltTextChecker:
         ]
 
     @staticmethod
-    def _redact_messages_for_log(messages: List[dict]) -> List[dict]:
+    def _redact_messages_for_log(messages: list[dict]) -> list[dict]:
         """Return a copy of messages with any base64 image payloads redacted for logging."""
-        redacted: List[dict] = []
+        redacted: list[dict] = []
         for message in messages:
             msg_copy = {k: v for k, v in message.items() if k != "images"}
             if "images" in message:
@@ -122,77 +212,3 @@ class AltTextChecker:
             except Exception:
                 logger.error("Messages sent (redaction_failed)")
             raise
-
-
-class ReadabilityAnalyzer:
-    """Compute readability metrics for a piece of text."""
-
-    METRICS = {
-        "Flesch Reading Ease": textstat.flesch_reading_ease,
-        "Difficult Words": textstat.difficult_words,
-        "Lexicon Count": textstat.lexicon_count,
-        "Avg Sentence Length": textstat.words_per_sentence,
-    }
-
-    @staticmethod
-    def apply_metric(metric, text: str) -> Any:
-        try:
-            value = metric(text)
-            # Normalize to JSON-serializable primitives and avoid NaN/Infinity
-            if isinstance(value, float) and not isfinite(value):
-                return None
-            if isinstance(value, (int, float, str)):
-                return value
-            return str(value)
-        except Exception:
-            logger.warning("Metric failed: %s", metric.__name__)
-            return "N/A"
-
-    @classmethod
-    def analyze(cls, text: str) -> Dict[str, Any]:
-        logger.info("Running readability metrics")
-        return {
-            name: cls.apply_metric(metric, text) for name, metric in cls.METRICS.items()
-        }
-
-
-def split_chunks(
-    content: str, chunk_size: int
-) -> Tuple[List[str], List[Tuple[int, int]]]:
-    """
-    Split content into fixed-size character chunks and return
-    1-based (start_line, end_line) ranges for each chunk.
-
-    Line ranges are accurate even when chunks start/end mid-line.
-    """
-    if chunk_size <= 0:
-        raise ValueError("chunk_size must be > 0")
-
-    # Keep newlines so offsets are exact
-    lines = content.splitlines(keepends=True)
-
-    # Build cumulative character offsets
-    line_offsets = [0]
-    for line in lines:
-        line_offsets.append(line_offsets[-1] + len(line))
-
-    chunks: List[str] = []
-    line_ranges: List[Tuple[int, int]] = []
-
-    content_len = len(content)
-    i = 0
-
-    while i < content_len:
-        end = min(i + chunk_size, content_len)
-        chunks.append(content[i:end])
-
-        # Find line indices via binary search
-        start_line = bisect.bisect_right(line_offsets, i) - 1
-        end_line = bisect.bisect_left(line_offsets, end) - 1
-
-        # Convert to 1-based inclusive line numbers
-        line_ranges.append((start_line + 1, max(start_line + 1, end_line + 1)))
-
-        i = end
-
-    return chunks, line_ranges

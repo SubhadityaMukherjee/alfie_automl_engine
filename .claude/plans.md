@@ -4,78 +4,100 @@ Generated from `tasklist.md`. Mark tasks complete here and in tasklist.md when d
 
 ---
 
-## TASK 1 (HIGH) — FastAPI Routers Across All Packages
+## TASK 1 (HIGH) — Make AutoMLplus Tools More Modular
 
-**Goal:** Extract endpoints into `router.py` files per service. Keep `main.py` thin (app init + lifespan + `include_router`).
+**Goal:** Reorganise `app/automlplus/` so tool classes are grouped by technique type (`vlm`, `text`, `static`) rather than by domain (`imagetools`, `website_accessibility`). URLs in `router.py` must not change.
 
-**Status:** TODO
+**Status:** DONE
 
-### Steps
-
-1. Create `app/tabular_automl/router.py`
-   - `router = APIRouter(prefix="/automl_tabular", tags=["tabular"])`
-   - Move `POST /automl_tabular/best_model/` handler out of `main.py` (currently lines ~42–174)
-   - All imports and dependencies move with it
-
-2. Create `app/vision_automl/router.py`
-   - `router = APIRouter(prefix="/automl_vision", tags=["vision"])`
-   - Move `POST /automl_vision/best_model/` handler out of `main.py` (lines ~52–179)
-
-3. Create `app/automlplus/router.py`
-   - `router = APIRouter(prefix="/automlplus", tags=["automlplus"])`
-   - Move all 5 endpoints from `main.py`:
-     - `POST /automlplus/image_tools/image_to_website/`
-     - `POST /automlplus/web_access/check-alt-text/`
-     - `POST /automlplus/image_tools/run_on_image/`
-     - `POST /automlplus/image_tools/run_on_image_stream/`
-     - `POST /automlplus/web_access/analyze/`
-
-4. Update each `main.py`:
-   - Remove moved endpoint handlers
-   - Add `from .router import router` + `app.include_router(router)`
-   - Keep lifespan, app init, and startup logic only
-
-5. Verify all existing tests still pass (endpoint paths must not change).
+**Depends on:** Router refactor already done — `router.py` and `main.py` are in place.
 
 ---
 
-## TASK 2 (MEDIUM) — Make AutoML+ Tools More Modular
+### Current layout (before)
 
-**Goal:** Separate `app/automlplus/` into distinct Image tools, Language/web tools, and shared utilities so each area can be extended independently.
+```
+app/automlplus/
+  main.py                        # lifespan + include_router ✓
+  router.py                      # 5 endpoints, inline jinja_env + json_safe
+  utils.py                       # ImageConverter only
+  imagetools.py                  # ImagePromptRunner (vlm)
+  website_accessibility/
+    modules.py                   # AltTextChecker (vlm), ReadabilityAnalyzer (static), split_chunks
+    services.py                  # pipeline orchestration + extract_text_from_html_bytes
+```
 
-**Status:** TODO
+### Target layout (after)
 
-**Depends on:** TASK 1 (routers) completed first — router refactor makes this easier.
-
-### Steps
-
-1. **Create service layer under `app/automlplus/services/`:**
-   - `image_service.py` — logic extracted from image endpoints in `main.py`:
-     - `async def run_on_image(request, llm_config) -> dict`
-     - `def run_on_image_stream(request, llm_config) -> AsyncGenerator`
-     - `def image_to_website(request) -> dict` (currently a stub)
-
-   - `web_accessibility_service.py` — logic extracted from accessibility endpoints:
-     - `async def check_alt_text(request, env, llm_config) -> dict`
-     - `async def analyze_accessibility(request, env, llm_config) -> dict`
-
-2. **Create `app/automlplus/dependencies.py`** for FastAPI `Depends()` injection:
-   - `get_jinja_env()` — returns the Jinja2 environment (currently initialised ad hoc)
-   - `get_llm_config()` — returns `(model_id, backend)` from env vars
-
-3. **Extract utilities:**
-   - `app/automlplus/utils.py` already exists — move `json_safe()` helper there if not already
-   - Any HTML/file loading helpers that appear in multiple endpoints
-
-4. **Update `router.py`** (from TASK 1) to call service functions via `Depends()` rather than embedding logic directly.
-
-5. `main.py` should contain only: lifespan, app init, `include_router`.
-
-6. Verify all existing tests pass; add targeted unit tests for each new service function.
+```
+app/automlplus/
+  main.py                        # unchanged
+  router.py                      # same 5 URLs, imports from tools/ and utils
+  utils.py                       # ImageConverter + extract_text_from_html_bytes + json_safe
+  tools/
+    __init__.py
+    vlm.py                       # ImagePromptRunner (from imagetools.py)
+                                 # AltTextChecker (from website_accessibility/modules.py)
+    static.py                    # ReadabilityAnalyzer + split_chunks
+                                 # (from website_accessibility/modules.py)
+    text.py                      # LLM-over-text: ChunkResult + _process_single_chunk
+                                 # (from website_accessibility/services.py)
+  website_accessibility/
+    __init__.py
+    pipeline.py                  # run_accessibility_pipeline, resolve_coroutines,
+                                 # stream_accessibility_results (thin orchestration layer,
+                                 # imports from tools/ instead of modules.py)
+```
 
 ---
 
-## TASK 3 (LOW) — Environmental Impact Tracking for Vision
+### Steps
+
+1. **Expand `utils.py`** — move two helpers here (no behaviour change):
+   - `json_safe()` from `router.py`
+   - `extract_text_from_html_bytes()` from `website_accessibility/services.py`
+
+2. **Create `app/automlplus/tools/__init__.py`** (empty).
+
+3. **Create `app/automlplus/tools/vlm.py`** — move classes verbatim:
+   - Add documentation to the top of the file about what this fiel does. Explain that vlm is a vision language model task that involves passing images + a prompt of some sort
+   - `ImagePromptRunner` from `imagetools.py`
+   - `AltTextChecker` from `website_accessibility/modules.py`
+
+4. **Create `app/automlplus/tools/static.py`** — move verbatim:
+   - Add documentation to the top of the file about what this fiel does
+   - `ReadabilityAnalyzer` from `website_accessibility/modules.py`
+   - `split_chunks` from `website_accessibility/modules.py`
+
+5. **Create `app/automlplus/tools/text.py`** — move verbatim:
+   - Add documentation to the top of the file about what this fiel does
+   - `ChunkResult` dataclass from `website_accessibility/services.py`
+   - `_process_single_chunk` from `website_accessibility/services.py`
+   - This function uses `AltTextChecker` (import from `tools.vlm`) and `ChatHandler`.
+
+6. **Create `app/automlplus/website_accessibility/pipeline.py`** — thin orchestration:
+   - Add documentation to the top of the file about what this fiel does
+   - `run_accessibility_pipeline` — imports `split_chunks` from `tools.static`, `_process_single_chunk` from `tools.text`
+   - `resolve_coroutines` — no tool dependencies, copy as-is
+   - `stream_accessibility_results` — calls `resolve_coroutines`
+
+7. **Update `router.py`** — change imports only, no logic changes:
+   - `from app.automlplus.utils import json_safe, extract_text_from_html_bytes`
+   - `from app.automlplus.tools.vlm import ImagePromptRunner, AltTextChecker`
+   - `from app.automlplus.tools.static import ReadabilityAnalyzer`
+   - `from app.automlplus.website_accessibility.pipeline import run_accessibility_pipeline, resolve_coroutines`
+   - Remove the inline `json_safe` definition from `router.py`
+
+8. **Delete obsolete files** once imports updated and tests pass:
+   - `app/automlplus/imagetools.py`
+   - `app/automlplus/website_accessibility/modules.py`
+   - `app/automlplus/website_accessibility/services.py` (replaced by `pipeline.py`)
+
+9. **Verify** — run `uv run pytest -q`. No new tests needed; this is a pure move with no behaviour change.
+
+---
+
+## TASK (LOW) — Environmental Impact Tracking for Vision
 
 **Goal:** Report estimated energy/carbon cost of trained models.
 

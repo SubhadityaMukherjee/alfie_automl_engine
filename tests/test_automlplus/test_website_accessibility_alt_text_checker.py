@@ -6,7 +6,7 @@ import pytest
 from dotenv import find_dotenv, load_dotenv
 from jinja2 import Environment, FileSystemLoader
 
-from app.automlplus.website_accessibility.modules import AltTextChecker
+from app.automlplus.tools.vlm import AltTextChecker
 
 load_dotenv(find_dotenv())
 

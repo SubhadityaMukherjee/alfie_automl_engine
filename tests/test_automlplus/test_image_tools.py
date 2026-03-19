@@ -5,7 +5,7 @@ import pytest
 from dotenv import find_dotenv, load_dotenv
 from jinja2 import Environment, FileSystemLoader
 
-from app.automlplus.imagetools import ImagePromptRunner
+from app.automlplus.tools.vlm import ImagePromptRunner
 from app.automlplus.utils import ImageConverter
 from app.core.chat_handler import ChatHandler
 
@@ -103,7 +103,7 @@ def test_run_handles_conversion_error(mock_to_b64):
         ImagePromptRunner.run(image_bytes=b"bad", prompt="oops")
 
 
-@patch("app.automlplus.imagetools.logger")
+@patch("app.automlplus.tools.vlm.logger")
 @patch.object(ImageConverter, "to_base64", side_effect=ValueError("bad"))
 def test_run_logs_exception(mock_to_b64, mock_logger):
     with pytest.raises(ValueError):

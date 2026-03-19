@@ -2,8 +2,10 @@ import base64
 import logging
 import os
 from io import BytesIO
+from typing import Any
 
 import requests
+from bs4 import BeautifulSoup
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -49,3 +51,31 @@ class ImageConverter:
         except Exception as e:
             logger.exception("Image bytes conversion failed")
             raise e
+
+
+def extract_text_from_html_bytes(content: bytes) -> str:
+    """Extract readable text from raw HTML bytes."""
+    soup = BeautifulSoup(content, features="html.parser")
+    for script in soup(["script", "style"]):
+        script.extract()
+    lines = (line.strip() for line in soup.get_text().splitlines())
+    phrases = (phrase.strip() for line in lines for phrase in line.split("  "))
+    text = "\n".join(chunk for chunk in phrases if chunk)
+    return text
+
+
+def json_safe(data: Any) -> Any:
+    """Recursively convert string values to JSON-safe strings."""
+    if isinstance(data, dict):
+        return {k: json_safe(v) for k, v in data.items()}
+    elif isinstance(data, list):
+        return [json_safe(v) for v in data]
+    elif isinstance(data, str):
+        return (
+            data.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+        )
+    else:
+        return data
