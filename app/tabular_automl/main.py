@@ -7,6 +7,7 @@ session metadata, and trigger AutoML training using AutoGluon.
 import logging
 import os
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -15,22 +16,33 @@ from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
 
-from app.tabular_automl.services import (SUPPORTED_FILE_TYPES,
-                                         build_upload_payload,
-                                         convert_leaderboard_safely,
-                                         download_dataset,
-                                         fetch_dataset_metadata,
-                                         resolve_download_url,
-                                         serialize_and_zip_predictor,
-                                         train_automl, upload_model,
-                                         validate_tabular_inputs)
+from app.core.logging import configure_service_logging
+from app.tabular_automl.services import (
+    SUPPORTED_FILE_TYPES,
+    build_upload_payload,
+    convert_leaderboard_safely,
+    download_dataset,
+    fetch_dataset_metadata,
+    resolve_download_url,
+    serialize_and_zip_predictor,
+    train_automl,
+    upload_model,
+    validate_tabular_inputs,
+)
 
 logger = logging.getLogger(__name__)
 
 
 load_dotenv(find_dotenv())
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_service_logging("tabular_automl")
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "http://localhost:8001")
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")

@@ -7,7 +7,7 @@ import logging
 import os
 import shutil
 import tempfile
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Annotated
 
@@ -15,21 +15,34 @@ from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse
 
-from app.vision_automl.services import (AutodwError, DatasetValidationError,
-                                        build_upload_payload,
-                                        convert_leaderboard_safely,
-                                        download_dataset,
-                                        extract_and_locate_dataset,
-                                        fetch_dataset_metadata,
-                                        resolve_download_url,
-                                        serialize_and_zip_model, train_automl,
-                                        upload_model, validate_vision_inputs)
+from app.core.logging import configure_service_logging
+from app.vision_automl.services import (
+    AutodwError,
+    DatasetValidationError,
+    build_upload_payload,
+    convert_leaderboard_safely,
+    download_dataset,
+    extract_and_locate_dataset,
+    fetch_dataset_metadata,
+    resolve_download_url,
+    serialize_and_zip_model,
+    train_automl,
+    upload_model,
+    validate_vision_inputs,
+)
 
 logger = logging.getLogger(__name__)
 
 load_dotenv(find_dotenv())
 
-app = FastAPI()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    configure_service_logging("vision_automl")
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 VISION_AUTOML_PORT = os.getenv("VISION_AUTOML_PORT", "http://localhost:8002")
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")

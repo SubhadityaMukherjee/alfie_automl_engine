@@ -12,12 +12,17 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
 from app.automlplus.imagetools import ImagePromptRunner
-from app.automlplus.website_accessibility.modules import (AltTextChecker,
-                                                          ReadabilityAnalyzer)
+from app.automlplus.website_accessibility.modules import (
+    AltTextChecker,
+    ReadabilityAnalyzer,
+)
 from app.automlplus.website_accessibility.services import (
-    extract_text_from_html_bytes, resolve_coroutines,
-    run_accessibility_pipeline)
+    extract_text_from_html_bytes,
+    resolve_coroutines,
+    run_accessibility_pipeline,
+)
 from app.core.chat_handler import ChatHandler
+from app.core.logging import configure_service_logging
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -38,11 +43,9 @@ DEFAULT_MODEL = os.getenv("WEB_ACCESSIBILITY_CHAT_MODEL", "gpt-4o-mini")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize resources
+    configure_service_logging("automlplus")
     await ChatHandler.init()
     yield
-    # Cleanup resources
-    pass
 
 
 def json_safe(data: Any) -> Any:
