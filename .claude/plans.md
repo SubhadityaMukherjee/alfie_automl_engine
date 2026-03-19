@@ -43,7 +43,7 @@ Generated from `tasklist.md`. Mark tasks complete here and in tasklist.md when d
 
 **Goal:** Each service writes to its own rotating log file (`logs/<service>.log`) instead of everything going to one global `alfie_app.log`.
 
-**Status:** TODO
+**Status:** DONE
 
 ### Steps
 
@@ -66,7 +66,9 @@ Generated from `tasklist.md`. Mark tasks complete here and in tasklist.md when d
 
 4. Add `ALFIE_LOG_DIR` env var to `.env.template` (default `./logs`). Existing `ALFIE_LOG_LEVEL` and `ALFIE_LOG_FILE` remain supported.
 
-5. Verify: run each service and confirm `logs/automlplus.log`, `logs/tabular_automl.log`, `logs/vision_automl.log` are created.
+5. Add this path to .gitignore
+
+6. Verify: run each service and confirm `logs/automlplus.log`, `logs/tabular_automl.log`, `logs/vision_automl.log` are created.
 
 ---
 
@@ -103,37 +105,6 @@ Generated from `tasklist.md`. Mark tasks complete here and in tasklist.md when d
 5. `main.py` should contain only: lifespan, app init, `include_router`.
 
 6. Verify all existing tests pass; add targeted unit tests for each new service function.
-
----
-
-## TASK 5 (HIGH) — Remove Old SQL Bits from Tabular API and Tests
-
-**Goal:** Delete the legacy SQLite session-tracking code that was used before AutoDW. Everything is now stored in AutoDW.
-
-**Status:** ✅ DONE
-
-### Steps
-
-1. **Delete `app/tabular_automl/db.py`** (entire file — `AutoMLSession` ORM model, `SessionLocal`, `Base`).
-
-2. **Remove from `app/tabular_automl/services.py`:**
-   - Import: `from .db import AutoMLSession, SessionLocal`
-   - Function: `store_session_in_db()`
-   - Dataclass: `SessionData`
-   - Function: `get_session()`
-   - (~70 lines total)
-
-3. **Scrub remaining references:**
-   - Search `app/` and `tests/` for: `db`, `AutoMLSession`, `SessionLocal`, `session_id`, `sqlite`, `TABULAR_DATABASE_CONFIG`
-   - Remove any found references
-
-4. **Update tests:**
-   - Root `test_services.py` (integration tests): remove any assertions on `session_id` in tabular responses
-   - `tests/test_tabular/`: check for any DB fixture setup in conftest; remove if present
-
-5. **Remove env var** `TABULAR_DATABASE_CONFIG` from `.env.template` and `.env`.
-
-6. Run `uv run pytest tests/test_tabular/ -v` to confirm no regressions.
 
 ---
 

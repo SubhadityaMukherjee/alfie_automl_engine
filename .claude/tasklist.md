@@ -5,7 +5,6 @@
 ### General
 
 - (HIGH) Use routers for the fastapi endpoints across all of the packages. But keep the services separated
-- (HIGH) Add unified logging per service. Most of it already exists, but it should write to a rotating log file with logs per service
 
 ### core
 
@@ -16,8 +15,6 @@
   - Website accessibility is a special case of combined - since it uses an LLM call + static code tools
 
 ### Tabular
-
-- ~~(HIGH) remove the old SQL bits from the API and tests, they were used before AutoDW. Now AutoDW is used to store everything~~ ✅ DONE
 
 ### Vision
 
