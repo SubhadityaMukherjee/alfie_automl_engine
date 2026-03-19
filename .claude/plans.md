@@ -39,40 +39,7 @@ Generated from `tasklist.md`. Mark tasks complete here and in tasklist.md when d
 
 ---
 
-## TASK 2 (HIGH) — Unified Per-Service Logging to Rotating Log Files
-
-**Goal:** Each service writes to its own rotating log file (`logs/<service>.log`) instead of everything going to one global `alfie_app.log`.
-
-**Status:** DONE
-
-### Steps
-
-1. Create `app/core/logging.py`:
-
-   ```python
-   def configure_service_logging(service_name: str) -> None:
-       """Set up a RotatingFileHandler for the given service name.
-       Reads ALFIE_LOG_DIR (default ./logs) and ALFIE_LOG_LEVEL (default INFO).
-       Creates logs/<service_name>.log, maxBytes=10MB, backupCount=5.
-       """
-   ```
-
-2. Call `configure_service_logging("<name>")` inside each service's lifespan startup:
-   - `automlplus/main.py` — lifespan already exists (line ~46), add call there
-   - `tabular_automl/main.py` — add lifespan context manager, call there
-   - `vision_automl/main.py` — lifespan stub exists (line ~8), add call there
-
-3. Downgrade `app/__init__.py` global logger to a fallback only (no file handler by default); let services set up their own handlers.
-
-4. Add `ALFIE_LOG_DIR` env var to `.env.template` (default `./logs`). Existing `ALFIE_LOG_LEVEL` and `ALFIE_LOG_FILE` remain supported.
-
-5. Add this path to .gitignore
-
-6. Verify: run each service and confirm `logs/automlplus.log`, `logs/tabular_automl.log`, `logs/vision_automl.log` are created.
-
----
-
-## TASK 4 (MEDIUM) — Make AutoML+ Tools More Modular
+## TASK 2 (MEDIUM) — Make AutoML+ Tools More Modular
 
 **Goal:** Separate `app/automlplus/` into distinct Image tools, Language/web tools, and shared utilities so each area can be extended independently.
 
@@ -108,7 +75,7 @@ Generated from `tasklist.md`. Mark tasks complete here and in tasklist.md when d
 
 ---
 
-## TASK 6 (LOW) — Environmental Impact Tracking for Vision
+## TASK 3 (LOW) — Environmental Impact Tracking for Vision
 
 **Goal:** Report estimated energy/carbon cost of trained models.
 
@@ -121,14 +88,3 @@ Generated from `tasklist.md`. Mark tasks complete here and in tasklist.md when d
 - Likely best surfaced as an optional field in the response payload
 
 ---
-
-## Implementation Order
-
-| Order | Task                         | Reason                                                                 |
-| ----- | ---------------------------- | ---------------------------------------------------------------------- |
-| 1     | TASK 5 — Remove SQL          | Self-contained deletion, no dependencies, unblocks cleaner services.py |
-| 2     | TASK 3 — Remove Ollama       | Self-contained, low risk, cleans up core before other work             |
-| 3     | TASK 1 — Routers             | Required foundation for TASK 4; test-safe refactor                     |
-| 4     | TASK 2 — Per-service logging | Best done after lifespan hooks are in place from TASK 1                |
-| 5     | TASK 4 — Modularise AutoML+  | Builds on routers from TASK 1                                          |
-| 6     | TASK 6 — Env impact          | Last; low priority                                                     |
