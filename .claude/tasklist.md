@@ -8,13 +8,6 @@
 
 ### AutoML+
 
-- (High) Make the automlplus tools more modular and extensible so it would work for other similar tasks
-  - Separate the automlplus/ tools from imagetools.py, utils.py, website_accessibility into three types of tasks - vlm, text, static
-  - Move all general things like extract_text_from_html_bytes into the utils
-  - Static would be something like ReadabilityAnalyzer that uses textstat, vlm (vision + llm) would be something like AltTextChecker
-  - Website accessibility is a special case of image+static - since it uses an LLM call + static code tools so refactor that accordingly
-  - In automlplus/router.py, the post urls should be the same, just that it needs to call more modular functions
-
 ### Tabular
 
 ### Vision

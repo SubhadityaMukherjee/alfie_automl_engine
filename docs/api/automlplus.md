@@ -1,7 +1,17 @@
-# Website Accessibility
+# AutoML+
+
+## Modules
 
 ::: app.automlplus.main
+::: app.automlplus.router
 ::: app.automlplus.utils
-::: app.automlplus.imagetools
-::: app.automlplus.website_accessibility
 
+## Tools
+
+::: app.automlplus.tools.static
+::: app.automlplus.tools.text
+::: app.automlplus.tools.vlm
+
+## Website Accessibility
+
+::: app.automlplus.website_accessibility.pipeline
