@@ -1,7 +1,8 @@
+import functools
 import logging
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import lightning as L
 import optuna
@@ -9,8 +10,42 @@ import torch
 from torch import nn, optim
 from tqdm import tqdm
 
-from app.vision_automl.ml_engine.datamodule import ClassificationData
-from app.vision_automl.ml_engine.model import ClassificationModel
+from app.vision_automl.ml_engine.configs import load_task_config
+from app.vision_automl.ml_engine.datamodule import (
+    AudioClassificationDataModule,
+    CausalLMDataModule,
+    ImageClassificationDataModule,
+    ImageSegmentationDataModule,
+    KeypointDetectionDataModule,
+    MaskedLMDataModule,
+    ObjectDetectionDataModule,
+    QuestionAnsweringDataModule,
+    Seq2SeqLMDataModule,
+    SequenceClassificationDataModule,
+    VideoClassificationDataModule,
+)
+from app.vision_automl.ml_engine.model import (
+    AudioClassificationModel,
+    CausalLMModel,
+    ImageClassificationModel,
+    ImageSegmentationModel,
+    KeypointDetectionModel,
+    MaskedLMModel,
+    ObjectDetectionModel,
+    QuestionAnsweringModel,
+    Seq2SeqLMModel,
+    SequenceClassificationModel,
+    VideoClassificationModel,
+)
+
+# Backward-compat import alias kept for external code that references
+# ClassificationData / ClassificationModel directly.
+from app.vision_automl.ml_engine.datamodule import (
+    ImageClassificationDataModule as ClassificationData,
+)  # noqa: F401
+from app.vision_automl.ml_engine.model import (
+    ImageClassificationModel as ClassificationModel,
+)  # noqa: F401
 
 # Configure module-level logger
 logger = logging.getLogger(__name__)
@@ -19,6 +54,9 @@ if not logger.handlers:
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter("[%(levelname)s] %(asctime)s - %(message)s"))
     logger.addHandler(handler)
+
+# Keys whose tensors should be treated as target/label dtype
+_TARGET_KEYS: frozenset[str] = frozenset({"labels", "start_positions", "end_positions"})
 
 
 class EarlyStopping:
@@ -57,7 +95,15 @@ class EarlyStopping:
 
 
 class FabricTrainer:
-    """Minimal trainer using Lightning Fabric for classification tasks."""
+    """Minimal trainer using Lightning Fabric.
+
+    Supports both:
+    - Classification tasks where the model returns logits and the trainer
+      computes the loss via ``loss_fn`` (``model_computes_loss=False``).
+    - Generative / structured-prediction tasks where the model computes
+      its own loss internally and returns a scalar tensor
+      (``model_computes_loss=True``).
+    """
 
     def __init__(
         self,
@@ -74,6 +120,7 @@ class FabricTrainer:
         callbacks: list[Any] = [],
         input_dtype: torch.dtype = torch.float32,
         target_dtype: torch.dtype = torch.long,
+        model_computes_loss: bool = False,
     ) -> None:
         self.datamodule: Any = datamodule
         self.model_class: type[nn.Module] = model_class
@@ -87,6 +134,7 @@ class FabricTrainer:
         self.callbacks: list[Any] = callbacks
         self.input_dtype: torch.dtype = input_dtype
         self.target_dtype: torch.dtype = target_dtype
+        self.model_computes_loss: bool = model_computes_loss
 
         self.fabric: L.Fabric = L.Fabric(devices=self.device)
         self._setup_model_optimizer()
@@ -110,26 +158,33 @@ class FabricTrainer:
         self.test_loader: Any = self.datamodule.test_dataloader()
         logger.info("Model and optimizer setup complete.")
 
-    def _move_batch(self, batch: Any) -> dict[str, torch.Tensor]:
-        """Move batch tensors to device and standardize batch dict."""
-        pixel_values: torch.Tensor
-        labels: torch.Tensor
+    def _move_batch(self, batch: Any) -> dict[str, Any]:
+        """Move batch to the Fabric device.
 
+        Handles arbitrary dict batches (all modalities) and legacy
+        ``(images, labels)`` tuple batches.  Non-tensor values (e.g. list
+        of annotation dicts for object detection) are passed through as-is.
+        Integer tensors (``input_ids``, etc.) are moved without dtype coercion.
+        """
         if isinstance(batch, dict):
-            pixel_values = batch["pixel_values"].to(
-                self.fabric.device, dtype=self.input_dtype
-            )
-            labels = batch["labels"].to(self.fabric.device, dtype=self.target_dtype)
+            moved: dict[str, Any] = {}
+            for k, v in batch.items():
+                if not isinstance(v, torch.Tensor):
+                    moved[k] = v  # keep non-tensors (e.g. list of dicts)
+                elif k in _TARGET_KEYS:
+                    moved[k] = v.to(self.fabric.device, dtype=self.target_dtype)
+                elif v.dtype.is_floating_point:
+                    moved[k] = v.to(self.fabric.device, dtype=self.input_dtype)
+                else:
+                    # int/long tensors (input_ids, etc.) — preserve dtype
+                    moved[k] = v.to(self.fabric.device)
+            return moved
         else:
             imgs, batch_labels = batch
-            pixel_values = imgs.to(self.fabric.device, dtype=self.input_dtype)
-            labels = batch_labels.to(self.fabric.device, dtype=self.target_dtype)
-
-        moved_batch: dict[str, torch.Tensor] = {
-            "pixel_values": pixel_values,
-            "labels": labels,
-        }
-        return moved_batch
+            return {
+                "pixel_values": imgs.to(self.fabric.device, dtype=self.input_dtype),
+                "labels": batch_labels.to(self.fabric.device, dtype=self.target_dtype),
+            }
 
     def _check_time_limit(self, start_time: float) -> bool:
         """Return True if configured time limit has been exceeded."""
@@ -138,6 +193,20 @@ class FabricTrainer:
             logger.warning(f"Time limit reached ({elapsed:.2f}s). Stopping training.")
             return True
         return False
+
+    def _compute_loss_and_logits(
+        self, moved: dict[str, Any]
+    ) -> tuple[torch.Tensor, torch.Tensor | None]:
+        """Run forward pass, return (loss, logits_or_None)."""
+        if self.model_computes_loss:
+            outputs = self.model(**moved)
+            loss = outputs if isinstance(outputs, torch.Tensor) else outputs.loss
+            return loss, None
+        else:
+            labels = moved.pop("labels")
+            outputs = self.model(**moved)
+            loss = self.loss_fn(outputs, labels)
+            return loss, outputs
 
     def train_epoch(self, epoch: int, start_time: float) -> float:
         """Train for a single epoch and return average training loss."""
@@ -151,10 +220,9 @@ class FabricTrainer:
             if self._check_time_limit(start_time):
                 return running_loss / max(1, batch_count)
 
-            moved: dict[str, torch.Tensor] = self._move_batch(batch)
+            moved = self._move_batch(batch)
             self.optimizer.zero_grad()
-            outputs: torch.Tensor = self.model(moved["pixel_values"])
-            loss: torch.Tensor = self.loss_fn(outputs, moved["labels"])
+            loss, _ = self._compute_loss_and_logits(moved)
             self.fabric.backward(loss)
             self.optimizer.step()
             running_loss += loss.item()
@@ -175,14 +243,22 @@ class FabricTrainer:
                 if self._check_time_limit(start_time):
                     break
 
-                moved: dict[str, torch.Tensor] = self._move_batch(batch)
-                outputs: torch.Tensor = self.model(moved["pixel_values"])
-                loss: torch.Tensor = self.loss_fn(outputs, moved["labels"])
-                val_loss += loss.item()
+                moved = self._move_batch(batch)
 
-                preds: torch.Tensor = outputs.argmax(dim=1)
-                correct += (preds == moved["labels"]).sum().item()
-                total += moved["labels"].size(0)
+                if self.model_computes_loss:
+                    outputs = self.model(**moved)
+                    loss = (
+                        outputs if isinstance(outputs, torch.Tensor) else outputs.loss
+                    )
+                    val_loss += loss.item()
+                else:
+                    labels = moved.pop("labels")
+                    outputs = self.model(**moved)
+                    loss = self.loss_fn(outputs, labels)
+                    val_loss += loss.item()
+                    preds = outputs.argmax(dim=1)
+                    correct += (preds == labels).sum().item()
+                    total += labels.size(0)
 
         avg_loss: float = val_loss / max(1, len(self.val_loader))
         accuracy: float = correct / max(1, total)
@@ -198,17 +274,25 @@ class FabricTrainer:
 
         with torch.no_grad():
             for batch in tqdm(self.test_loader, desc="Testing"):
-                moved: dict[str, torch.Tensor] = self._move_batch(batch)
-                outputs: torch.Tensor = self.model(moved["pixel_values"])
-                loss: torch.Tensor = self.loss_fn(outputs, moved["labels"])
-                test_loss += loss.item()
+                moved = self._move_batch(batch)
 
-                preds: torch.Tensor = outputs.argmax(dim=1)
-                correct += (preds == moved["labels"]).sum().item()
-                total += moved["labels"].size(0)
+                if self.model_computes_loss:
+                    outputs = self.model(**moved)
+                    loss = (
+                        outputs if isinstance(outputs, torch.Tensor) else outputs.loss
+                    )
+                    test_loss += loss.item()
+                else:
+                    labels = moved.pop("labels")
+                    outputs = self.model(**moved)
+                    loss = self.loss_fn(outputs, labels)
+                    test_loss += loss.item()
+                    preds = outputs.argmax(dim=1)
+                    correct += (preds == labels).sum().item()
+                    total += labels.size(0)
 
         avg_loss: float = test_loss / len(self.test_loader)
-        accuracy: float = correct / total
+        accuracy: float = correct / max(1, total)
         logger.info(f"Test Results - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
         return avg_loss, accuracy
 
@@ -240,7 +324,12 @@ class FabricTrainer:
         return self.test()
 
 
-def optuna_objective(
+# ---------------------------------------------------------------------------
+# Per-task Optuna objective functions
+# ---------------------------------------------------------------------------
+
+
+def optuna_objective_image_classification(
     trial: optuna.Trial,
     *,
     csv_path: Path,
@@ -249,49 +338,21 @@ def optuna_objective(
     label_column: str,
     model_size: str,
     timeout_per_trial: float | None,
-):
-    # -------------------------
-    # Search space by model size
-    # -------------------------
+    config: dict,
+) -> float:
     trial_start = time.time()
-    if model_size == "small":
-        model_id = trial.suggest_categorical(
-            "model_id",
-            [
-                "google/efficientnet-b0",
-                "google/mobilenet_v2_1.0_224",
-                # "google/mobilenet_v3_small",
-            ],
-        )
-    elif model_size == "medium":
-        model_id = trial.suggest_categorical(
-            "model_id",
-            [
-                "google/efficientnet-b0",
-                "google/vit-base-patch16-224",
-                # "google/efficientnet-b1",
-                # "microsoft/swin-tiny-patch4-window7-224",
-            ],
-        )
-    else:  # large
-        model_id = trial.suggest_categorical(
-            "model_id",
-            [
-                "google/vit-base-patch16-224",
-                "google/efficientnet-b4",
-                # "microsoft/swin-base-patch4-window7-224",
-                # "facebook/dino-vits16",
-            ],
-        )
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
 
-    lr = trial.suggest_float("lr", 1e-5, 3e-3, log=True)
-    batch_size = trial.suggest_categorical("batch_size", [16, 32, 64])
-    weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-2, log=True)
-
-    # -------------------------
-    # Data
-    # -------------------------
-    datamodule = ClassificationData(
+    datamodule = ImageClassificationDataModule(
         csv_file=csv_path,
         root_dir=images_dir,
         img_col=filename_column,
@@ -300,78 +361,604 @@ def optuna_objective(
         hf_model_id=model_id,
     )
 
-    # -------------------------
-    # Trainer
-    # -------------------------
     trainer = FabricTrainer(
         datamodule=datamodule,
-        model_class=ClassificationModel,
+        model_class=ImageClassificationModel,
         model_kwargs={
             "model_id": model_id,
             "num_classes": datamodule.num_classes,
             "id2label": datamodule.id2label,
             "label2id": datamodule.label2id,
         },
-        optimizer_class=optim.AdamW,
-        optimizer_kwargs={
-            "lr": lr,
-            "weight_decay": weight_decay,
-        },
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
         loss_fn=nn.CrossEntropyLoss(),
-        epochs=20,
-        callbacks=[EarlyStopping(patience=3)],
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=False,
     )
 
-    # -------------------------
-    # Train
-    # -------------------------
     if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
         raise optuna.TrialPruned()
 
-    test_loss, test_acc = trainer.fit(trial=trial)
-    # We optimize validation loss proxy via test loss
+    test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
 
-def run_optuna_search(
+def optuna_objective_image_segmentation(
+    trial: optuna.Trial,
     *,
     csv_path: Path,
     images_dir: Path,
     filename_column: str,
     label_column: str,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = ImageSegmentationDataModule(
+        csv_file=csv_path,
+        root_dir=images_dir,
+        img_col=filename_column,
+        label_col=label_column,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=ImageSegmentationModel,
+        model_kwargs={
+            "model_id": model_id,
+            "num_classes": datamodule.num_classes,
+            "id2label": datamodule.id2label,
+            "label2id": datamodule.label2id,
+        },
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=True,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_object_detection(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = ObjectDetectionDataModule(
+        csv_file=csv_path,
+        root_dir=images_dir,
+        img_col=filename_column,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=ObjectDetectionModel,
+        model_kwargs={"model_id": model_id, "num_classes": datamodule.num_classes},
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=True,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_video_classification(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = VideoClassificationDataModule(
+        csv_file=csv_path,
+        root_dir=images_dir,
+        video_col=filename_column,
+        label_col=label_column,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=VideoClassificationModel,
+        model_kwargs={
+            "model_id": model_id,
+            "num_classes": datamodule.num_classes,
+            "id2label": datamodule.id2label,
+            "label2id": datamodule.label2id,
+        },
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        loss_fn=nn.CrossEntropyLoss(),
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=False,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_keypoint_detection(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = KeypointDetectionDataModule(
+        csv_file=csv_path,
+        root_dir=images_dir,
+        img_col=filename_column,
+        label_col=label_column,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=KeypointDetectionModel,
+        model_kwargs={"model_id": model_id},
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=True,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_audio_classification(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    audio_dir: Path,
+    filename_column: str,
+    label_column: str,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = AudioClassificationDataModule(
+        csv_file=csv_path,
+        root_dir=audio_dir,
+        audio_col=filename_column,
+        label_col=label_column,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=AudioClassificationModel,
+        model_kwargs={
+            "model_id": model_id,
+            "num_classes": datamodule.num_classes,
+            "id2label": datamodule.id2label,
+            "label2id": datamodule.label2id,
+        },
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        loss_fn=nn.CrossEntropyLoss(),
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=False,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_text_classification(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    text_column: str,
+    label_column: str,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+    **_kwargs,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = SequenceClassificationDataModule(
+        csv_file=csv_path,
+        text_col=text_column,
+        label_col=label_column,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=SequenceClassificationModel,
+        model_kwargs={
+            "model_id": model_id,
+            "num_classes": datamodule.num_classes,
+            "id2label": datamodule.id2label,
+            "label2id": datamodule.label2id,
+        },
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        loss_fn=nn.CrossEntropyLoss(),
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=False,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_question_answering(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+    **_kwargs,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = QuestionAnsweringDataModule(
+        csv_file=csv_path,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=QuestionAnsweringModel,
+        model_kwargs={"model_id": model_id},
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=True,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_causal_lm(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+    **_kwargs,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = CausalLMDataModule(
+        csv_file=csv_path,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=CausalLMModel,
+        model_kwargs={"model_id": model_id},
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=True,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_seq2seq_lm(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+    **_kwargs,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = Seq2SeqLMDataModule(
+        csv_file=csv_path,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=Seq2SeqLMModel,
+        model_kwargs={"model_id": model_id},
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=True,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_masked_lm(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+    **_kwargs,
+) -> float:
+    trial_start = time.time()
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = MaskedLMDataModule(
+        csv_file=csv_path,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=MaskedLMModel,
+        model_kwargs={"model_id": model_id},
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=True,
+    )
+
+    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
+        raise optuna.TrialPruned()
+
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+# ---------------------------------------------------------------------------
+# Registries
+# ---------------------------------------------------------------------------
+
+OBJECTIVE_REGISTRY: dict[str, Callable] = {
+    "image_classification": optuna_objective_image_classification,
+    "image_segmentation": optuna_objective_image_segmentation,
+    "object_detection": optuna_objective_object_detection,
+    "video_classification": optuna_objective_video_classification,
+    "keypoint_detection": optuna_objective_keypoint_detection,
+    "audio_classification": optuna_objective_audio_classification,
+    "text_classification": optuna_objective_text_classification,
+    "question_answering": optuna_objective_question_answering,
+    "causal_lm": optuna_objective_causal_lm,
+    "seq2seq_lm": optuna_objective_seq2seq_lm,
+    "masked_lm": optuna_objective_masked_lm,
+}
+
+# Keep old name for any external code that referenced it
+optuna_objective = optuna_objective_image_classification
+
+
+# ---------------------------------------------------------------------------
+# run_optuna_search
+# ---------------------------------------------------------------------------
+
+
+def run_optuna_search(
+    *,
+    task_type: str = "image_classification",
+    csv_path: Path,
+    images_dir: Path | None = None,
+    filename_column: str = "filename",
+    label_column: str = "label",
     n_trials: int = 3,
     timeout: int | None = None,
     model_size: str = "small",
     workdir: Path,
-):
+    **extra_kwargs,
+) -> dict:
+    """Run an Optuna hyperparameter search for the given task type.
+
+    Dispatches to the appropriate per-task objective via ``OBJECTIVE_REGISTRY``.
+    ``extra_kwargs`` are forwarded to the objective (e.g. ``text_column`` for
+    text tasks).
+
+    Raises:
+        ValueError: If ``task_type`` is not in ``OBJECTIVE_REGISTRY``.
+    """
+    if task_type not in OBJECTIVE_REGISTRY:
+        raise ValueError(
+            f"Unknown task type '{task_type}'. "
+            f"Supported: {sorted(OBJECTIVE_REGISTRY)}"
+        )
+
+    config = load_task_config(task_type)
+    objective_fn = OBJECTIVE_REGISTRY[task_type]
+
     run_dir = workdir / "optuna"
     run_dir.mkdir(exist_ok=True)
 
     pruner = optuna.pruners.SuccessiveHalvingPruner(
-        min_resource=10,  # min steps/epochs before pruning
-        reduction_factor=3,  # aggressively prune
+        min_resource=10,
+        reduction_factor=3,
         min_early_stopping_rate=0,
     )
-
     sampler = optuna.samplers.TPESampler(seed=42)
-
-    study = optuna.create_study(
-        direction="minimize",
-        sampler=sampler,
-        pruner=pruner,
-    )
+    study = optuna.create_study(direction="minimize", sampler=sampler, pruner=pruner)
     timeout_per_trial = timeout / max(n_trials, 1) if timeout else None
 
+    # Build keyword arguments for the objective
+    objective_kwargs: dict = {
+        "csv_path": csv_path,
+        "images_dir": images_dir,
+        "filename_column": filename_column,
+        "label_column": label_column,
+        "model_size": model_size,
+        "timeout_per_trial": timeout_per_trial,
+        "config": config,
+        **extra_kwargs,
+    }
+
     study.optimize(
-        lambda trial: optuna_objective(
-            trial,
-            csv_path=csv_path,
-            images_dir=images_dir,
-            filename_column=filename_column,
-            label_column=label_column,
-            model_size=model_size,
-            timeout_per_trial=timeout_per_trial,
-        ),
+        functools.partial(objective_fn, **objective_kwargs),
         n_trials=n_trials,
         timeout=timeout,
     )

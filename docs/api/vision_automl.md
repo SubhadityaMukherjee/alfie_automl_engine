@@ -8,6 +8,8 @@
 
 ## ML engine
 
+::: app.vision_automl.ml_engine.configs
+
 ::: app.vision_automl.ml_engine.datamodule
 
 ::: app.vision_automl.ml_engine.dataset

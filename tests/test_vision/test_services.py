@@ -10,22 +10,25 @@ import pandas as pd
 import pytest
 import requests
 
-from app.vision_automl.services import (DatasetValidationError,
-                                        _build_metadata_url, _find_csv_file,
-                                        _find_or_resolve_images_dir,
-                                        _find_valid_dataset_root,
-                                        build_upload_payload,
-                                        collect_missing_files,
-                                        convert_leaderboard_safely,
-                                        download_dataset,
-                                        extract_and_locate_dataset,
-                                        fetch_dataset_metadata,
-                                        normalize_dataframe_filenames,
-                                        resolve_download_url,
-                                        resolve_images_root,
-                                        serialize_and_zip_model,
-                                        sort_models_by_size,
-                                        validate_vision_inputs)
+from app.vision_automl.services import (
+    DatasetValidationError,
+    _build_metadata_url,
+    _find_csv_file,
+    _find_or_resolve_images_dir,
+    _find_valid_dataset_root,
+    build_upload_payload,
+    collect_missing_files,
+    convert_leaderboard_safely,
+    download_dataset,
+    extract_and_locate_dataset,
+    fetch_dataset_metadata,
+    normalize_dataframe_filenames,
+    resolve_download_url,
+    resolve_images_root,
+    serialize_and_zip_model,
+    sort_models_by_size,
+    validate_vision_inputs,
+)
 
 # ---------------------------------------------------------------------------
 # normalize_dataframe_filenames
@@ -632,3 +635,159 @@ def test_serialize_and_zip_model_creates_zip(tmp_path, fake_optuna_result):
     assert zip_path.suffix == ".zip"
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.testzip()  # returns None if valid
+
+
+# ---------------------------------------------------------------------------
+# validate_vision_inputs — new task types
+# ---------------------------------------------------------------------------
+
+
+def test_validate_vision_inputs_default_is_image_classification(synthetic_images_dir):
+    csv_path, images_dir = synthetic_images_dir
+    # Calling without task_type should default to image_classification (backward compat)
+    result = validate_vision_inputs(csv_path, images_dir, "filename", "label")
+    assert result is None
+
+
+def test_validate_vision_inputs_audio_classification_missing_audio_dir(tmp_path):
+    csv_path = tmp_path / "labels.csv"
+    pd.DataFrame({"audio_path": ["a.wav"], "label": ["cat"]}).to_csv(
+        csv_path, index=False
+    )
+    result = validate_vision_inputs(
+        csv_path,
+        tmp_path / "nonexistent_audio",
+        "audio_path",
+        "label",
+        task_type="audio_classification",
+    )
+    assert result is not None
+    assert "Audio directory" in result
+
+
+def test_validate_vision_inputs_audio_classification_valid(tmp_path):
+    audio_dir = tmp_path / "audio"
+    audio_dir.mkdir()
+    csv_path = tmp_path / "labels.csv"
+    pd.DataFrame({"audio_path": ["a.wav"], "label": ["cat"]}).to_csv(
+        csv_path, index=False
+    )
+    result = validate_vision_inputs(
+        csv_path,
+        audio_dir,
+        "audio_path",
+        "label",
+        task_type="audio_classification",
+    )
+    assert result is None
+
+
+def test_validate_vision_inputs_text_classification_valid(tmp_path):
+    csv_path = tmp_path / "labels.csv"
+    pd.DataFrame({"text": ["hello world"], "label": ["pos"]}).to_csv(
+        csv_path, index=False
+    )
+    result = validate_vision_inputs(
+        csv_path,
+        tmp_path,
+        "text",
+        "label",
+        task_type="text_classification",
+    )
+    assert result is None
+
+
+def test_validate_vision_inputs_text_classification_missing_columns(tmp_path):
+    csv_path = tmp_path / "labels.csv"
+    pd.DataFrame({"sentence": ["hello"], "sentiment": ["pos"]}).to_csv(
+        csv_path, index=False
+    )
+    result = validate_vision_inputs(
+        csv_path,
+        tmp_path,
+        "text",
+        "label",
+        task_type="text_classification",
+    )
+    assert result is not None
+    assert "text_classification" in result
+
+
+def test_validate_vision_inputs_question_answering_valid(tmp_path):
+    csv_path = tmp_path / "labels.csv"
+    pd.DataFrame(
+        {
+            "question": ["What?"],
+            "context": ["Some text"],
+            "answer_start": [0],
+            "answer_text": ["Some"],
+        }
+    ).to_csv(csv_path, index=False)
+    result = validate_vision_inputs(
+        csv_path,
+        tmp_path,
+        "question",
+        "answer_text",
+        task_type="question_answering",
+    )
+    assert result is None
+
+
+def test_validate_vision_inputs_question_answering_missing_columns(tmp_path):
+    csv_path = tmp_path / "labels.csv"
+    pd.DataFrame({"question": ["What?"], "context": ["Text"]}).to_csv(
+        csv_path, index=False
+    )
+    result = validate_vision_inputs(
+        csv_path,
+        tmp_path,
+        "question",
+        "answer_text",
+        task_type="question_answering",
+    )
+    assert result is not None
+    assert "question_answering" in result
+
+
+def test_validate_vision_inputs_object_detection_missing_annotation_columns(
+    synthetic_images_dir,
+):
+    csv_path, images_dir = synthetic_images_dir
+    # synthetic_images_dir CSV has filename + label but NOT boxes/class_labels
+    result = validate_vision_inputs(
+        csv_path,
+        images_dir,
+        "filename",
+        "label",
+        task_type="object_detection",
+    )
+    assert result is not None
+    assert "object_detection" in result
+
+
+def test_validate_vision_inputs_object_detection_with_annotation_columns(tmp_path):
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    from PIL import Image
+
+    img_path = images_dir / "img0.png"
+    Image.new("RGB", (10, 10)).save(img_path)
+
+    csv_path = tmp_path / "labels.csv"
+    pd.DataFrame(
+        {
+            "filename": ["img0.png"],
+            "label": ["object"],
+            "boxes": ["[[0,0,5,5]]"],
+            "class_labels": ["[0]"],
+        }
+    ).to_csv(csv_path, index=False)
+
+    result = validate_vision_inputs(
+        csv_path,
+        images_dir,
+        "filename",
+        "label",
+        task_type="object_detection",
+    )
+    assert result is None

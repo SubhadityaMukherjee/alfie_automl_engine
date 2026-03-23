@@ -7,8 +7,9 @@ Generated from `tasklist.md`. Mark tasks complete here and in tasklist.md when d
 ## TASK (HIGH) — Refactor Vision Training for Multiple Task Types
 
 **Goal:** Extend the vision service to support multiple HuggingFace task types beyond image classification, each with its own Optuna objective, model class, datamodule, and config.
+this referes to files in - app/vision_automl, tests/test_vision and docs/api/vision_automl.md
 
-**Status:** TODO
+**Status:** DONE
 
 **Task types to support:**
 

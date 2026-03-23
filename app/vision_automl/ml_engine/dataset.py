@@ -83,3 +83,150 @@ class ImageClassificationFromCSVDataset(Dataset):
             img = self.transform(img)
 
         return img, torch.tensor(label_idx, dtype=torch.long)
+
+
+class TextClassificationFromCSVDataset(Dataset):
+    """Torch dataset that reads text and labels from a CSV/DataFrame.
+
+    Expected columns: ``text`` (str) and ``label`` (str or int).
+    Returns ``(text, label_idx)`` tuples — the collate function in the
+    datamodule applies the tokeniser.
+    """
+
+    def __init__(
+        self,
+        csv_file: Union[Path, pd.DataFrame],
+        text_col: str = "text",
+        label_col: str = "label",
+    ):
+        if isinstance(csv_file, Path):
+            self.df = pd.read_csv(csv_file)
+        elif isinstance(csv_file, pd.DataFrame):
+            self.df = csv_file.reset_index(drop=True)
+        else:
+            raise ValueError("csv_file must be a path or DataFrame")
+
+        self.text_col = text_col
+        self.label_col = label_col
+
+        if self.df[self.label_col].dtype == object:
+            self.classes = sorted(self.df[self.label_col].unique().tolist())
+            self.class_to_idx = {c: i for i, c in enumerate(self.classes)}
+            self.df = self.df.copy()
+            self.df[self.label_col] = self.df[self.label_col].map(self.class_to_idx)
+        else:
+            self.classes = sorted(self.df[self.label_col].unique().tolist())
+            self.class_to_idx = {c: c for c in self.classes}
+
+    def __len__(self) -> int:
+        return len(self.df)
+
+    def __getitem__(self, idx: int) -> tuple[str, int]:
+        if torch.is_tensor(idx):
+            idx = idx.item()
+        row = self.df.iloc[idx]
+        return str(row[self.text_col]), int(row[self.label_col])
+
+
+class QuestionAnsweringFromCSVDataset(Dataset):
+    """Dataset for extractive QA tasks.
+
+    Expected CSV columns: ``question``, ``context``, ``answer_start`` (int),
+    ``answer_text`` (str).  Returns raw strings; the datamodule tokenises them.
+    """
+
+    def __init__(
+        self,
+        csv_file: Union[Path, pd.DataFrame],
+        question_col: str = "question",
+        context_col: str = "context",
+        answer_start_col: str = "answer_start",
+        answer_text_col: str = "answer_text",
+    ):
+        if isinstance(csv_file, Path):
+            self.df = pd.read_csv(csv_file)
+        elif isinstance(csv_file, pd.DataFrame):
+            self.df = csv_file.reset_index(drop=True)
+        else:
+            raise ValueError("csv_file must be a path or DataFrame")
+
+        self.question_col = question_col
+        self.context_col = context_col
+        self.answer_start_col = answer_start_col
+        self.answer_text_col = answer_text_col
+
+    def __len__(self) -> int:
+        return len(self.df)
+
+    def __getitem__(self, idx: int) -> dict:
+        if torch.is_tensor(idx):
+            idx = idx.item()
+        row = self.df.iloc[idx]
+        return {
+            "question": str(row[self.question_col]),
+            "context": str(row[self.context_col]),
+            "answer_start": int(row[self.answer_start_col]),
+            "answer_text": str(row[self.answer_text_col]),
+        }
+
+
+class Seq2SeqFromCSVDataset(Dataset):
+    """Dataset for sequence-to-sequence tasks.
+
+    Expected CSV columns: ``input_text`` and ``target_text``.
+    """
+
+    def __init__(
+        self,
+        csv_file: Union[Path, pd.DataFrame],
+        input_col: str = "input_text",
+        target_col: str = "target_text",
+    ):
+        if isinstance(csv_file, Path):
+            self.df = pd.read_csv(csv_file)
+        elif isinstance(csv_file, pd.DataFrame):
+            self.df = csv_file.reset_index(drop=True)
+        else:
+            raise ValueError("csv_file must be a path or DataFrame")
+
+        self.input_col = input_col
+        self.target_col = target_col
+
+    def __len__(self) -> int:
+        return len(self.df)
+
+    def __getitem__(self, idx: int) -> tuple[str, str]:
+        if torch.is_tensor(idx):
+            idx = idx.item()
+        row = self.df.iloc[idx]
+        return str(row[self.input_col]), str(row[self.target_col])
+
+
+class CausalLMFromCSVDataset(Dataset):
+    """Dataset for causal language modelling tasks.
+
+    Expected CSV column: ``text``.  The datamodule tokenises and shifts
+    labels automatically.
+    """
+
+    def __init__(
+        self,
+        csv_file: Union[Path, pd.DataFrame],
+        text_col: str = "text",
+    ):
+        if isinstance(csv_file, Path):
+            self.df = pd.read_csv(csv_file)
+        elif isinstance(csv_file, pd.DataFrame):
+            self.df = csv_file.reset_index(drop=True)
+        else:
+            raise ValueError("csv_file must be a path or DataFrame")
+
+        self.text_col = text_col
+
+    def __len__(self) -> int:
+        return len(self.df)
+
+    def __getitem__(self, idx: int) -> str:
+        if torch.is_tensor(idx):
+            idx = idx.item()
+        return str(self.df.iloc[idx][self.text_col])

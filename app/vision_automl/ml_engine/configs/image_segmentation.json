@@ -1,0 +1,12 @@
+{
+  "small_models": ["nvidia/mit-b0", "facebook/maskformer-swin-tiny-ade"],
+  "medium_models": ["nvidia/mit-b2", "facebook/maskformer-swin-small-ade"],
+  "large_models": ["nvidia/mit-b4", "facebook/maskformer-swin-base-ade"],
+  "lr_low": 1e-5,
+  "lr_high": 1e-3,
+  "batch_sizes": [4, 8, 16],
+  "weight_decay_low": 1e-6,
+  "weight_decay_high": 1e-2,
+  "max_epochs": 20,
+  "early_stopping_patience": 3
+}
