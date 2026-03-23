@@ -101,9 +101,12 @@ class FabricTrainer:
 
         train_loader: Any = self.datamodule.train_dataloader()
         val_loader: Any = self.datamodule.val_dataloader()
-        self.model, self.optimizer, self.train_loader, self.val_loader = (
-            self.fabric.setup(self.model, self.optimizer, train_loader, val_loader)
-        )
+        (
+            self.model,
+            self.optimizer,
+            self.train_loader,
+            self.val_loader,
+        ) = self.fabric.setup(self.model, self.optimizer, train_loader, val_loader)
         self.test_loader: Any = self.datamodule.test_dataloader()
         logger.info("Model and optimizer setup complete.")
 
@@ -315,7 +318,7 @@ def optuna_objective(
             "weight_decay": weight_decay,
         },
         loss_fn=nn.CrossEntropyLoss(),
-        epochs=20,  # short by design (Optuna!)
+        epochs=20,
         callbacks=[EarlyStopping(patience=3)],
     )
 
