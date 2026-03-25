@@ -963,6 +963,13 @@ def run_optuna_search(
         timeout=timeout,
     )
 
+    completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    if not completed:
+        raise RuntimeError(
+            f"All {len(study.trials)} Optuna trial(s) failed or were pruned. "
+            "Check your dataset, model IDs, and time budget."
+        )
+
     return {
         "best_value": study.best_value,
         "best_params": study.best_params,
