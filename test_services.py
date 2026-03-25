@@ -261,37 +261,6 @@ def parse_json(text: str) -> dict:
         return {}
 
 
-def test_tabularmvp() -> None:
-    print("=== Testing AutoML Tabular - get_user_input ===")
-    cmd = [
-        "curl",
-        "-s",
-        "-X",
-        "POST",
-        "http://localhost:8001/automl_tabular/best_model_mvp/",
-        "-H",
-        "Content-Type: multipart/form-data",
-        "-F",
-        "train_file=@./sample_data/knot_theory/train.csv",
-        "-F",
-        "target_column_name=signature",
-        "-F",
-        "task_type=classification",
-        "-F",
-        "time_budget=10",
-    ]
-    cp = run(cmd, capture_output=True, check=False)
-    data = parse_json(cp.stdout or "")
-    if data:
-        print(json.dumps(data, indent=2, ensure_ascii=False))
-        session_id = data.get("session_id")
-        if session_id:
-            print(f"Session stored in DB: {session_id}")
-    else:
-        print(cp.stdout)
-    print()
-
-
 def test_tabular() -> None:
     print("=== Testing AutoML Tabular From AutoDW ===")
     cmd = [
@@ -333,19 +302,19 @@ def test_visionmvp() -> None:
         "-s",
         "-X",
         "POST",
-        "http://localhost:8002/automl_vision/best_model_mvp/",
+        "http://localhost:8002/automl_vision/best_model/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
-        "csv_file=@./sample_data/Garbage_Dataset_Classification/metadata.csv",
+        "user_id=1",
         "-F",
-        "images_zip=@./sample_data/Garbage_Dataset_Classification/images.zip",
+        "dataset_id=2",
         "-F",
         "filename_column=filename",
         "-F",
         "label_column=label",
         "-F",
-        "task_type=classification",
+        "task_type=image_classification",
         "-F",
         "time_budget=10",
         "-F",
@@ -432,9 +401,6 @@ def main() -> int:
 
         if "tabular" in targets:
             test_tabular()
-
-        if "tabularmvp" in targets:
-            test_tabularmvp()
 
         if "visionmvp" in targets:
             test_visionmvp()
