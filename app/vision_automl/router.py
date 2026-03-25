@@ -6,10 +6,12 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
+
+from app.vision_automl.models import SUPPORTED_VISION_TASK_TYPES
 
 from app.vision_automl.services import (
     AutodwError,
@@ -55,8 +57,14 @@ async def find_best_model_for_vision(
         str, Form(..., description="Label column in labels.csv")
     ] = "label",
     task_type: Annotated[
-        str, Form(..., description="Vision task type")
-    ] = "classification",
+        str,
+        Form(
+            description=(
+                "Vision task type. One of: "
+                + ", ".join(sorted(SUPPORTED_VISION_TASK_TYPES))
+            )
+        ),
+    ] = "image_classification",
     time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 60,
     model_size: Annotated[
         str, Form(..., description="Model size: small / medium / large")
@@ -112,8 +120,17 @@ async def find_best_model_for_vision(
             csv_path, images_dir = extract_and_locate_dataset(zip_path, workdir)
 
             # 4. Validate
+            if task_type not in SUPPORTED_VISION_TASK_TYPES:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": f"Unsupported task_type '{task_type}'. "
+                        f"Supported: {sorted(SUPPORTED_VISION_TASK_TYPES)}"
+                    },
+                )
+
             validation_error = validate_vision_inputs(
-                csv_path, images_dir, filename_column, label_column
+                csv_path, images_dir, filename_column, label_column, task_type
             )
             if validation_error:
                 return JSONResponse(
@@ -129,6 +146,7 @@ async def find_best_model_for_vision(
                 time_budget,
                 model_size,
                 workdir=workdir,
+                task_type=task_type,
             )
 
             # 6. Serialize

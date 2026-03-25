@@ -338,18 +338,78 @@ def _find_or_resolve_images_dir(dataset_root: Path, csv_path: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 
+_IMAGE_TASK_TYPES: frozenset[str] = frozenset(
+    {
+        "image_classification",
+        "image_segmentation",
+        "object_detection",
+        "video_classification",
+        "keypoint_detection",
+    }
+)
+
+_TEXT_REQUIRED_COLUMNS: dict[str, list[str]] = {
+    "text_classification": ["text", "label"],
+    "question_answering": ["question", "context", "answer_start", "answer_text"],
+    "causal_lm": ["text"],
+    "seq2seq_lm": ["input_text", "target_text"],
+    "masked_lm": ["text"],
+}
+
+_DETECTION_EXTRA_COLUMNS: dict[str, list[str]] = {
+    "object_detection": ["boxes", "class_labels"],
+    "keypoint_detection": ["keypoints"],
+}
+
+
 def validate_vision_inputs(
     csv_path: Path,
     images_dir: Path,
     filename_column: str,
     label_column: str,
+    task_type: str = "image_classification",
 ) -> str | None:
-    """
-    Validate CSV structure and image file presence.
+    """Validate dataset structure for the given task type.
 
     Returns an error string on failure, or None if everything is valid.
     Mirrors the signature/contract of tabular's ``validate_tabular_inputs``.
+
+    Args:
+        csv_path: Path to the labels CSV.
+        images_dir: Root directory containing image/audio/video files.
+            Unused for pure text tasks.
+        filename_column: Column name containing file paths (image/audio tasks).
+        label_column: Column name containing labels (classification tasks).
+        task_type: One of the supported task type slugs.
     """
+    # Audio task — validate audio dir + CSV
+    if task_type == "audio_classification":
+        if not csv_path.exists():
+            return f"Labels CSV not found: {csv_path}"
+        if not images_dir.exists():
+            return f"Audio directory not found: {images_dir}"
+        try:
+            df = pd.read_csv(csv_path)
+        except Exception as e:
+            return f"Could not read labels CSV: {e}"
+        for col, role in [(filename_column, "Filename"), (label_column, "Label")]:
+            if col not in df.columns:
+                return f"{role} column '{col}' not found in labels CSV"
+        return None
+
+    # Text tasks — validate CSV + required columns
+    if task_type in _TEXT_REQUIRED_COLUMNS:
+        try:
+            df = pd.read_csv(csv_path)
+        except Exception as e:
+            return f"Could not read labels CSV: {e}"
+        required = _TEXT_REQUIRED_COLUMNS[task_type]
+        missing_cols = [c for c in required if c not in df.columns]
+        if missing_cols:
+            return f"Required column(s) missing for {task_type}: {missing_cols}"
+        return None
+
+    # Image tasks — existing CSV + image presence checks
     try:
         df = pd.read_csv(csv_path)
     except Exception as e:
@@ -358,6 +418,15 @@ def validate_vision_inputs(
     for col, role in [(filename_column, "Filename"), (label_column, "Label")]:
         if col not in df.columns:
             return f"{role} column '{col}' not found in labels CSV"
+
+    # Detection/segmentation tasks — validate annotation columns
+    if task_type in _DETECTION_EXTRA_COLUMNS:
+        extra = _DETECTION_EXTRA_COLUMNS[task_type]
+        missing_cols = [c for c in extra if c not in df.columns]
+        if missing_cols:
+            return (
+                f"Required annotation column(s) missing for {task_type}: {missing_cols}"
+            )
 
     df = normalize_dataframe_filenames(df, filename_column, csv_path)
 
@@ -383,10 +452,12 @@ async def train_automl(
     time_budget: int,
     model_size: str,
     workdir: Path,
+    task_type: str = "image_classification",
 ) -> dict:
     """Run Optuna-based vision AutoML and return the result dict."""
     return await run_in_threadpool(
         run_optuna_search,
+        task_type=task_type,
         csv_path=csv_path,
         images_dir=images_dir,
         filename_column=filename_column,

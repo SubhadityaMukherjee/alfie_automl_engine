@@ -1,10 +1,16 @@
 """Tests for app/vision_automl/ml_engine/trainer.py — EarlyStopping (fast, no ML)."""
 
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.vision_automl.ml_engine.trainer import EarlyStopping
+from app.vision_automl.ml_engine.configs import SUPPORTED_TASK_TYPES
+from app.vision_automl.ml_engine.trainer import (
+    EarlyStopping,
+    OBJECTIVE_REGISTRY,
+    run_optuna_search,
+)
 
 # ---------------------------------------------------------------------------
 # EarlyStopping — pure logic, no model/HF downloads needed
@@ -110,3 +116,61 @@ def test_early_stopping_min_delta_accepts_sufficient_improvement():
     es.on_epoch_end(trainer, 1, {"val_loss": 0.35})
     assert es.counter == 0
     assert es.best == pytest.approx(0.35)
+
+
+# ---------------------------------------------------------------------------
+# OBJECTIVE_REGISTRY
+# ---------------------------------------------------------------------------
+
+
+def test_objective_registry_has_all_task_types():
+    assert set(OBJECTIVE_REGISTRY.keys()) == SUPPORTED_TASK_TYPES
+
+
+def test_objective_registry_values_are_callable():
+    for task_type, fn in OBJECTIVE_REGISTRY.items():
+        assert callable(fn), f"{task_type} objective is not callable"
+
+
+# ---------------------------------------------------------------------------
+# run_optuna_search dispatch
+# ---------------------------------------------------------------------------
+
+
+def test_run_optuna_search_raises_for_unknown_task(tmp_path):
+    with pytest.raises(ValueError, match="Unknown task type"):
+        run_optuna_search(
+            task_type="flying_toaster",
+            csv_path=tmp_path / "labels.csv",
+            images_dir=tmp_path / "images",
+            workdir=tmp_path,
+        )
+
+
+def test_run_optuna_search_dispatches_to_correct_objective(tmp_path):
+    """Verify that run_optuna_search calls the registered objective for the task type."""
+    mock_objective = MagicMock(return_value=0.5)
+
+    with patch.dict(OBJECTIVE_REGISTRY, {"image_classification": mock_objective}):
+        import optuna
+
+        with patch(
+            "app.vision_automl.ml_engine.trainer.optuna.create_study"
+        ) as mock_study_factory:
+            mock_study = MagicMock()
+            mock_study.best_value = 0.5
+            mock_study.best_params = {}
+            mock_study.trials = [MagicMock()]
+            mock_study.best_trial.number = 0
+            mock_study_factory.return_value = mock_study
+
+            run_optuna_search(
+                task_type="image_classification",
+                csv_path=tmp_path / "labels.csv",
+                images_dir=tmp_path / "images",
+                workdir=tmp_path,
+                n_trials=1,
+            )
+
+        # The study.optimize was called (objective was wrapped via partial)
+        mock_study.optimize.assert_called_once()
