@@ -22,6 +22,7 @@ from app.tabular_automl.services import (
     upload_model,
     validate_tabular_inputs,
 )
+from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +49,7 @@ async def find_best_model_for_mvp(
         Form(
             ...,
             description="Type of ML task",
-            examples=["classification", "regression", "time_series"],
+            examples=SUPPORTED_TABULAR_TASK_TYPES,
         ),
     ] = "classification",
     time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10,
