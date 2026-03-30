@@ -12,6 +12,7 @@ import requests
 from fastapi import UploadFile
 
 from app.tabular_automl.modules import AutoMLTrainer
+from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -60,9 +61,14 @@ def validate_tabular_inputs(
     train_path: Path,
     target_column_name: str,
     time_stamp_column_name: str | None = None,
-    task_type: str = "classification",
+    task_type: str = "tabular_classification",
 ) -> str | None:
     """Validate required columns and task type for tabular training."""
+
+    if task_type not in SUPPORTED_TABULAR_TASK_TYPES:
+        logger.error(f"Invalid task type {task_type}")
+        return f"Invalid task_type '{task_type}'"
+
     try:
         train_df = load_table(train_path)
     except Exception as e:
@@ -76,10 +82,6 @@ def validate_tabular_inputs(
     if time_stamp_column_name and time_stamp_column_name not in train_df.columns:
         logger.error(f"Timestampl column '{time_stamp_column_name}' not found.")
         return f"Timestamp column '{time_stamp_column_name}' not found."
-
-    if task_type not in ["classification", "regression", "time series"]:
-        logger.error(f"Invalid task type {task_type}")
-        return f"Invalid task_type '{task_type}'"
 
     return None
 
