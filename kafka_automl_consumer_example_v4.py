@@ -28,7 +28,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
-from aiokafka import AIOKafkaConsumer
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 import requests
 import pandas as pd
 from io import BytesIO
@@ -40,9 +40,12 @@ logger = logging.getLogger("kafka_automl_consumer")
 load_dotenv(find_dotenv())
 
 # Configuration
-KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "alfie.iti.gr:9092")
 KAFKA_AUTOML_TRIGGER_TOPIC = os.getenv(
     "KAFKA_AUTOML_TRIGGER_TOPIC", "automl-trigger-events"
+)
+KAFKA_AUTOML_COMPLETE_TOPIC = os.getenv(
+    "KAFKA_AUTOML_COMPLETE_TOPIC", "automl-complete-events"
 )
 KAFKA_CONSUMER_GROUP = os.getenv("KAFKA_CONSUMER_GROUP", "automl-consumer")
 
@@ -65,20 +68,60 @@ TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "8001")
 TABULAR_AUTOML_URL = f"http://{TABULAR_AUTOML_HOST}:{TABULAR_AUTOML_PORT}"
 AUTOML_TABULAR_BEST_MODEL_URL = f"{TABULAR_AUTOML_URL}/automl_tabular/best_model"
 
-# AutoML Vision configuration
+# AutoML Vision configuration (runs on 8002; tabular on 8001)
 VISION_AUTOML_HOST = os.getenv("VISION_AUTOML_HOST", "localhost")
 VISION_AUTOML_PORT = os.getenv("VISION_AUTOML_PORT", "8002")
 VISION_AUTOML_URL = f"http://{VISION_AUTOML_HOST}:{VISION_AUTOML_PORT}"
 AUTOML_VISION_BEST_MODEL_URL = f"{VISION_AUTOML_URL}/automl_vision/best_model/"
 
-# Log configuration at module load
+# Log configuration at module load (so we see which host/port are used, e.g. host.docker.internal when in Docker)
 logger.info(f"Configuration:")
 logger.info(f"  Data Warehouse API: {API_BASE} (host: {DW_HOST}, port: {DW_PORT})")
 logger.info(f"  AutoML Tabular: {AUTOML_TABULAR_BEST_MODEL_URL}")
 logger.info(f"  AutoML Vision: {AUTOML_VISION_BEST_MODEL_URL}")
-logger.info(
-    f"  Note: Running outside Docker - using localhost to connect to Docker services"
-)
+if (
+    VISION_AUTOML_HOST == "localhost"
+    and os.getenv("KAFKA_BOOTSTRAP_SERVERS", "").find("kafka") >= 0
+):
+    logger.warning(
+        "  When running in Docker, set VISION_AUTOML_HOST=host.docker.internal so the container can reach Vision on the host"
+    )
+
+
+async def send_automl_failure_to_kafka(
+    producer: AIOKafkaProducer,
+    task_id: str,
+    user_id: str,
+    dataset_id: str,
+    error_message: str,
+    dataset_version: str = None,
+) -> None:
+    """Send automl-complete event with failure so orchestrator and Task Manager can continue the flow."""
+    if not producer or not task_id:
+        return
+    try:
+        payload = {
+            "task_id": task_id,
+            "event_type": "automl-complete",
+            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "output": None,
+            "failure": {
+                "error_type": "AutoMLError",
+                "error_message": error_message or "AutoML training failed",
+            },
+        }
+        await producer.send_and_wait(
+            KAFKA_AUTOML_COMPLETE_TOPIC,
+            value=payload,
+            key=task_id,
+        )
+        logger.info(
+            f"Sent AutoML failure event to {KAFKA_AUTOML_COMPLETE_TOPIC}: {error_message[:200]}"
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to send AutoML failure event to Kafka: {e}", exc_info=True
+        )
 
 
 def fetch_dataset_metadata(user_id: str, dataset_id: str, version: str = None) -> dict:
@@ -94,42 +137,85 @@ def fetch_dataset_metadata(user_id: str, dataset_id: str, version: str = None) -
 
 def read_csv_with_encoding(file_data: bytes) -> pd.DataFrame:
     """
-    Try to read CSV with multiple encodings
+    Read CSV bytes with robust fallbacks.
 
-    Handles files with different encodings:
-    - utf-8: Standard
-    - latin-1 (ISO-8859-1): Western European
-    - cp1252 (Windows-1252): Windows default
-    - utf-16: Some Excel exports
+    Uses multiple encodings and the Python parser to reduce tokenizer failures on malformed rows.
     """
-    from io import BytesIO
-
     encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1", "utf-16"]
 
     for encoding in encodings:
         try:
-            df = pd.read_csv(BytesIO(file_data), encoding=encoding)
+            df = pd.read_csv(
+                BytesIO(file_data),
+                encoding=encoding,
+                engine="python",
+                on_bad_lines="skip",
+            )
             logger.info(f"Successfully read CSV with encoding: {encoding}")
             return df
-        except (UnicodeDecodeError, Exception):
+        except Exception:
             continue
 
-    # If all encodings fail, try with error handling
+    # Last resort: ignore undecodable chars and skip malformed lines
     try:
-        df = pd.read_csv(BytesIO(file_data), encoding="utf-8", encoding_errors="ignore")
-        logger.warning("Read CSV with 'ignore' errors - some characters may be missing")
+        df = pd.read_csv(
+            BytesIO(file_data),
+            encoding="utf-8",
+            encoding_errors="ignore",
+            engine="python",
+            on_bad_lines="skip",
+        )
+        logger.warning(
+            "Read CSV with lenient parser (encoding_errors='ignore', on_bad_lines='skip')"
+        )
         return df
     except Exception as e:
         logger.error(f"Failed to read CSV with all encodings: {e}")
         raise
 
 
-def download_dataset_file(user_id: str, dataset_id: str, version: str = None) -> bytes:
-    """Download dataset file (single file or folder as ZIP) - specific version or latest"""
+def load_tabular_dataframe(file_bytes: bytes) -> pd.DataFrame:
+    """
+    Load tabular data from bytes.
+
+    Supports:
+    - raw CSV bytes
+    - ZIP bytes containing one or more CSV files (uses first CSV)
+    """
+    import zipfile
+
+    # Try direct CSV first
+    try:
+        return read_csv_with_encoding(file_bytes)
+    except Exception:
+        pass
+
+    # Then try ZIP -> first CSV
+    try:
+        with zipfile.ZipFile(BytesIO(file_bytes), "r") as zf:
+            csv_names = [
+                n
+                for n in zf.namelist()
+                if n.lower().endswith(".csv") and not n.startswith("__")
+            ]
+            if not csv_names:
+                raise ValueError("ZIP does not contain any CSV files")
+            with zf.open(csv_names[0]) as f:
+                return read_csv_with_encoding(f.read())
+    except Exception as e:
+        raise ValueError(f"Could not load tabular dataframe from downloaded bytes: {e}")
+
+
+def download_dataset_file(
+    user_id: str, dataset_id: str, version: str = None, split: str = None
+) -> bytes:
+    """Download dataset file (single file or folder as ZIP). If split is 'train', 'test', or 'drift', download only that subset (for split datasets)."""
     if version:
         url = f"{API_BASE}/datasets/{user_id}/{dataset_id}/version/{version}/download"
     else:
         url = f"{API_BASE}/datasets/{user_id}/{dataset_id}/download"
+    if split and split in ("train", "test", "drift"):
+        url += f"?split={split}"
     r = requests.get(url, timeout=60)
     r.raise_for_status()
     return r.content
@@ -205,7 +291,104 @@ def upload_model_to_dw(
         return r.json()
 
 
-async def process_automl_trigger(event: dict) -> None:
+def update_model_metadata_in_dw(
+    user_id: str,
+    model_id: str,
+    version: str,
+    *,
+    leaderboard: str = None,
+    test_accuracy: float = None,
+    validation_accuracy: float = None,
+    training_accuracy: float = None,
+    training_loss: float = None,
+    custom_metadata: dict = None,
+) -> dict:
+    """
+    Update existing model metadata in the Data Warehouse (e.g. after AutoML returns metrics).
+    Use when the AutoML service uploads the model but does not send metrics; we patch them from its response.
+    """
+    url = f"{API_BASE}/ai-models/{user_id}/{model_id}"
+    params = {"version": version}
+    payload = {}
+    if test_accuracy is not None:
+        payload["test_accuracy"] = test_accuracy
+    if validation_accuracy is not None:
+        payload["validation_accuracy"] = validation_accuracy
+    if training_accuracy is not None:
+        payload["training_accuracy"] = training_accuracy
+    if training_loss is not None:
+        payload["training_loss"] = training_loss
+    if custom_metadata is not None:
+        payload["custom_metadata"] = custom_metadata
+    elif leaderboard is not None:
+        payload["custom_metadata"] = {"leaderboard": leaderboard}
+    if not payload:
+        return {}
+    r = requests.put(url, params=params, json=payload, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+
+def get_latest_model_for_user(user_id: str) -> dict | None:
+    """Get the most recently created model for a user (by created_at). Used to find the model just uploaded by AutoML."""
+    url = f"{API_BASE}/ai-models/{user_id}"
+    r = requests.get(url, params={"limit": 1}, timeout=10)
+    r.raise_for_status()
+    models = r.json()
+    return models[0] if models else None
+
+
+def _parse_automl_response_metrics(response_data: dict) -> dict:
+    """
+    Extract metrics from AutoML tabular response for DW metadata update.
+    Returns dict with: leaderboard, test_accuracy, validation_accuracy, custom_metadata.
+    """
+    out = {
+        "leaderboard": None,
+        "test_accuracy": None,
+        "validation_accuracy": None,
+        "custom_metadata": {},
+    }
+    if not response_data:
+        return out
+    out["leaderboard"] = response_data.get("leaderboard")
+    out["test_accuracy"] = response_data.get("test_accuracy")
+    if out["test_accuracy"] is not None and not isinstance(
+        out["test_accuracy"], (int, float)
+    ):
+        try:
+            out["test_accuracy"] = float(out["test_accuracy"])
+        except (TypeError, ValueError):
+            out["test_accuracy"] = None
+    out["validation_accuracy"] = response_data.get("validation_accuracy")
+    if out["validation_accuracy"] is not None and not isinstance(
+        out["validation_accuracy"], (int, float)
+    ):
+        try:
+            out["validation_accuracy"] = float(out["validation_accuracy"])
+        except (TypeError, ValueError):
+            out["validation_accuracy"] = None
+    best_score = response_data.get("best_score") or response_data.get("score_test")
+    if best_score is not None and out["test_accuracy"] is None:
+        try:
+            s = float(best_score)
+            if 0 <= s <= 1:
+                out["test_accuracy"] = s
+            else:
+                out["custom_metadata"]["best_score"] = s
+        except (TypeError, ValueError):
+            out["custom_metadata"]["best_score"] = best_score
+    for key in ("message", "model_id", "version"):
+        if key in response_data and response_data[key] is not None:
+            out["custom_metadata"][key] = response_data[key]
+    if out["leaderboard"]:
+        out["custom_metadata"]["leaderboard"] = out["leaderboard"]
+    return out
+
+
+async def process_automl_trigger(
+    event: dict, producer: AIOKafkaProducer = None
+) -> None:
     """
     Process an AutoML trigger event from Agentic Core
 
@@ -263,7 +446,32 @@ async def process_automl_trigger(event: dict) -> None:
 
         if not user_id or not dataset_id:
             logger.warning("Missing user_id or dataset_id in event; skipping")
+            if producer and task_id:
+                await send_automl_failure_to_kafka(
+                    producer,
+                    task_id,
+                    str(user_id or ""),
+                    str(dataset_id or ""),
+                    "Missing user_id or dataset_id in event",
+                    dataset_version=input_obj.get("dataset_version"),
+                )
             return
+
+        if task_category == "tabular" and (not target_column or not task_type):
+            logger.warning(
+                "Tabular task requires target_column_name and task_type in event; skipping"
+            )
+            if producer and task_id:
+                await send_automl_failure_to_kafka(
+                    producer,
+                    task_id,
+                    user_id,
+                    dataset_id,
+                    "Tabular task requires target_column_name and task_type",
+                    dataset_version=dataset_version,
+                )
+            return
+        # Vision defaults filename_column, label_column, task_type, model_size so no strict check needed
 
         logger.info(
             f"Processing AutoML trigger for dataset {dataset_id} version {dataset_version}"
@@ -283,17 +491,27 @@ async def process_automl_trigger(event: dict) -> None:
             metadata = fetch_dataset_metadata(user_id, dataset_id, dataset_version)
             logger.info(f"Dataset metadata fetched successfully")
 
-            # Check if dataset is a folder or single file
+            # Check if dataset is a folder or single file, and if it has train/test/drift split
             is_folder = metadata.get("is_folder", False)
             file_count = metadata.get("file_count", 1)
+            has_split = bool(metadata.get("custom_metadata", {}).get("split"))
+            # For split tabular datasets, download only the train split so we get a single CSV for validation
+            download_split = (
+                "train" if (has_split and task_category == "tabular") else None
+            )
+            if download_split:
+                logger.info(
+                    f"Dataset has train/test/drift split; downloading '{download_split}' split for tabular AutoML"
+                )
 
             logger.info(f"Dataset type: {'FOLDER' if is_folder else 'SINGLE FILE'}")
             if is_folder:
                 logger.info(f"File count: {file_count}")
 
-            # Download dataset file (AutoML service may do this too, but we validate it exists)
             logger.info(f"Downloading dataset file from: {API_BASE}")
-            file_bytes = download_dataset_file(user_id, dataset_id, dataset_version)
+            file_bytes = download_dataset_file(
+                user_id, dataset_id, dataset_version, split=download_split
+            )
             logger.info(f"Dataset downloaded: {len(file_bytes)} bytes")
         except requests.exceptions.Timeout as e:
             logger.error(f"Timeout while fetching dataset from {API_BASE}")
@@ -304,6 +522,15 @@ async def process_automl_trigger(event: dict) -> None:
             logger.error(
                 f"   If running locally, ensure the Data Warehouse API is running on {DW_HOST}:{DW_PORT}"
             )
+            if producer and task_id:
+                await send_automl_failure_to_kafka(
+                    producer,
+                    task_id,
+                    user_id,
+                    dataset_id,
+                    f"Timeout fetching dataset: {e}",
+                    dataset_version,
+                )
             return
         except requests.exceptions.ConnectionError as e:
             logger.error(f"Failed to connect to Data Warehouse API at {API_BASE}")
@@ -314,14 +541,45 @@ async def process_automl_trigger(event: dict) -> None:
             logger.error(
                 f"   If running locally, ensure the Data Warehouse API is running on {DW_HOST}:{DW_PORT}"
             )
+            if producer and task_id:
+                await send_automl_failure_to_kafka(
+                    producer,
+                    task_id,
+                    user_id,
+                    dataset_id,
+                    f"Connection error fetching dataset: {e}",
+                    dataset_version,
+                )
             return
         except Exception as e:
             logger.error(f"Failed to fetch dataset: {e}")
             logger.error(f"   API Base URL: {API_BASE}")
+            if producer and task_id:
+                await send_automl_failure_to_kafka(
+                    producer, task_id, user_id, dataset_id, str(e), dataset_version
+                )
             return
 
         # Step 2: Call AutoML service with all necessary information
         if task_category == "tabular":
+            # Optional validation before calling AutoML service: ensure bytes are readable tabular data.
+            # This catches malformed/incorrect dataset payloads early with clear logs.
+            try:
+                df_preview = load_tabular_dataframe(file_bytes)
+                logger.info(f"Tabular dataset validation OK: shape={df_preview.shape}")
+                if target_column and target_column not in df_preview.columns:
+                    logger.warning(
+                        f"Target column '{target_column}' not found in preview columns; AutoML service may fail."
+                    )
+            except Exception as e:
+                err_msg = f"Tabular dataset could not be parsed locally before AutoML call: {e}"
+                logger.error(err_msg)
+                if producer and task_id:
+                    await send_automl_failure_to_kafka(
+                        producer, task_id, user_id, dataset_id, err_msg, dataset_version
+                    )
+                return
+
             # Convert time_budget from string to int, and from minutes to seconds
             # The endpoint expects time_budget in seconds as an integer
             try:
@@ -343,6 +601,12 @@ async def process_automl_trigger(event: dict) -> None:
                 "task_type": task_type,
                 "time_budget": time_budget_seconds,  # Send as integer in seconds
             }
+            # Tell the AutoML tabular service to request the train split when downloading from DW (split datasets)
+            if has_split:
+                data["dataset_split"] = "train"
+                logger.info(
+                    "  Passing dataset_split=train so AutoML service uses train split from DW"
+                )
 
             # Include task_id in headers if available (for tracking)
             headers = {"X-Task-ID": task_id} if task_id else None
@@ -392,24 +656,41 @@ async def process_automl_trigger(event: dict) -> None:
                 logger.error(
                     f"   Verify port mapping: docker port alfie_automl_tabular"
                 )
-                raise
+                if producer and task_id:
+                    await send_automl_failure_to_kafka(
+                        producer,
+                        task_id,
+                        user_id,
+                        dataset_id,
+                        f"Connection error: {e}",
+                        dataset_version,
+                    )
+                return
             except requests.exceptions.HTTPError as e:
                 logger.error(f"AutoML service returned HTTP error: {e}")
+                err_msg = str(e)
                 if e.response is not None:
                     logger.error(f"   Response status: {e.response.status_code}")
                     logger.error(f"   URL: {e.response.url}")
                     if e.response.content:
                         try:
                             error_detail = e.response.json()
-                            logger.error(
-                                f"   Response body: {json.dumps(error_detail, indent=2)}"
+                            err_body = json.dumps(error_detail)
+                            err_msg = (
+                                f"{e.response.status_code} {e.response.url}: {err_body}"
                             )
-                        except:
+                            logger.error(f"   Response body: {err_body}")
+                        except Exception:
+                            err_msg = f"{e.response.status_code}: {e.response.text[:500] if e.response.text else 'no body'}"
                             logger.error(f"   Response body: {e.response.text[:500]}")
-                logger.error(
-                    f"   If running in Docker, ensure TABULAR_AUTOML_HOST=tabular is set"
-                )
-                raise
+                    logger.error(
+                        f"   If running in Docker, ensure TABULAR_AUTOML_HOST=tabular is set"
+                    )
+                if producer and task_id:
+                    await send_automl_failure_to_kafka(
+                        producer, task_id, user_id, dataset_id, err_msg, dataset_version
+                    )
+                return
             except requests.exceptions.Timeout as e:
                 logger.error(
                     f"Request to AutoML service timed out after {request_timeout} seconds"
@@ -418,7 +699,16 @@ async def process_automl_trigger(event: dict) -> None:
                 logger.error(
                     f"   Consider increasing time_budget or checking service logs"
                 )
-                raise
+                if producer and task_id:
+                    await send_automl_failure_to_kafka(
+                        producer,
+                        task_id,
+                        user_id,
+                        dataset_id,
+                        f"Timeout after {request_timeout}s: {e}",
+                        dataset_version,
+                    )
+                return
 
             response_data = r.json() if r.content else {}
             logger.info(
@@ -427,6 +717,46 @@ async def process_automl_trigger(event: dict) -> None:
             logger.info(
                 f"   Response: {json.dumps(response_data, indent=2, default=str)}"
             )
+
+            # Enrich DW model metadata with metrics from AutoML response (leaderboard, test/validation accuracy)
+            try:
+                metrics = _parse_automl_response_metrics(response_data)
+                model_id_to_update = response_data.get("model_id")
+                version_to_update = response_data.get("version")
+                if not model_id_to_update or not version_to_update:
+                    latest = get_latest_model_for_user(user_id)
+                    if latest:
+                        model_id_to_update = latest.get("model_id")
+                        version_to_update = latest.get("version", "v1")
+                        logger.info(
+                            f"   Using latest model for user as target for metrics: {model_id_to_update} {version_to_update}"
+                        )
+                if (
+                    model_id_to_update
+                    and version_to_update
+                    and (
+                        metrics["leaderboard"]
+                        or metrics["test_accuracy"] is not None
+                        or metrics["validation_accuracy"] is not None
+                        or metrics["custom_metadata"]
+                    )
+                ):
+                    update_model_metadata_in_dw(
+                        user_id,
+                        model_id_to_update,
+                        version_to_update,
+                        leaderboard=metrics["leaderboard"],
+                        test_accuracy=metrics["test_accuracy"],
+                        validation_accuracy=metrics["validation_accuracy"],
+                        custom_metadata=metrics["custom_metadata"] or None,
+                    )
+                    logger.info(
+                        f"   Updated model metadata in DW with leaderboard/metrics for {model_id_to_update} {version_to_update}"
+                    )
+            except Exception as meta_e:
+                logger.warning(
+                    f"   Could not update model metadata with AutoML metrics: {meta_e}"
+                )
 
             # Note: The AutoML service should handle model upload to DW with task_id
             # which will automatically trigger automl-events
@@ -452,6 +782,11 @@ async def process_automl_trigger(event: dict) -> None:
                 "time_budget": time_budget_seconds,
                 "model_size": (model_size or "small").strip().lower(),
             }
+            if has_split:
+                data["dataset_split"] = "train"
+                logger.info(
+                    "  Passing dataset_split=train so Vision service uses train split from DW"
+                )
             headers = {"X-Task-ID": task_id} if task_id else None
 
             request_timeout = time_budget_seconds + 300
@@ -475,37 +810,133 @@ async def process_automl_trigger(event: dict) -> None:
                 logger.error(
                     f"Failed to connect to AutoML Vision at {AUTOML_VISION_BEST_MODEL_URL}: {e}"
                 )
-                raise
+                logger.error(
+                    "  Ensure the AutoML Vision service is running on port 8002. "
+                    "Override with VISION_AUTOML_PORT if different. "
+                    "From Docker use VISION_AUTOML_HOST=host.docker.internal"
+                )
+                if producer and task_id:
+                    await send_automl_failure_to_kafka(
+                        producer,
+                        task_id,
+                        user_id,
+                        dataset_id,
+                        f"Connection error: {e}",
+                        dataset_version,
+                    )
+                return
             except requests.exceptions.HTTPError as e:
                 logger.error(f"AutoML Vision HTTP error: {e}")
+                err_msg = str(e)
                 if e.response and e.response.content:
                     try:
+                        err_msg = (
+                            f"{e.response.status_code}: {json.dumps(e.response.json())}"
+                        )
                         logger.error(f"   Response: {e.response.json()}")
                     except Exception:
+                        err_msg = f"{e.response.status_code}: {e.response.text[:500]}"
                         logger.error(f"   Response: {e.response.text[:500]}")
-                raise
+                if producer and task_id:
+                    await send_automl_failure_to_kafka(
+                        producer, task_id, user_id, dataset_id, err_msg, dataset_version
+                    )
+                return
             except requests.exceptions.Timeout as e:
                 logger.error(
                     f"AutoML Vision request timed out after {request_timeout}s"
                 )
-                raise
+                if producer and task_id:
+                    await send_automl_failure_to_kafka(
+                        producer,
+                        task_id,
+                        user_id,
+                        dataset_id,
+                        f"Timeout after {request_timeout}s: {e}",
+                        dataset_version,
+                    )
+                return
 
             response_data = r.json() if r.content else {}
             logger.info("✅ Vision AutoML completed; model uploaded to Data Warehouse")
             logger.info(
                 f"   Response: {json.dumps(response_data, indent=2, default=str)}"
             )
+
+            # Enrich DW model metadata with metrics from AutoML response
+            try:
+                metrics = _parse_automl_response_metrics(response_data)
+                model_id_to_update = response_data.get("model_id")
+                version_to_update = response_data.get("version")
+                if not model_id_to_update or not version_to_update:
+                    latest = get_latest_model_for_user(user_id)
+                    if latest:
+                        model_id_to_update = latest.get("model_id")
+                        version_to_update = latest.get("version", "v1")
+                if (
+                    model_id_to_update
+                    and version_to_update
+                    and (
+                        metrics["leaderboard"]
+                        or metrics["test_accuracy"] is not None
+                        or metrics["validation_accuracy"] is not None
+                        or metrics["custom_metadata"]
+                    )
+                ):
+                    update_model_metadata_in_dw(
+                        user_id,
+                        model_id_to_update,
+                        version_to_update,
+                        leaderboard=metrics["leaderboard"],
+                        test_accuracy=metrics["test_accuracy"],
+                        validation_accuracy=metrics["validation_accuracy"],
+                        custom_metadata=metrics["custom_metadata"] or None,
+                    )
+                    logger.info(
+                        f"   Updated model metadata in DW for {model_id_to_update} {version_to_update}"
+                    )
+            except Exception as meta_e:
+                logger.warning(
+                    f"   Could not update model metadata with Vision AutoML metrics: {meta_e}"
+                )
         else:
             logger.error(f"Unsupported task category: {task_category}")
             return
 
     except Exception as e:
         logger.error(f"Error processing AutoML trigger event: {e}", exc_info=True)
+        try:
+            task_id = event.get("task_id")
+            input_obj = event.get("input", event)
+            user_id = input_obj.get("user_id") or ""
+            dataset_id = input_obj.get("dataset_id") or ""
+            dataset_version = input_obj.get("dataset_version")
+            if producer and task_id:
+                await send_automl_failure_to_kafka(
+                    producer,
+                    task_id,
+                    str(user_id),
+                    str(dataset_id),
+                    str(e),
+                    dataset_version,
+                )
+        except Exception as send_err:
+            logger.warning(f"Could not send AutoML failure event: {send_err}")
         return
 
 
 async def run_consumer() -> None:
     """Main consumer loop"""
+    producer = AIOKafkaProducer(
+        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+        value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
+        key_serializer=lambda k: (k.encode("utf-8") if k else None),
+    )
+    await producer.start()
+    logger.info(
+        f"AutoML completion producer started (topic: {KAFKA_AUTOML_COMPLETE_TOPIC})"
+    )
+
     consumer = AIOKafkaConsumer(
         KAFKA_AUTOML_TRIGGER_TOPIC,
         bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
@@ -543,11 +974,12 @@ async def run_consumer() -> None:
             # The process_automl_trigger function handles both event structures:
             # - New structure with "input" object and "task_id"
             # - Old structure for backward compatibility
-            await process_automl_trigger(value)
+            await process_automl_trigger(value, producer)
 
     finally:
         await consumer.stop()
-        logger.info("AutoML Trigger consumer stopped")
+        await producer.stop()
+        logger.info("AutoML Trigger consumer and producer stopped")
 
 
 if __name__ == "__main__":
