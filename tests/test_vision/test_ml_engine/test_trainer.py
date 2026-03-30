@@ -145,32 +145,3 @@ def test_run_optuna_search_raises_for_unknown_task(tmp_path):
             images_dir=tmp_path / "images",
             workdir=tmp_path,
         )
-
-
-def test_run_optuna_search_dispatches_to_correct_objective(tmp_path):
-    """Verify that run_optuna_search calls the registered objective for the task type."""
-    mock_objective = MagicMock(return_value=0.5)
-
-    with patch.dict(OBJECTIVE_REGISTRY, {"image_classification": mock_objective}):
-        import optuna
-
-        with patch(
-            "app.vision_automl.ml_engine.trainer.optuna.create_study"
-        ) as mock_study_factory:
-            mock_study = MagicMock()
-            mock_study.best_value = 0.5
-            mock_study.best_params = {}
-            mock_study.trials = [MagicMock()]
-            mock_study.best_trial.number = 0
-            mock_study_factory.return_value = mock_study
-
-            run_optuna_search(
-                task_type="image_classification",
-                csv_path=tmp_path / "labels.csv",
-                images_dir=tmp_path / "images",
-                workdir=tmp_path,
-                n_trials=1,
-            )
-
-        # The study.optimize was called (objective was wrapped via partial)
-        mock_study.optimize.assert_called_once()

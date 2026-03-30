@@ -5,8 +5,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from app.tabular_automl.services import (create_session_directory, load_table,
-                                         validate_tabular_inputs)
+from app.tabular_automl.services import (
+    create_session_directory,
+    load_table,
+    validate_tabular_inputs,
+)
 
 
 @pytest.fixture
@@ -49,11 +52,11 @@ def test_create_session_directory():
 @pytest.mark.parametrize(
     "task_type , target_col, expected",
     [
-        ("regression", "col_1", None),
-        ("classification", "col_1", None),
-        ("time series", "col_1", None),
+        ("tabular_regression", "col_1", None),
+        ("tabular_classification", "col_1", None),
+        ("tabular_time_series", "col_1", None),
         ("random", "col_1", "Invalid task_type 'random'"),
-        ("classification", "col_not", "Target column 'col_not' not found."),
+        ("tabular_classification", "col_not", "Target column 'col_not' not found."),
     ],
 )
 def test_validate_tabular_inputs_task_type(
