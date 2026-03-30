@@ -327,8 +327,6 @@ class FabricTrainer:
 # ---------------------------------------------------------------------------
 # Per-task Optuna objective functions
 # ---------------------------------------------------------------------------
-
-
 def optuna_objective_image_classification(
     trial: optuna.Trial,
     *,
@@ -340,7 +338,6 @@ def optuna_objective_image_classification(
     timeout_per_trial: float | None,
     config: dict,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -376,10 +373,6 @@ def optuna_objective_image_classification(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=False,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -395,7 +388,6 @@ def optuna_objective_image_segmentation(
     timeout_per_trial: float | None,
     config: dict,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -430,10 +422,6 @@ def optuna_objective_image_segmentation(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=True,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -449,7 +437,6 @@ def optuna_objective_object_detection(
     timeout_per_trial: float | None,
     config: dict,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -478,10 +465,6 @@ def optuna_objective_object_detection(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=True,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -497,7 +480,6 @@ def optuna_objective_video_classification(
     timeout_per_trial: float | None,
     config: dict,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -533,10 +515,6 @@ def optuna_objective_video_classification(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=False,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -552,7 +530,6 @@ def optuna_objective_keypoint_detection(
     timeout_per_trial: float | None,
     config: dict,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -582,10 +559,6 @@ def optuna_objective_keypoint_detection(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=True,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -601,7 +574,6 @@ def optuna_objective_audio_classification(
     timeout_per_trial: float | None,
     config: dict,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -637,10 +609,6 @@ def optuna_objective_audio_classification(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=False,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -656,7 +624,6 @@ def optuna_objective_text_classification(
     config: dict,
     **_kwargs,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -691,10 +658,6 @@ def optuna_objective_text_classification(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=False,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -708,7 +671,6 @@ def optuna_objective_question_answering(
     config: dict,
     **_kwargs,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -735,10 +697,6 @@ def optuna_objective_question_answering(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=True,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -752,7 +710,6 @@ def optuna_objective_causal_lm(
     config: dict,
     **_kwargs,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -779,10 +736,6 @@ def optuna_objective_causal_lm(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=True,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -796,7 +749,6 @@ def optuna_objective_seq2seq_lm(
     config: dict,
     **_kwargs,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -823,10 +775,6 @@ def optuna_objective_seq2seq_lm(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=True,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -840,7 +788,6 @@ def optuna_objective_masked_lm(
     config: dict,
     **_kwargs,
 ) -> float:
-    trial_start = time.time()
     models = config[f"{model_size}_models"]
     model_id = trial.suggest_categorical("model_id", models)
     lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -867,10 +814,6 @@ def optuna_objective_masked_lm(
         callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
         model_computes_loss=True,
     )
-
-    if timeout_per_trial and (time.time() - trial_start > timeout_per_trial * 0.9):
-        raise optuna.TrialPruned()
-
     test_loss, _ = trainer.fit(trial=trial)
     return test_loss
 
@@ -895,13 +838,9 @@ OBJECTIVE_REGISTRY: dict[str, Callable] = {
 
 # Keep old name for any external code that referenced it
 optuna_objective = optuna_objective_image_classification
-
-
 # ---------------------------------------------------------------------------
 # run_optuna_search
 # ---------------------------------------------------------------------------
-
-
 def run_optuna_search(
     *,
     task_type: str = "image_classification",

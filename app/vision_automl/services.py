@@ -462,7 +462,7 @@ async def train_automl(
         images_dir=images_dir,
         filename_column=filename_column,
         label_column=label_column,
-        n_trials=min(25, time_budget // 60),
+        n_trials=max(1, min(25, time_budget // 60)),
         timeout=time_budget,
         model_size=model_size,
         workdir=workdir,
