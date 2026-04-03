@@ -17,6 +17,9 @@ import requests
 from fastapi.concurrency import run_in_threadpool
 from huggingface_hub import HfApi
 
+from jinja2 import Environment, FileSystemLoader
+
+from app.core.utils import render_template
 from app.vision_automl.ml_engine.trainer import run_optuna_search
 
 logger = logging.getLogger(__name__)
@@ -26,6 +29,11 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
+_jinja_path = os.getenv("JINJAPATH")
+if not _jinja_path:
+    raise RuntimeError("JINJAPATH environment variable is not set")
+
+jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
 
 # ---------------------------------------------------------------------------
@@ -472,6 +480,16 @@ async def train_automl(
 # ---------------------------------------------------------------------------
 # Artifact packaging  (mirrors tabular: serialize_and_zip_predictor)
 # ---------------------------------------------------------------------------
+def add_deployment_instructions_to_folder(save_model_path: Path):
+    if jinja_environment is not None:
+        try:
+            with open(save_model_path / "vision_deployment_instructions.md") as f:
+                deployment_instructions = render_template(
+                    jinja_environment, "vision_deployment_instructions.md"
+                )
+                f.write(deployment_instructions)
+        except Exception as e:
+            return e
 
 
 def serialize_and_zip_model(result: dict, workdir: Path) -> Path:
