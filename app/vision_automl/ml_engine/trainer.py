@@ -838,6 +838,8 @@ OBJECTIVE_REGISTRY: dict[str, Callable] = {
 
 # Keep old name for any external code that referenced it
 optuna_objective = optuna_objective_image_classification
+
+
 # ---------------------------------------------------------------------------
 # run_optuna_search
 # ---------------------------------------------------------------------------

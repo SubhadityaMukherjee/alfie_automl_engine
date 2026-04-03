@@ -6,8 +6,7 @@ import pandas as pd
 import pytest
 import torch
 
-from app.vision_automl.ml_engine.dataset import \
-    ImageClassificationFromCSVDataset
+from app.vision_automl.ml_engine.dataset import ImageClassificationFromCSVDataset
 
 
 def _make_df():
