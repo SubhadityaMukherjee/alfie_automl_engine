@@ -14,7 +14,18 @@ from fastapi import UploadFile
 from app.tabular_automl.modules import AutoMLTrainer
 from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 
+from app.core.utils import render_template
+
+from jinja2 import Environment, FileSystemLoader
+
 logger = logging.getLogger(__name__)
+
+_jinja_path = os.getenv("JINJAPATH")
+if not _jinja_path:
+    raise RuntimeError("JINJAPATH environment variable is not set")
+
+jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
+
 
 UPLOAD_ROOT = Path("uploaded_data")
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
@@ -185,6 +196,18 @@ def train_automl(
     )
 
 
+def add_deployment_instructions_to_folder(save_model_path: Path):
+    if jinja_environment is not None:
+        try:
+            with open(save_model_path / "tabular_deployment_instructions.md") as f:
+                deployment_instructions = render_template(
+                    jinja_environment, "tabular_deployment_instructions.md"
+                )
+                f.write(deployment_instructions)
+        except Exception as e:
+            return e
+
+
 def serialize_and_zip_predictor(
     predictor, save_model_path: Path, tmp_path: Path
 ) -> Path:
@@ -192,6 +215,8 @@ def serialize_and_zip_predictor(
     predictor_path = save_model_path / "predictor.pkl"
     with open(predictor_path, "wb") as f:
         pickle.dump(predictor, f)
+
+    add_deployment_instructions_to_folder(save_model_path)
 
     zip_path = tmp_path / "automl_predictor.zip"
     shutil.make_archive(
