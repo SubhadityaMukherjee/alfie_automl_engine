@@ -196,16 +196,11 @@ def train_automl(
     )
 
 
-def add_deployment_instructions_to_folder(save_model_path: Path):
+def deployment_instructions() -> str:
     if jinja_environment is not None:
-        try:
-            with open(save_model_path / "tabular_deployment_instructions.md") as f:
-                deployment_instructions = render_template(
-                    jinja_environment, "tabular_deployment_instructions.md"
-                )
-                f.write(deployment_instructions)
-        except Exception as e:
-            return e
+        return render_template(jinja_environment, "tabular_deployment_instructions.md")
+    else:
+        return "No instructions found"
 
 
 def serialize_and_zip_predictor(
@@ -216,7 +211,11 @@ def serialize_and_zip_predictor(
     with open(predictor_path, "wb") as f:
         pickle.dump(predictor, f)
 
-    add_deployment_instructions_to_folder(save_model_path)
+    try:
+        with open(save_model_path / "tabular_deployment_instructions.md") as f:
+            f.write(deployment_instructions())
+    except Exception as e:
+        logger.debug(f"No deployment_instructions found, {e}")
 
     zip_path = tmp_path / "automl_predictor.zip"
     shutil.make_archive(
@@ -245,6 +244,7 @@ def build_upload_payload(
         "training_dataset": str(dataset_id),
         "training_dataset_version": dataset_version or metadata.get("version", "v1"),
         "leaderboard": json.dumps(leaderboard_json),
+        "deployment_instructions": deployment_instructions(),
     }
     return model_id, data
 

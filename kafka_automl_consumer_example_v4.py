@@ -778,7 +778,7 @@ async def process_automl_trigger(
                 "dataset_version": dataset_version or "v1",
                 "filename_column": filename_column,
                 "label_column": label_column,
-                "task_type": task_type or "classification",
+                "task_type": task_type or "vision_classification",
                 "time_budget": time_budget_seconds,
                 "model_size": (model_size or "small").strip().lower(),
             }

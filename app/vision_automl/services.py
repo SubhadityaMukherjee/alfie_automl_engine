@@ -480,16 +480,13 @@ async def train_automl(
 # ---------------------------------------------------------------------------
 # Artifact packaging  (mirrors tabular: serialize_and_zip_predictor)
 # ---------------------------------------------------------------------------
-def add_deployment_instructions_to_folder(save_model_path: Path):
+
+
+def deployment_instructions() -> str:
     if jinja_environment is not None:
-        try:
-            with open(save_model_path / "vision_deployment_instructions.md") as f:
-                deployment_instructions = render_template(
-                    jinja_environment, "vision_deployment_instructions.md"
-                )
-                f.write(deployment_instructions)
-        except Exception as e:
-            return e
+        return render_template(jinja_environment, "vision_deployment_instructions.md")
+    else:
+        return "No instructions found"
 
 
 def serialize_and_zip_model(result: dict, workdir: Path) -> Path:
@@ -501,6 +498,13 @@ def serialize_and_zip_model(result: dict, workdir: Path) -> Path:
     """
     model_dir = workdir / "model"
     model_dir.mkdir(exist_ok=True)
+
+    try:
+        with open(workdir / "vision_deployment_instructions.md") as f:
+            f.write(deployment_instructions())
+    except Exception as e:
+        logger.debug(f"No deployment_instructions found, {e}")
+
     zip_base = workdir / "vision_model"
     shutil.make_archive(str(zip_base), "zip", model_dir)
     zip_path = zip_base.with_suffix(".zip")
