@@ -33,8 +33,28 @@ async def run_accessibility_pipeline(
     context: str = "",
 ) -> List[ChunkResult]:
     """Split HTML into chunks and process them concurrently with a semaphore."""
-    chunks, ranges = split_chunks(content, chunk_size)
+    if not content or not content.strip():
+        logger.warning("Empty content provided to run_accessibility_pipeline")
+        return []
+
+    if chunk_size <= 0:
+        raise ValueError(f"chunk_size must be > 0, got {chunk_size}")
+
+    if concurrency <= 0:
+        raise ValueError(f"concurrency must be > 0, got {concurrency}")
+
+    try:
+        chunks, ranges = split_chunks(content, chunk_size)
+    except Exception as e:
+        logger.exception("Failed to split content into chunks")
+        raise RuntimeError(f"Failed to split content into chunks: {e}") from e
+
     logger.info("Processing the website in %d chunks", len(chunks))
+
+    if not chunks:
+        logger.warning("No chunks generated from content")
+        return []
+
     sem = asyncio.Semaphore(concurrency)
     tasks = [
         _process_single_chunk(
@@ -42,7 +62,15 @@ async def run_accessibility_pipeline(
         )
         for i, (chunk, (start, end)) in enumerate(zip(chunks, ranges))
     ]
-    results: List[ChunkResult] = await asyncio.gather(*tasks)
+
+    try:
+        results: List[ChunkResult] = await asyncio.gather(
+            *tasks, return_exceptions=False
+        )
+    except Exception as e:
+        logger.exception("Failed to process chunks")
+        raise RuntimeError(f"Failed to process chunks: {e}") from e
+
     return results
 
 

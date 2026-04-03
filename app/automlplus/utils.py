@@ -17,14 +17,20 @@ class ImageConverter:
     @staticmethod
     def to_base64(image_path_or_url: str) -> str:
         logger.info("Converting image to base64: %s", image_path_or_url)
+        if not image_path_or_url or not isinstance(image_path_or_url, str):
+            raise ValueError(
+                f"image_path_or_url must be a non-empty string, got: {type(image_path_or_url)}"
+            )
+
         try:
             if image_path_or_url.startswith("http"):
                 headers = {"User-Agent": "Mozilla/5.0 (compatible; ImageConverter/1.0)"}
-                resp = requests.get(image_path_or_url, headers=headers)
+                resp = requests.get(image_path_or_url, headers=headers, timeout=30)
                 resp.raise_for_status()
-                if "image" not in resp.headers.get("Content-Type", ""):
+                content_type = resp.headers.get("Content-Type", "")
+                if "image" not in content_type:
                     raise ValueError(
-                        f"URL does not point to an image: {image_path_or_url}"
+                        f"URL does not point to an image: {image_path_or_url} (Content-Type: {content_type})"
                     )
                 image = Image.open(BytesIO(resp.content))
             else:
@@ -36,46 +42,76 @@ class ImageConverter:
             buffer = BytesIO()
             image.save(buffer, format="PNG")
             return base64.b64encode(buffer.getvalue()).decode("utf-8")
+        except requests.RequestException as e:
+            logger.exception("Failed to fetch image from URL: %s", image_path_or_url)
+            raise ValueError(f"Failed to fetch image from URL: {e}") from e
+        except (IOError, OSError) as e:
+            logger.exception("Failed to read image file: %s", image_path_or_url)
+            raise ValueError(f"Failed to read image file: {e}") from e
         except Exception as e:
             logger.exception("Image conversion failed")
-            raise e
+            raise ValueError(f"Image conversion failed: {e}") from e
 
     @staticmethod
     def bytes_to_base64(image_bytes: bytes) -> str:
         """Convert raw image bytes to base64 PNG string."""
+        if not image_bytes or not isinstance(image_bytes, (bytes, bytearray)):
+            raise ValueError(
+                f"image_bytes must be non-empty bytes, got: {type(image_bytes)}"
+            )
+
         try:
             image = Image.open(BytesIO(image_bytes))
             buffer = BytesIO()
             image.save(buffer, format="PNG")
             return base64.b64encode(buffer.getvalue()).decode("utf-8")
+        except (IOError, OSError) as e:
+            logger.exception("Failed to decode image bytes")
+            raise ValueError(f"Invalid image data: {e}") from e
         except Exception as e:
             logger.exception("Image bytes conversion failed")
-            raise e
+            raise ValueError(f"Image bytes conversion failed: {e}") from e
 
 
 def extract_text_from_html_bytes(content: bytes) -> str:
     """Extract readable text from raw HTML bytes."""
-    soup = BeautifulSoup(content, features="html.parser")
-    for script in soup(["script", "style"]):
-        script.extract()
-    lines = (line.strip() for line in soup.get_text().splitlines())
-    phrases = (phrase.strip() for line in lines for phrase in line.split("  "))
-    text = "\n".join(chunk for chunk in phrases if chunk)
-    return text
+    try:
+        if not content:
+            logger.warning("Empty content provided to extract_text_from_html_bytes")
+            return ""
+
+        soup = BeautifulSoup(content, features="html.parser")
+        for script in soup(["script", "style"]):
+            script.extract()
+        lines = (line.strip() for line in soup.get_text().splitlines())
+        phrases = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = "\n".join(chunk for chunk in phrases if chunk)
+        return text
+    except Exception as e:
+        logger.exception("Failed to extract text from HTML: %s", e)
+        return ""
 
 
 def json_safe(data: Any) -> Any:
     """Recursively convert string values to JSON-safe strings."""
-    if isinstance(data, dict):
-        return {k: json_safe(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [json_safe(v) for v in data]
-    elif isinstance(data, str):
-        return (
-            data.replace("\\", "\\\\")
-            .replace('"', '\\"')
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-        )
-    else:
-        return data
+    try:
+        if isinstance(data, dict):
+            return {k: json_safe(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [json_safe(v) for v in data]
+        elif isinstance(data, tuple):
+            return tuple(json_safe(v) for v in data)
+        elif isinstance(data, str):
+            return (
+                data.replace("\\", "\\\\")
+                .replace('"', '\\"')
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+            )
+        elif isinstance(data, (int, float, bool, type(None))):
+            return data
+        else:
+            return str(data)
+    except Exception as e:
+        logger.warning("Failed to make data JSON-safe: %s", e)
+        return str(data)

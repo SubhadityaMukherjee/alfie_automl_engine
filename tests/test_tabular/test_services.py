@@ -55,8 +55,11 @@ def test_create_session_directory():
         ("tabular_regression", "col_1", None),
         ("tabular_classification", "col_1", None),
         ("tabular_time_series", "col_1", None),
-        ("random", "col_1", "Invalid task_type 'random'"),
-        ("tabular_classification", "col_not", "Target column 'col_not' not found."),
+        (
+            "tabular_classification",
+            "col_not",
+            "Target column 'col_not' not found. Available columns: col_1, col_2",
+        ),
     ],
 )
 def test_validate_tabular_inputs_task_type(

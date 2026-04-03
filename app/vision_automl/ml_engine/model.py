@@ -1,3 +1,4 @@
+import logging
 import torch
 from torch import nn
 from transformers import (
@@ -13,6 +14,8 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoModelForVideoClassification,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ImageClassificationModel(nn.Module):
@@ -32,11 +35,17 @@ class ImageClassificationModel(nn.Module):
             "id2label": id2label or {i: str(i) for i in range(num_classes)},
             "label2id": label2id or {str(i): i for i in range(num_classes)},
         }
-        self.model = AutoModelForImageClassification.from_pretrained(
-            model_id,
-            ignore_mismatched_sizes=True,
-            **config_kwargs,
-        )
+        try:
+            self.model = AutoModelForImageClassification.from_pretrained(
+                model_id,
+                ignore_mismatched_sizes=True,
+                **config_kwargs,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to load image classification model from %s: %s", model_id, e
+            )
+            raise
         if freeze_backbone:
             for param in self.model.parameters():
                 param.requires_grad = False
@@ -63,13 +72,19 @@ class ImageSegmentationModel(nn.Module):
         label2id: dict | None = None,
     ):
         super().__init__()
-        self.model = AutoModelForImageSegmentation.from_pretrained(
-            model_id,
-            ignore_mismatched_sizes=True,
-            num_labels=num_classes,
-            id2label=id2label or {i: str(i) for i in range(num_classes)},
-            label2id=label2id or {str(i): i for i in range(num_classes)},
-        )
+        try:
+            self.model = AutoModelForImageSegmentation.from_pretrained(
+                model_id,
+                ignore_mismatched_sizes=True,
+                num_labels=num_classes,
+                id2label=id2label or {i: str(i) for i in range(num_classes)},
+                label2id=label2id or {str(i): i for i in range(num_classes)},
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to load image segmentation model from %s: %s", model_id, e
+            )
+            raise
 
     def forward(self, pixel_values: torch.Tensor, labels: torch.Tensor | None = None):
         """Returns loss (scalar) when labels provided, else logits."""
@@ -82,11 +97,17 @@ class ObjectDetectionModel(nn.Module):
 
     def __init__(self, model_id: str, num_classes: int = 2):
         super().__init__()
-        self.model = AutoModelForObjectDetection.from_pretrained(
-            model_id,
-            ignore_mismatched_sizes=True,
-            num_labels=num_classes,
-        )
+        try:
+            self.model = AutoModelForObjectDetection.from_pretrained(
+                model_id,
+                ignore_mismatched_sizes=True,
+                num_labels=num_classes,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to load object detection model from %s: %s", model_id, e
+            )
+            raise
 
     def forward(self, pixel_values: torch.Tensor, labels=None):
         """Returns loss when labels provided (list of dicts), else raw output."""
@@ -105,13 +126,19 @@ class VideoClassificationModel(nn.Module):
         label2id: dict | None = None,
     ):
         super().__init__()
-        self.model = AutoModelForVideoClassification.from_pretrained(
-            model_id,
-            ignore_mismatched_sizes=True,
-            num_labels=num_classes,
-            id2label=id2label or {i: str(i) for i in range(num_classes)},
-            label2id=label2id or {str(i): i for i in range(num_classes)},
-        )
+        try:
+            self.model = AutoModelForVideoClassification.from_pretrained(
+                model_id,
+                ignore_mismatched_sizes=True,
+                num_labels=num_classes,
+                id2label=id2label or {i: str(i) for i in range(num_classes)},
+                label2id=label2id or {str(i): i for i in range(num_classes)},
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to load video classification model from %s: %s", model_id, e
+            )
+            raise
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         return self.model(pixel_values=pixel_values).logits
@@ -122,10 +149,16 @@ class KeypointDetectionModel(nn.Module):
 
     def __init__(self, model_id: str):
         super().__init__()
-        self.model = AutoModelForKeypointDetection.from_pretrained(
-            model_id,
-            ignore_mismatched_sizes=True,
-        )
+        try:
+            self.model = AutoModelForKeypointDetection.from_pretrained(
+                model_id,
+                ignore_mismatched_sizes=True,
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to load keypoint detection model from %s: %s", model_id, e
+            )
+            raise
 
     def forward(self, pixel_values: torch.Tensor, labels=None):
         """Returns loss when labels provided, else raw output."""
@@ -144,13 +177,19 @@ class AudioClassificationModel(nn.Module):
         label2id: dict | None = None,
     ):
         super().__init__()
-        self.model = AutoModelForAudioClassification.from_pretrained(
-            model_id,
-            ignore_mismatched_sizes=True,
-            num_labels=num_classes,
-            id2label=id2label or {i: str(i) for i in range(num_classes)},
-            label2id=label2id or {str(i): i for i in range(num_classes)},
-        )
+        try:
+            self.model = AutoModelForAudioClassification.from_pretrained(
+                model_id,
+                ignore_mismatched_sizes=True,
+                num_labels=num_classes,
+                id2label=id2label or {i: str(i) for i in range(num_classes)},
+                label2id=label2id or {str(i): i for i in range(num_classes)},
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to load audio classification model from %s: %s", model_id, e
+            )
+            raise
 
     def forward(self, input_values: torch.Tensor) -> torch.Tensor:
         return self.model(input_values=input_values).logits
@@ -167,13 +206,19 @@ class SequenceClassificationModel(nn.Module):
         label2id: dict | None = None,
     ):
         super().__init__()
-        self.model = AutoModelForSequenceClassification.from_pretrained(
-            model_id,
-            ignore_mismatched_sizes=True,
-            num_labels=num_classes,
-            id2label=id2label or {i: str(i) for i in range(num_classes)},
-            label2id=label2id or {str(i): i for i in range(num_classes)},
-        )
+        try:
+            self.model = AutoModelForSequenceClassification.from_pretrained(
+                model_id,
+                ignore_mismatched_sizes=True,
+                num_labels=num_classes,
+                id2label=id2label or {i: str(i) for i in range(num_classes)},
+                label2id=label2id or {str(i): i for i in range(num_classes)},
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to load sequence classification model from %s: %s", model_id, e
+            )
+            raise
 
     def forward(
         self,
@@ -188,7 +233,13 @@ class QuestionAnsweringModel(nn.Module):
 
     def __init__(self, model_id: str):
         super().__init__()
-        self.model = AutoModelForQuestionAnswering.from_pretrained(model_id)
+        try:
+            self.model = AutoModelForQuestionAnswering.from_pretrained(model_id)
+        except Exception as e:
+            logger.error(
+                "Failed to load question answering model from %s: %s", model_id, e
+            )
+            raise
 
     def forward(
         self,
@@ -214,7 +265,11 @@ class CausalLMModel(nn.Module):
 
     def __init__(self, model_id: str):
         super().__init__()
-        self.model = AutoModelForCausalLM.from_pretrained(model_id)
+        try:
+            self.model = AutoModelForCausalLM.from_pretrained(model_id)
+        except Exception as e:
+            logger.error("Failed to load causal LM model from %s: %s", model_id, e)
+            raise
 
     def forward(
         self,
@@ -233,7 +288,11 @@ class Seq2SeqLMModel(nn.Module):
 
     def __init__(self, model_id: str):
         super().__init__()
-        self.model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
+        try:
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
+        except Exception as e:
+            logger.error("Failed to load seq2seq LM model from %s: %s", model_id, e)
+            raise
 
     def forward(
         self,
@@ -256,7 +315,11 @@ class MaskedLMModel(nn.Module):
 
     def __init__(self, model_id: str):
         super().__init__()
-        self.model = AutoModelForMaskedLM.from_pretrained(model_id)
+        try:
+            self.model = AutoModelForMaskedLM.from_pretrained(model_id)
+        except Exception as e:
+            logger.error("Failed to load masked LM model from %s: %s", model_id, e)
+            raise
 
     def forward(
         self,
