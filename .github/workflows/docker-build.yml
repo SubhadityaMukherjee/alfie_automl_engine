@@ -1,0 +1,26 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitLab Container Registry
+        run: echo ${{ secrets.DOCKER_PASSWORD_CATALINK }} | docker login gitlab.catalink.eu:5050 -u tue --password-stdin
+
+      - name: Build and push multi-platform image
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -t gitlab.catalink.eu:5050/external/alfie_eu/alfie/automl_engine:latest \
+            --push .
