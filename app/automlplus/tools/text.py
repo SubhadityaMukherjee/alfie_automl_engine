@@ -54,6 +54,18 @@ async def _process_single_chunk(
     """Process a single chunk: prompt LLM and validate image alt texts."""
     async with sem:
         try:
+            if not chunk or not chunk.strip():
+                logger.warning("Empty chunk provided for processing at index %d", i)
+                return ChunkResult(
+                    chunk=i,
+                    start_line=start,
+                    end_line=end,
+                    score=None,
+                    image_feedback=[],
+                    llm_response=None,
+                    error="Empty chunk provided",
+                )
+
             prompt = render_template(
                 jinja_environment=jinja_environment,
                 template_name="build_chunk_prompt.txt",
@@ -87,7 +99,25 @@ async def _process_single_chunk(
             score_match = re.search(
                 r"\bScore[:\s]*([0-9]+(?:\.[0-9]+)?)", response_text, re.IGNORECASE
             )
-            score = float(score_match.group(1)) if score_match else None
+            score = None
+            if score_match:
+                try:
+                    score_val = float(score_match.group(1))
+                    if 0 <= score_val <= 100:
+                        score = score_val
+                    else:
+                        logger.warning(
+                            "Score %f out of valid range [0, 100] for chunk %d",
+                            score_val,
+                            i,
+                        )
+                except ValueError as e:
+                    logger.warning(
+                        "Failed to parse score '%s' for chunk %d: %s",
+                        score_match.group(1),
+                        i,
+                        e,
+                    )
 
             images = re.findall(r'<img[^>]+src="([^"]+)"[^>]*alt="([^"]+)"', chunk)
             image_feedback: List[Dict[str, Any]] = []
@@ -100,6 +130,12 @@ async def _process_single_chunk(
                         {"src": src, "alt_text": alt, "result": result}
                     )
                 except Exception as e:
+                    logger.warning(
+                        "Failed to check alt text for image '%s' in chunk %d: %s",
+                        src,
+                        i,
+                        e,
+                    )
                     image_feedback.append(
                         {"src": src, "alt_text": alt, "error": str(e)}
                     )
@@ -114,6 +150,7 @@ async def _process_single_chunk(
                 error=None,
             )
         except Exception as e:
+            logger.exception("Failed to process chunk %d", i)
             return ChunkResult(
                 chunk=i,
                 start_line=start,

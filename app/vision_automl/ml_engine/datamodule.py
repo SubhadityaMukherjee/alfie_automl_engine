@@ -94,23 +94,47 @@ class ImageClassificationDataModule:
 
     def setup(self) -> None:
         """Create train/val/test splits, datasets, label maps, and processor."""
-        logger.info("Reading dataset from %s", self.csv_file)
-        df: pd.DataFrame = pd.read_csv(self.csv_file)
+        try:
+            logger.info("Reading dataset from %s", self.csv_file)
+            df: pd.DataFrame = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
 
-        train_df, temp_df = train_test_split(
-            df,
-            test_size=self.val_split + self.test_split,
-            stratify=df[self.label_col],
-            random_state=self.seed,
-        )
+        try:
+            train_df, temp_df = train_test_split(
+                df,
+                test_size=self.val_split + self.test_split,
+                stratify=df[self.label_col],
+                random_state=self.seed,
+            )
+        except ValueError as e:
+            logger.error(
+                "Failed to split dataset (insufficient samples or invalid stratification): %s",
+                e,
+            )
+            raise
 
-        relative_val = self.val_split / (self.val_split + self.test_split)
-        val_df, test_df = train_test_split(
-            temp_df,
-            test_size=1 - relative_val,
-            stratify=temp_df[self.label_col],
-            random_state=self.seed,
-        )
+        try:
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df,
+                test_size=1 - relative_val,
+                stratify=temp_df[self.label_col],
+                random_state=self.seed,
+            )
+        except ValueError as e:
+            logger.error("Failed to split validation/test data: %s", e)
+            raise
 
         logger.info(
             "Split completed: train=%d, val=%d, test=%d",
@@ -119,33 +143,41 @@ class ImageClassificationDataModule:
             len(test_df),
         )
 
-        self.train_dataset = ImageClassificationFromCSVDataset(
-            csv_file=train_df,
-            root_dir=self.root_dir,
-            img_col=self.img_col,
-            label_col=self.label_col,
-            transform=self.transform,
-        )
-        self.val_dataset = ImageClassificationFromCSVDataset(
-            csv_file=val_df,
-            root_dir=self.root_dir,
-            img_col=self.img_col,
-            label_col=self.label_col,
-            transform=self.transform,
-        )
-        self.test_dataset = ImageClassificationFromCSVDataset(
-            csv_file=test_df,
-            root_dir=self.root_dir,
-            img_col=self.img_col,
-            label_col=self.label_col,
-            transform=self.transform,
-        )
+        try:
+            self.train_dataset = ImageClassificationFromCSVDataset(
+                csv_file=train_df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                label_col=self.label_col,
+                transform=self.transform,
+            )
+            self.val_dataset = ImageClassificationFromCSVDataset(
+                csv_file=val_df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                label_col=self.label_col,
+                transform=self.transform,
+            )
+            self.test_dataset = ImageClassificationFromCSVDataset(
+                csv_file=test_df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                label_col=self.label_col,
+                transform=self.transform,
+            )
+        except Exception as e:
+            logger.error("Failed to create datasets: %s", e)
+            raise
 
         self.num_classes = len(self.train_dataset.classes)
         self.id2label = {i: c for i, c in enumerate(self.train_dataset.classes)}
         self.label2id = {c: i for i, c in enumerate(self.train_dataset.classes)}
 
-        self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+        try:
+            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load processor from %s: %s", self.hf_model_id, e)
+            raise
         logger.info("Loaded processor from: %s", self.hf_model_id)
 
     def _collate_fn(self, batch: list[tuple[Any, Any]]) -> dict[str, torch.Tensor]:
@@ -306,25 +338,57 @@ class ObjectDetectionDataModule:
     def setup(self) -> None:
         import json as _json
 
-        df = pd.read_csv(self.csv_file)
-        all_labels: set[int] = set()
-        for row in df[self.class_labels_col]:
-            all_labels.update(_json.loads(row))
+        try:
+            df = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
+
+        try:
+            all_labels: set[int] = set()
+            for row in df[self.class_labels_col]:
+                all_labels.update(_json.loads(row))
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse JSON in class_labels column: %s", e)
+            raise
+        except KeyError as e:
+            logger.error("Column not found in dataset: %s", e)
+            raise
+
         self.num_classes = len(all_labels)
         self.id2label = {i: str(i) for i in sorted(all_labels)}
         self.label2id = {v: k for k, v in self.id2label.items()}
 
-        train_df, temp_df = train_test_split(
-            df, test_size=self.val_split + self.test_split, random_state=self.seed
-        )
-        relative_val = self.val_split / (self.val_split + self.test_split)
-        val_df, test_df = train_test_split(
-            temp_df, test_size=1 - relative_val, random_state=self.seed
-        )
+        try:
+            train_df, temp_df = train_test_split(
+                df, test_size=self.val_split + self.test_split, random_state=self.seed
+            )
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df, test_size=1 - relative_val, random_state=self.seed
+            )
+        except ValueError as e:
+            logger.error("Failed to split dataset: %s", e)
+            raise
+
         self.train_df = train_df.reset_index(drop=True)
         self.val_df = val_df.reset_index(drop=True)
         self.test_df = test_df.reset_index(drop=True)
-        self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+
+        try:
+            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load processor from %s: %s", self.hf_model_id, e)
+            raise
 
     def _make_dataset(self, df: pd.DataFrame) -> Dataset:
         import json as _json
@@ -428,31 +492,104 @@ class VideoClassificationDataModule:
         self.setup()
 
     def setup(self) -> None:
-        df = pd.read_csv(self.csv_file)
-        classes = sorted(df[self.label_col].unique().tolist())
+        import json
+
+        try:
+            df = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
+
+        try:
+            all_labels: set[int] = set()
+            for row in df[self.class_labels_col]:
+                all_labels.update(json.loads(row))
+        except json.JSONDecodeError as e:
+            logger.error("Failed to parse JSON in class_labels column: %s", e)
+            raise
+        except KeyError as e:
+            logger.error("Column not found in dataset: %s", e)
+            raise
+
+        self.num_classes = len(all_labels)
+        self.id2label = {i: str(i) for i in sorted(all_labels)}
+        self.label2id = {v: k for k, v in self.id2label.items()}
+
+        try:
+            train_df, temp_df = train_test_split(
+                df, test_size=self.val_split + self.test_split, random_state=self.seed
+            )
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df, test_size=1 - relative_val, random_state=self.seed
+            )
+        except ValueError as e:
+            logger.error("Failed to split dataset: %s", e)
+            raise
+
+        self.train_df = train_df.reset_index(drop=True)
+        self.val_df = val_df.reset_index(drop=True)
+        self.test_df = test_df.reset_index(drop=True)
+
+        try:
+            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+
+        try:
+            classes = sorted(df[self.label_col].unique().tolist())
+        except KeyError as e:
+            logger.error(
+                "Label column '%s' not found in dataset: %s", self.label_col, e
+            )
+            raise
+
         self.num_classes = len(classes)
         self.id2label = {i: c for i, c in enumerate(classes)}
         self.label2id = {c: i for i, c in enumerate(classes)}
         df = df.copy()
         df[self.label_col] = df[self.label_col].map(self.label2id)
 
-        train_df, temp_df = train_test_split(
-            df,
-            test_size=self.val_split + self.test_split,
-            stratify=df[self.label_col],
-            random_state=self.seed,
-        )
-        relative_val = self.val_split / (self.val_split + self.test_split)
-        val_df, test_df = train_test_split(
-            temp_df,
-            test_size=1 - relative_val,
-            stratify=temp_df[self.label_col],
-            random_state=self.seed,
-        )
+        try:
+            train_df, temp_df = train_test_split(
+                df,
+                test_size=self.val_split + self.test_split,
+                stratify=df[self.label_col],
+                random_state=self.seed,
+            )
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df,
+                test_size=1 - relative_val,
+                stratify=temp_df[self.label_col],
+                random_state=self.seed,
+            )
+        except ValueError as e:
+            logger.error("Failed to split dataset: %s", e)
+            raise
+
         self.train_df = train_df.reset_index(drop=True)
         self.val_df = val_df.reset_index(drop=True)
         self.test_df = test_df.reset_index(drop=True)
-        self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+
+        try:
+            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load processor from %s: %s", self.hf_model_id, e)
+            raise
 
     def _make_dataset(self, df: pd.DataFrame) -> Dataset:
         from torchvision.io import read_video
@@ -612,31 +749,66 @@ class AudioClassificationDataModule:
         self.setup()
 
     def setup(self) -> None:
-        df = pd.read_csv(self.csv_file)
-        classes = sorted(df[self.label_col].unique().tolist())
+        try:
+            df = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
+
+        try:
+            classes = sorted(df[self.label_col].unique().tolist())
+        except KeyError as e:
+            logger.error(
+                "Label column '%s' not found in dataset: %s", self.label_col, e
+            )
+            raise
+
         self.num_classes = len(classes)
         self.id2label = {i: c for i, c in enumerate(classes)}
         self.label2id = {c: i for i, c in enumerate(classes)}
         df = df.copy()
         df[self.label_col] = df[self.label_col].map(self.label2id)
 
-        train_df, temp_df = train_test_split(
-            df,
-            test_size=self.val_split + self.test_split,
-            stratify=df[self.label_col],
-            random_state=self.seed,
-        )
-        relative_val = self.val_split / (self.val_split + self.test_split)
-        val_df, test_df = train_test_split(
-            temp_df,
-            test_size=1 - relative_val,
-            stratify=temp_df[self.label_col],
-            random_state=self.seed,
-        )
+        try:
+            train_df, temp_df = train_test_split(
+                df,
+                test_size=self.val_split + self.test_split,
+                stratify=df[self.label_col],
+                random_state=self.seed,
+            )
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df,
+                test_size=1 - relative_val,
+                stratify=temp_df[self.label_col],
+                random_state=self.seed,
+            )
+        except ValueError as e:
+            logger.error("Failed to split dataset: %s", e)
+            raise
+
         self.train_df = train_df.reset_index(drop=True)
         self.val_df = val_df.reset_index(drop=True)
         self.test_df = test_df.reset_index(drop=True)
-        self.feature_extractor = AutoFeatureExtractor.from_pretrained(self.hf_model_id)
+
+        try:
+            self.feature_extractor = AutoFeatureExtractor.from_pretrained(
+                self.hf_model_id
+            )
+        except Exception as e:
+            logger.error(
+                "Failed to load feature extractor from %s: %s", self.hf_model_id, e
+            )
+            raise
 
     def _make_dataset(self, df: pd.DataFrame) -> Dataset:
         try:
@@ -747,37 +919,63 @@ class SequenceClassificationDataModule:
         self.setup()
 
     def setup(self) -> None:
-        df = pd.read_csv(self.csv_file)
-        train_df, temp_df = train_test_split(
-            df,
-            test_size=self.val_split + self.test_split,
-            stratify=df[self.label_col],
-            random_state=self.seed,
-        )
-        relative_val = self.val_split / (self.val_split + self.test_split)
-        val_df, test_df = train_test_split(
-            temp_df,
-            test_size=1 - relative_val,
-            stratify=temp_df[self.label_col],
-            random_state=self.seed,
-        )
+        try:
+            df = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
 
-        self.train_dataset = TextClassificationFromCSVDataset(
-            train_df, self.text_col, self.label_col
-        )
-        self.val_dataset = TextClassificationFromCSVDataset(
-            val_df, self.text_col, self.label_col
-        )
-        self.test_dataset = TextClassificationFromCSVDataset(
-            test_df, self.text_col, self.label_col
-        )
+        try:
+            train_df, temp_df = train_test_split(
+                df,
+                test_size=self.val_split + self.test_split,
+                stratify=df[self.label_col],
+                random_state=self.seed,
+            )
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df,
+                test_size=1 - relative_val,
+                stratify=temp_df[self.label_col],
+                random_state=self.seed,
+            )
+        except ValueError as e:
+            logger.error("Failed to split dataset: %s", e)
+            raise
+
+        try:
+            self.train_dataset = TextClassificationFromCSVDataset(
+                train_df, self.text_col, self.label_col
+            )
+            self.val_dataset = TextClassificationFromCSVDataset(
+                val_df, self.text_col, self.label_col
+            )
+            self.test_dataset = TextClassificationFromCSVDataset(
+                test_df, self.text_col, self.label_col
+            )
+        except Exception as e:
+            logger.error("Failed to create datasets: %s", e)
+            raise
 
         classes = self.train_dataset.classes
         self.num_classes = len(classes)
         self.id2label = {i: str(c) for i, c in enumerate(classes)}
         self.label2id = {str(c): i for i, c in enumerate(classes)}
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load tokenizer from %s: %s", self.hf_model_id, e)
+            raise
 
     def _collate_fn(self, batch: list[tuple[str, int]]) -> dict[str, torch.Tensor]:
         texts, labels = zip(*batch)
@@ -864,37 +1062,64 @@ class QuestionAnsweringDataModule:
         self.setup()
 
     def setup(self) -> None:
-        df = pd.read_csv(self.csv_file)
-        train_df, temp_df = train_test_split(
-            df, test_size=self.val_split + self.test_split, random_state=self.seed
-        )
-        relative_val = self.val_split / (self.val_split + self.test_split)
-        val_df, test_df = train_test_split(
-            temp_df, test_size=1 - relative_val, random_state=self.seed
-        )
+        try:
+            df = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
 
-        self.train_dataset = QuestionAnsweringFromCSVDataset(
-            train_df,
-            self.question_col,
-            self.context_col,
-            self.answer_start_col,
-            self.answer_text_col,
-        )
-        self.val_dataset = QuestionAnsweringFromCSVDataset(
-            val_df,
-            self.question_col,
-            self.context_col,
-            self.answer_start_col,
-            self.answer_text_col,
-        )
-        self.test_dataset = QuestionAnsweringFromCSVDataset(
-            test_df,
-            self.question_col,
-            self.context_col,
-            self.answer_start_col,
-            self.answer_text_col,
-        )
-        self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
+        try:
+            train_df, temp_df = train_test_split(
+                df, test_size=self.val_split + self.test_split, random_state=self.seed
+            )
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df, test_size=1 - relative_val, random_state=self.seed
+            )
+        except ValueError as e:
+            logger.error("Failed to split dataset: %s", e)
+            raise
+
+        try:
+            self.train_dataset = QuestionAnsweringFromCSVDataset(
+                train_df,
+                self.question_col,
+                self.context_col,
+                self.answer_start_col,
+                self.answer_text_col,
+            )
+            self.val_dataset = QuestionAnsweringFromCSVDataset(
+                val_df,
+                self.question_col,
+                self.context_col,
+                self.answer_start_col,
+                self.answer_text_col,
+            )
+            self.test_dataset = QuestionAnsweringFromCSVDataset(
+                test_df,
+                self.question_col,
+                self.context_col,
+                self.answer_start_col,
+                self.answer_text_col,
+            )
+        except Exception as e:
+            logger.error("Failed to create datasets: %s", e)
+            raise
+
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load tokenizer from %s: %s", self.hf_model_id, e)
+            raise
 
     def _collate_fn(self, batch: list[dict]) -> dict[str, torch.Tensor]:
         if self.tokenizer is None:
@@ -1000,20 +1225,47 @@ class CausalLMDataModule:
         self.setup()
 
     def setup(self) -> None:
-        df = pd.read_csv(self.csv_file)
-        train_df, temp_df = train_test_split(
-            df, test_size=self.val_split + self.test_split, random_state=self.seed
-        )
-        relative_val = self.val_split / (self.val_split + self.test_split)
-        val_df, test_df = train_test_split(
-            temp_df, test_size=1 - relative_val, random_state=self.seed
-        )
+        try:
+            df = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
 
-        self.train_dataset = CausalLMFromCSVDataset(train_df, self.text_col)
-        self.val_dataset = CausalLMFromCSVDataset(val_df, self.text_col)
-        self.test_dataset = CausalLMFromCSVDataset(test_df, self.text_col)
+        try:
+            train_df, temp_df = train_test_split(
+                df, test_size=self.val_split + self.test_split, random_state=self.seed
+            )
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df, test_size=1 - relative_val, random_state=self.seed
+            )
+        except ValueError as e:
+            logger.error("Failed to split dataset: %s", e)
+            raise
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
+        try:
+            self.train_dataset = CausalLMFromCSVDataset(train_df, self.text_col)
+            self.val_dataset = CausalLMFromCSVDataset(val_df, self.text_col)
+            self.test_dataset = CausalLMFromCSVDataset(test_df, self.text_col)
+        except Exception as e:
+            logger.error("Failed to create datasets: %s", e)
+            raise
+
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load tokenizer from %s: %s", self.hf_model_id, e)
+            raise
+
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -1098,25 +1350,52 @@ class Seq2SeqLMDataModule:
         self.setup()
 
     def setup(self) -> None:
-        df = pd.read_csv(self.csv_file)
-        train_df, temp_df = train_test_split(
-            df, test_size=self.val_split + self.test_split, random_state=self.seed
-        )
-        relative_val = self.val_split / (self.val_split + self.test_split)
-        val_df, test_df = train_test_split(
-            temp_df, test_size=1 - relative_val, random_state=self.seed
-        )
+        try:
+            df = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
 
-        self.train_dataset = Seq2SeqFromCSVDataset(
-            train_df, self.input_col, self.target_col
-        )
-        self.val_dataset = Seq2SeqFromCSVDataset(
-            val_df, self.input_col, self.target_col
-        )
-        self.test_dataset = Seq2SeqFromCSVDataset(
-            test_df, self.input_col, self.target_col
-        )
-        self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
+        try:
+            train_df, temp_df = train_test_split(
+                df, test_size=self.val_split + self.test_split, random_state=self.seed
+            )
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df, test_size=1 - relative_val, random_state=self.seed
+            )
+        except ValueError as e:
+            logger.error("Failed to split dataset: %s", e)
+            raise
+
+        try:
+            self.train_dataset = Seq2SeqFromCSVDataset(
+                train_df, self.input_col, self.target_col
+            )
+            self.val_dataset = Seq2SeqFromCSVDataset(
+                val_df, self.input_col, self.target_col
+            )
+            self.test_dataset = Seq2SeqFromCSVDataset(
+                test_df, self.input_col, self.target_col
+            )
+        except Exception as e:
+            logger.error("Failed to create datasets: %s", e)
+            raise
+
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load tokenizer from %s: %s", self.hf_model_id, e)
+            raise
 
     def _collate_fn(self, batch: list[tuple[str, str]]) -> dict[str, torch.Tensor]:
         if self.tokenizer is None:
@@ -1209,26 +1488,57 @@ class MaskedLMDataModule:
         self.setup()
 
     def setup(self) -> None:
-        df = pd.read_csv(self.csv_file)
-        train_df, temp_df = train_test_split(
-            df, test_size=self.val_split + self.test_split, random_state=self.seed
-        )
-        relative_val = self.val_split / (self.val_split + self.test_split)
-        val_df, test_df = train_test_split(
-            temp_df, test_size=1 - relative_val, random_state=self.seed
-        )
+        try:
+            df = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
 
-        # Reuse CausalLMFromCSVDataset as it just returns text strings
-        self.train_dataset = CausalLMFromCSVDataset(train_df, self.text_col)
-        self.val_dataset = CausalLMFromCSVDataset(val_df, self.text_col)
-        self.test_dataset = CausalLMFromCSVDataset(test_df, self.text_col)
+        try:
+            train_df, temp_df = train_test_split(
+                df, test_size=self.val_split + self.test_split, random_state=self.seed
+            )
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df, test_size=1 - relative_val, random_state=self.seed
+            )
+        except ValueError as e:
+            logger.error("Failed to split dataset: %s", e)
+            raise
 
-        self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
-        self.data_collator = DataCollatorForLanguageModeling(
-            tokenizer=self.tokenizer,
-            mlm=True,
-            mlm_probability=self.mlm_probability,
-        )
+        try:
+            # Reuse CausalLMFromCSVDataset as it just returns text strings
+            self.train_dataset = CausalLMFromCSVDataset(train_df, self.text_col)
+            self.val_dataset = CausalLMFromCSVDataset(val_df, self.text_col)
+            self.test_dataset = CausalLMFromCSVDataset(test_df, self.text_col)
+        except Exception as e:
+            logger.error("Failed to create datasets: %s", e)
+            raise
+
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load tokenizer from %s: %s", self.hf_model_id, e)
+            raise
+
+        try:
+            self.data_collator = DataCollatorForLanguageModeling(
+                tokenizer=self.tokenizer,
+                mlm=True,
+                mlm_probability=self.mlm_probability,
+            )
+        except Exception as e:
+            logger.error("Failed to create data collator: %s", e)
+            raise
 
     def _tokenize(self, batch: list[str]) -> dict[str, torch.Tensor]:
         if self.tokenizer is None:

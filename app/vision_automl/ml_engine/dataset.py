@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 from typing import Optional, Union
@@ -7,6 +8,8 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
+
+logger = logging.getLogger(__name__)
 
 
 class ImageClassificationFromCSVDataset(Dataset):
@@ -21,7 +24,20 @@ class ImageClassificationFromCSVDataset(Dataset):
         transform: Optional[T.Compose] = None,
     ):
         if isinstance(csv_file, Path):
-            self.label_csv = pd.read_csv(csv_file)
+            try:
+                self.label_csv = pd.read_csv(csv_file)
+            except FileNotFoundError:
+                logger.error("Dataset CSV file not found: %s", csv_file)
+                raise
+            except pd.errors.EmptyDataError:
+                logger.error("Dataset CSV file is empty: %s", csv_file)
+                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+            except pd.errors.ParserError as e:
+                logger.error("Failed to parse dataset CSV file: %s", e)
+                raise
+            except Exception as e:
+                logger.error("Unexpected error reading dataset CSV file: %s", e)
+                raise
         elif isinstance(csv_file, pd.DataFrame):
             self.label_csv = csv_file.reset_index(drop=True)
         else:
@@ -66,6 +82,12 @@ class ImageClassificationFromCSVDataset(Dataset):
 
         img_path = self.root_dir / label_name / filename
         if not img_path.exists():
+            logger.error(
+                "Image not found: root_dir=%s, label_name=%s, filename=%s",
+                self.root_dir,
+                label_name,
+                filename,
+            )
             print(os.listdir(self.root_dir))
             print(os.listdir(self.root_dir / label_name))
 
@@ -77,7 +99,11 @@ class ImageClassificationFromCSVDataset(Dataset):
                 f"filename: {repr(filename)}"
             )
 
-        img = Image.open(img_path).convert("RGB")
+        try:
+            img = Image.open(img_path).convert("RGB")
+        except Exception as e:
+            logger.error("Failed to open or convert image %s: %s", img_path, e)
+            raise
 
         if self.transform:
             img = self.transform(img)
@@ -100,7 +126,20 @@ class TextClassificationFromCSVDataset(Dataset):
         label_col: str = "label",
     ):
         if isinstance(csv_file, Path):
-            self.df = pd.read_csv(csv_file)
+            try:
+                self.df = pd.read_csv(csv_file)
+            except FileNotFoundError:
+                logger.error("Dataset CSV file not found: %s", csv_file)
+                raise
+            except pd.errors.EmptyDataError:
+                logger.error("Dataset CSV file is empty: %s", csv_file)
+                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+            except pd.errors.ParserError as e:
+                logger.error("Failed to parse dataset CSV file: %s", e)
+                raise
+            except Exception as e:
+                logger.error("Unexpected error reading dataset CSV file: %s", e)
+                raise
         elif isinstance(csv_file, pd.DataFrame):
             self.df = csv_file.reset_index(drop=True)
         else:
@@ -144,7 +183,20 @@ class QuestionAnsweringFromCSVDataset(Dataset):
         answer_text_col: str = "answer_text",
     ):
         if isinstance(csv_file, Path):
-            self.df = pd.read_csv(csv_file)
+            try:
+                self.df = pd.read_csv(csv_file)
+            except FileNotFoundError:
+                logger.error("Dataset CSV file not found: %s", csv_file)
+                raise
+            except pd.errors.EmptyDataError:
+                logger.error("Dataset CSV file is empty: %s", csv_file)
+                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+            except pd.errors.ParserError as e:
+                logger.error("Failed to parse dataset CSV file: %s", e)
+                raise
+            except Exception as e:
+                logger.error("Unexpected error reading dataset CSV file: %s", e)
+                raise
         elif isinstance(csv_file, pd.DataFrame):
             self.df = csv_file.reset_index(drop=True)
         else:
@@ -183,7 +235,20 @@ class Seq2SeqFromCSVDataset(Dataset):
         target_col: str = "target_text",
     ):
         if isinstance(csv_file, Path):
-            self.df = pd.read_csv(csv_file)
+            try:
+                self.df = pd.read_csv(csv_file)
+            except FileNotFoundError:
+                logger.error("Dataset CSV file not found: %s", csv_file)
+                raise
+            except pd.errors.EmptyDataError:
+                logger.error("Dataset CSV file is empty: %s", csv_file)
+                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+            except pd.errors.ParserError as e:
+                logger.error("Failed to parse dataset CSV file: %s", e)
+                raise
+            except Exception as e:
+                logger.error("Unexpected error reading dataset CSV file: %s", e)
+                raise
         elif isinstance(csv_file, pd.DataFrame):
             self.df = csv_file.reset_index(drop=True)
         else:
@@ -215,7 +280,20 @@ class CausalLMFromCSVDataset(Dataset):
         text_col: str = "text",
     ):
         if isinstance(csv_file, Path):
-            self.df = pd.read_csv(csv_file)
+            try:
+                self.df = pd.read_csv(csv_file)
+            except FileNotFoundError:
+                logger.error("Dataset CSV file not found: %s", csv_file)
+                raise
+            except pd.errors.EmptyDataError:
+                logger.error("Dataset CSV file is empty: %s", csv_file)
+                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+            except pd.errors.ParserError as e:
+                logger.error("Failed to parse dataset CSV file: %s", e)
+                raise
+            except Exception as e:
+                logger.error("Unexpected error reading dataset CSV file: %s", e)
+                raise
         elif isinstance(csv_file, pd.DataFrame):
             self.df = csv_file.reset_index(drop=True)
         else:

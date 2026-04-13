@@ -18,7 +18,11 @@ load_dotenv(find_dotenv())
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     configure_service_logging("automlplus")
-    await ChatHandler.init()
+    try:
+        await ChatHandler.init()
+    except Exception as e:
+        logger.critical("Failed to initialize ChatHandler: %s", e)
+        raise RuntimeError(f"ChatHandler initialization failed: {e}") from e
     yield
 
 

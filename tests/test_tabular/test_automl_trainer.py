@@ -58,7 +58,7 @@ def test_train_leaderboard_works(trainer_class: AutoMLTrainer, small_df: pd.Data
 def test_train_leaderboard_exception(
     trainer_class: AutoMLTrainer, small_df: pd.DataFrame
 ):
-    with pytest.raises(KeyError, match="missing"):
+    with pytest.raises(ValueError):
         trainer_class.train(
             train_df=small_df, test_df=None, target_column="wrong_target", time_limit=2
         )

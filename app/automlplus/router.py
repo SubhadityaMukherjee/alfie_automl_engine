@@ -51,9 +51,7 @@ async def check_alt_text(
     """Evaluate provided alt text against the referenced image using an LLM."""
     logger.info(f"Checking alt text for image URL: {image_url}")
     try:
-        result: dict[str, Any] = AltTextChecker.check(
-            jinja_environment, image_url, alt_text
-        )
+        result: str = AltTextChecker.check(jinja_environment, image_url, alt_text)
         logger.info("Alt-text evaluation completed successfully")
 
         safe_result = json_safe(

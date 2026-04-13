@@ -86,23 +86,38 @@ class ImagePromptRunner:
         prompt: str = "",
         model: str | None = None,
         jinja_environment: Environment | None = None,
-    ) -> str:
+    ):
         """Stream VLM output for an image+prompt interaction. Yields incremental text chunks."""
         model_name = ImagePromptRunner._resolve_model(model)
+
         if image_bytes is None and not image_path_or_url:
             raise ValueError("Provide either image_bytes or image_path_or_url")
 
-        image_b64 = (
-            ImageConverter.bytes_to_base64(image_bytes)
-            if image_bytes is not None
-            else ImageConverter.to_base64(str(image_path_or_url))
-        )
-        messages = ImagePromptRunner.build_messages(
-            jinja_environment, image_b64, prompt
-        )
-        return ChatHandler.chat_stream_messages_sync(
-            messages=messages, model=model_name
-        )
+        try:
+            image_b64 = (
+                ImageConverter.bytes_to_base64(image_bytes)
+                if image_bytes is not None
+                else ImageConverter.to_base64(str(image_path_or_url))
+            )
+        except Exception as e:
+            logger.exception("Failed to convert image to base64 in run_stream")
+            raise RuntimeError(f"Image conversion failed: {e}") from e
+
+        try:
+            messages = ImagePromptRunner.build_messages(
+                jinja_environment, image_b64, prompt
+            )
+        except Exception as e:
+            logger.exception("Failed to build messages in run_stream")
+            raise RuntimeError(f"Message building failed: {e}") from e
+
+        try:
+            return ChatHandler.chat_stream_messages_sync(
+                messages=messages, model=model_name
+            )
+        except Exception as e:
+            logger.exception("Failed to start streaming in run_stream")
+            raise RuntimeError(f"Streaming failed: {e}") from e
 
 
 class AltTextChecker:
@@ -178,6 +193,7 @@ class AltTextChecker:
     ) -> str:
         logger.info("Checking alt-text using model %s", model)
         model = AltTextChecker._resolve_model(model)
+        messages = None
 
         try:
             image_b64 = ImageConverter.to_base64(image_url_or_path)
@@ -204,11 +220,12 @@ class AltTextChecker:
         except Exception as e:
             logger.exception("AltTextChecker failed with error: %s", str(e))
             logger.error("Model used: %s", model)
-            try:
-                logger.error(
-                    "Messages sent (redacted): %s",
-                    AltTextChecker._redact_messages_for_log(messages),
-                )
-            except Exception:
-                logger.error("Messages sent (redaction_failed)")
+            if messages is not None:
+                try:
+                    logger.error(
+                        "Messages sent (redacted): %s",
+                        AltTextChecker._redact_messages_for_log(messages),
+                    )
+                except Exception:
+                    logger.error("Messages sent (redaction_failed)")
             raise

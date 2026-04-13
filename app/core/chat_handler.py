@@ -34,9 +34,15 @@ class ChatQueue:
 
     async def worker(self):
         while True:
-            fut, message, context, backend, model, stream, stream_queue = (
-                await self.queue.get()
-            )
+            (
+                fut,
+                message,
+                context,
+                backend,
+                model,
+                stream,
+                stream_queue,
+            ) = await self.queue.get()
             try:
                 if stream:
                     async for chunk in ChatHandler.dispatch_stream(
@@ -120,10 +126,14 @@ class ChatHandler:
     ) -> str:
         """Synchronously send a list of chat messages (optionally with images) to Azure."""
         logger.debug(f"Dispatch synchronous Chat to backend {backend} with {messages}")
-        if backend.lower() == "azure":
-            return ChatHandler._azure_chat_messages_sync(messages, model)
-        else:
-            raise ValueError(f"Unknown chat backend: {backend}")
+        try:
+            if backend.lower() == "azure":
+                return ChatHandler._azure_chat_messages_sync(messages, model)
+            else:
+                raise ValueError(f"Unknown chat backend: {backend}")
+        except Exception as e:
+            logger.error("Chat sync messages failed: %s", e)
+            raise
 
     # --- Streaming helpers for structured message payloads (incl. images) ---
     @staticmethod
@@ -135,10 +145,14 @@ class ChatHandler:
         Yields incremental text chunks from Azure as they arrive.
         """
         logger.debug("Stream chat messages synchronously")
-        if backend.lower() == "azure":
-            return ChatHandler._azure_chat_messages_stream_sync(messages, model)
-        else:
-            raise ValueError(f"Unknown chat backend: {backend}")
+        try:
+            if backend.lower() == "azure":
+                return ChatHandler._azure_chat_messages_stream_sync(messages, model)
+            else:
+                raise ValueError(f"Unknown chat backend: {backend}")
+        except Exception as e:
+            logger.error("Chat stream messages sync failed: %s", e)
+            raise
 
     @staticmethod
     def _azure_chat_messages_stream_sync(messages: List[dict], model: str):
@@ -234,9 +248,13 @@ class ChatHandler:
                 "Missing AZURE_OPENAI_ENDPOINT_LARGE_MODEL or AZURE_OPENAI_KEY environment variables"
             )
         logger.debug("Endpoint and API Key Exsists")
-        return ChatCompletionsClient(
-            endpoint=endpoint, credential=AzureKeyCredential(api_key)
-        )
+        try:
+            return ChatCompletionsClient(
+                endpoint=endpoint, credential=AzureKeyCredential(api_key)
+            )
+        except Exception as e:
+            logger.error("Failed to initialize Azure client: %s", e)
+            raise RuntimeError(f"Failed to initialize Azure client: {e}") from e
 
     @staticmethod
     async def _azure_chat(message, context, model):
@@ -247,11 +265,15 @@ class ChatHandler:
             UserMessage(content=message),
         ]
         loop = asyncio.get_event_loop()
-        response = await loop.run_in_executor(
-            None, lambda: client.complete(model=model, messages=messages)
-        )
-        logger.debug("Azure chat async works")
-        return ChatHandler._extract_azure_text_from_response(response)
+        try:
+            response = await loop.run_in_executor(
+                None, lambda: client.complete(model=model, messages=messages)
+            )
+            logger.debug("Azure chat async works")
+            return ChatHandler._extract_azure_text_from_response(response)
+        except Exception as e:
+            logger.error("Azure chat request failed: %s", e)
+            raise
 
     @staticmethod
     async def _azure_chat_stream(message, context, model):
@@ -272,33 +294,41 @@ class ChatHandler:
             )
 
         # Run the sync generator in a thread and forward chunks asynchronously
-        stream = await loop.run_in_executor(None, sync_stream)
-        for event in stream:
-            if hasattr(event, "delta") and event.delta:
-                delta = event.delta
-                content = getattr(delta, "content", None)
-                if content is None and isinstance(delta, dict):
-                    content = delta.get("content")
-                # content may be str or list of items (with text)
-                if isinstance(content, str):
-                    if content:
-                        yield content
-                elif isinstance(content, list):
-                    for item in content:
-                        if isinstance(item, str):
-                            if item:
-                                yield item
-                        elif isinstance(item, dict):
-                            text = item.get("text")
-                            if text:
-                                yield text
-                        else:
-                            text = getattr(item, "text", None)
-                            if text:
-                                yield text
-        logger.debug("Azure chat stream works")
-        if hasattr(stream, "close"):
-            stream.close()
+        try:
+            stream = await loop.run_in_executor(None, sync_stream)
+            for event in stream:
+                if hasattr(event, "delta") and event.delta:
+                    delta = event.delta
+                    content = getattr(delta, "content", None)
+                    if content is None and isinstance(delta, dict):
+                        content = delta.get("content")
+                    # content may be str or list of items (with text)
+                    if isinstance(content, str):
+                        if content:
+                            yield content
+                    elif isinstance(content, list):
+                        for item in content:
+                            if isinstance(item, str):
+                                if item:
+                                    yield item
+                            elif isinstance(item, dict):
+                                text = item.get("text")
+                                if text:
+                                    yield text
+                            else:
+                                text = getattr(item, "text", None)
+                                if text:
+                                    yield text
+            logger.debug("Azure chat stream works")
+        except Exception as e:
+            logger.error("Azure chat stream request failed: %s", e)
+            raise
+        finally:
+            if hasattr(stream, "close"):
+                try:
+                    stream.close()
+                except Exception:
+                    pass
 
     @staticmethod
     def _extract_azure_text_from_response(response) -> str:
