@@ -489,7 +489,7 @@ def deployment_instructions() -> str:
         return "No instructions found"
 
 
-def serialize_and_zip_model(result: dict, workdir: Path) -> Path:
+def serialize_and_zip_model(workdir: Path) -> Path:
     """
     Package the trained model directory into a ZIP archive.
 

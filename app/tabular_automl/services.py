@@ -35,8 +35,6 @@ SUPPORTED_FILE_TYPES = {"csv", "tsv", "parquet"}
 
 def create_session_directory(upload_root: Path = UPLOAD_ROOT) -> tuple[str, Path]:
     """Create and return a new session id and directory path."""
-    if upload_root is None:
-        raise ValueError("upload_root cannot be None")
 
     session_id = str(uuid.uuid4())
     session_dir = upload_root / session_id
@@ -53,12 +51,6 @@ def create_session_directory(upload_root: Path = UPLOAD_ROOT) -> tuple[str, Path
 
 def save_upload(file: UploadFile, destination: Path) -> None:
     """Persist an uploaded file to the given destination path."""
-    if file is None:
-        raise ValueError("file cannot be None")
-
-    if destination is None:
-        raise ValueError("destination cannot be None")
-
     if not hasattr(file, "file"):
         raise ValueError("file must have a 'file' attribute")
 
@@ -79,12 +71,6 @@ def save_upload(file: UploadFile, destination: Path) -> None:
 
 def load_table(file_path: Path) -> pd.DataFrame:
     """Load a table file into a DataFrame based on file extension."""
-    if file_path is None:
-        raise ValueError("file_path cannot be None")
-
-    if not isinstance(file_path, Path):
-        raise TypeError(f"file_path must be a Path object, got {type(file_path)}")
-
     if not file_path.exists():
         raise FileNotFoundError(f"File not found: {file_path}")
 
@@ -129,14 +115,6 @@ def validate_tabular_inputs(
     task_type: str = "tabular_classification",
 ) -> str | None:
     """Validate required columns and task type for tabular training."""
-
-    if train_path is None:
-        logger.error("train_path cannot be None")
-        return "train_path cannot be None"
-
-    if not isinstance(train_path, Path):
-        logger.error(f"train_path must be a Path object, got {type(train_path)}")
-        return f"train_path must be a Path object, got {type(train_path)}"
 
     if not train_path.exists():
         logger.error(f"Training file not found: {train_path}")
@@ -219,9 +197,6 @@ def fetch_dataset_metadata(
     if not dataset_id or not isinstance(dataset_id, str):
         raise ValueError("dataset_id must be a non-empty string")
 
-    if dataset_version is not None and not isinstance(dataset_version, str):
-        raise ValueError("dataset_version must be a string or None")
-
     metadata_url = _build_metadata_url(
         autodw_base, user_id, dataset_id, dataset_version
     )
@@ -299,12 +274,6 @@ def download_dataset(download_url: str, dest_path: Path) -> None:
     if not download_url or not isinstance(download_url, str):
         raise ValueError("download_url must be a non-empty string")
 
-    if dest_path is None:
-        raise ValueError("dest_path cannot be None")
-
-    if not isinstance(dest_path, Path):
-        raise TypeError(f"dest_path must be a Path object, got {type(dest_path)}")
-
     if dest_path.parent and not dest_path.parent.exists():
         dest_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -351,12 +320,6 @@ def train_automl(
     time_budget: int,
 ):
     """Train an AutoML model and return (leaderboard, predictor)."""
-
-    if dataset_path is None:
-        raise ValueError("dataset_path cannot be None")
-
-    if save_model_path is None:
-        raise ValueError("save_model_path cannot be None")
 
     if not target_column_name or not isinstance(target_column_name, str):
         raise ValueError("target_column_name must be a non-empty string")
@@ -422,12 +385,6 @@ def serialize_and_zip_predictor(
     if predictor is None:
         raise ValueError("predictor cannot be None")
 
-    if save_model_path is None:
-        raise ValueError("save_model_path cannot be None")
-
-    if tmp_path is None:
-        raise ValueError("tmp_path cannot be None")
-
     if not save_model_path.exists():
         raise ValueError(f"save_model_path does not exist: {save_model_path}")
 
@@ -484,17 +441,8 @@ def build_upload_payload(
     if not dataset_id or not isinstance(dataset_id, str):
         raise ValueError("dataset_id must be a non-empty string")
 
-    if metadata is None or not isinstance(metadata, dict):
-        raise ValueError("metadata must be a non-empty dict")
-
     if not task_type or not isinstance(task_type, str):
         raise ValueError("task_type must be a non-empty string")
-
-    if leaderboard_json is None:
-        raise ValueError("leaderboard_json cannot be None")
-
-    if not isinstance(leaderboard_json, (list, dict)):
-        raise ValueError("leaderboard_json must be a list or dict")
 
     try:
         model_id = f"automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"
@@ -541,20 +489,11 @@ def upload_model(
     if not upload_url or not isinstance(upload_url, str):
         raise ValueError("upload_url must be a non-empty string")
 
-    if zip_path is None:
-        raise ValueError("zip_path cannot be None")
-
-    if not isinstance(zip_path, Path):
-        raise TypeError(f"zip_path must be a Path object, got {type(zip_path)}")
-
     if not zip_path.exists():
         raise FileNotFoundError(f"Zip file not found: {zip_path}")
 
     if not isinstance(payload, dict) or not payload:
         raise ValueError("payload must be a non-empty dict")
-
-    if task_id is not None and not isinstance(task_id, str):
-        raise ValueError("task_id must be a string or None")
 
     headers = {"X-Task-ID": task_id} if task_id else {}
     if task_id:
