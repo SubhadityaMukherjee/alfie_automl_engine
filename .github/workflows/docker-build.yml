@@ -17,7 +17,7 @@ jobs:
         include:
           - service: automl_engine
             context: .
-            dockerfile: agentic-core/Dockerfile
+            dockerfile: Dockerfile
 
     steps:
       - uses: actions/checkout@v4
