@@ -1,38 +1,35 @@
-# syntax=docker/dockerfile:1.7
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+# 1. Setup user and working directory
 RUN groupadd --system --gid 999 nonroot \
  && useradd --system --gid 999 --uid 999 --create-home nonroot
 
 WORKDIR /app
+# Ensure the nonroot user owns the workdir before we start
+RUN chown nonroot:nonroot /app
 
-ENV UV_COMPILE_BYTECODE=1
-ENV UV_LINK_MODE=copy
-ENV UV_TOOL_BIN_DIR=/usr/local/bin
-ENV PATH="/app/.venv/bin:$PATH"
+# 2. Set environment variables
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_TOOL_BIN_DIR=/usr/local/bin \
+    PATH="/app/.venv/bin:$PATH"
 
-# --------------------
-# Copy lockfiles first (cache-friendly)
-# --------------------
-COPY pyproject.toml uv.lock ./
+# 3. Switch to nonroot user NOW
+USER nonroot
 
-# --------------------
-# Install dependencies only
-# --------------------
-RUN --mount=type=cache,target=/root/.cache/uv \
+# 4. Copy lockfiles with correct ownership
+COPY --chown=nonroot:nonroot pyproject.toml uv.lock ./
+
+# 5. Install dependencies
+# (uv will now create the .venv as the nonroot user)
+RUN --mount=type=cache,target=/home/nonroot/.cache/uv,uid=999 \
     uv sync --locked --no-install-project --no-dev
 
-# --------------------
-# Copy application code
-# --------------------
-COPY app/ app/
+# 6. Copy application code with correct ownership
+COPY --chown=nonroot:nonroot app/ app/
 
-# --------------------
-# Install project itself
-# --------------------
-RUN --mount=type=cache,target=/root/.cache/uv \
+# 7. Final sync
+RUN --mount=type=cache,target=/home/nonroot/.cache/uv,uid=999 \
     uv sync --locked --no-dev
-RUN chown -R nonroot:nonroot /app
-USER nonroot
-ENTRYPOINT []
 
+ENTRYPOINT []
