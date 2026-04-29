@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
@@ -165,7 +165,7 @@ async def find_best_model_for_vision(
             )
 
             # 6. Serialize
-            zip_path = serialize_and_zip_model(optuna_result, workdir)
+            zip_path = serialize_and_zip_model(workdir)
             leaderboard_json, leaderboard_str = convert_leaderboard_safely(
                 optuna_result
             )

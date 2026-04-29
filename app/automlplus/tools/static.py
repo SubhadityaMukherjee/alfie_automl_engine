@@ -61,9 +61,6 @@ def split_chunks(
 
     Line ranges are accurate even when chunks start/end mid-line.
     """
-    if not isinstance(content, str):
-        raise TypeError(f"content must be a string, got {type(content)}")
-
     if chunk_size <= 0:
         raise ValueError("chunk_size must be > 0")
 
