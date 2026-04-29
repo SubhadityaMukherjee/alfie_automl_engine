@@ -629,8 +629,8 @@ def test_build_upload_payload_leaderboard_is_valid_json(fake_metadata):
 # ---------------------------------------------------------------------------
 
 
-def test_serialize_and_zip_model_creates_zip(tmp_path, fake_optuna_result):
-    zip_path = serialize_and_zip_model(fake_optuna_result, tmp_path)
+def test_serialize_and_zip_model_creates_zip(tmp_path):
+    zip_path = serialize_and_zip_model(tmp_path)
     assert zip_path.exists()
     assert zip_path.suffix == ".zip"
     with zipfile.ZipFile(zip_path, "r") as zf:
