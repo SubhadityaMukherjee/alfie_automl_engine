@@ -21,12 +21,27 @@ from app.tabular_automl.services import (
     train_automl,
     upload_model,
     validate_tabular_inputs,
+    deployment_instructions,
 )
 from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/automl_tabular", tags=["tabular"])
+
+
+@router.post("/deployment_instructions/")
+async def show_deployment_instructions() -> JSONResponse:
+    """Show deployment instructions from a template"""
+    try:
+        return JSONResponse(
+            content={"instructions": deployment_instructions()}, status_code=200
+        )
+    except Exception as e:
+        logger.exception(
+            "Unexpected error in finding deployment instructions in tabular"
+        )
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.post("/best_model/")

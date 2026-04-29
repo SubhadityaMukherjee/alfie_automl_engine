@@ -26,6 +26,7 @@ from app.vision_automl.services import (
     train_automl,
     upload_model,
     validate_vision_inputs,
+    deployment_instructions,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,20 @@ def dataset_workspace(prefix: str):
         yield path
     finally:
         shutil.rmtree(path, ignore_errors=True)
+
+
+@router.post("/deployment_instructions/")
+async def show_deployment_instructions() -> JSONResponse:
+    """Show deployment instructions from a template"""
+    try:
+        return JSONResponse(
+            content={"instructions": deployment_instructions()}, status_code=200
+        )
+    except Exception as e:
+        logger.exception(
+            "Unexpected error in finding deployment instructions in vision"
+        )
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.post("/best_model/")

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class ImageClassificationModel(nn.Module):
-    """Thin nn.Module wrapping HF AutoModelForImageClassification."""
+    """Thin nn.Module wrapping HF AutoModelForImageClassification. This module is responsible for Image classification!!!"""
 
     def __init__(
         self,
