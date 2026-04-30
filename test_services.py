@@ -21,32 +21,32 @@ SERVICES = {
     "webfromfile": {
         "port": 8003,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8003)})",
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT', 8003)})",
     },
     "webfromurl": {
         "port": 8003,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8003)})",
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT', 8003)})",
     },
     "im2web": {
         "port": 8003,
         "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT',8003)})",
+        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT', 8003)})",
     },
     "tabular": {
         "port": 8001,
         "uvicorn_target": "app.tabular_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})",
+        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT', 8001)})",
     },
     "tabularmvp": {
         "port": 8001,
         "uvicorn_target": "app.tabular_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT',8001)})",
+        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT', 8001)})",
     },
     "visionmvp": {
         "port": 8002,
         "uvicorn_target": "app.vision_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT',8002)})",
+        "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT', 8002)})",
     },
 }
 
@@ -278,7 +278,7 @@ def test_tabular() -> None:
         "-F",
         "target_column_name=signature",
         "-F",
-        "task_type=classification",
+        "task_type=tabular_classification",
         "-F",
         "time_budget=10",
     ]
