@@ -94,7 +94,7 @@ def collect_missing_files(
         if img_path.exists():
             continue
 
-        matches = list(images_dir.rglob(filename))
+        matches = list(images_dir.rglob(str(filename)))
         if len(matches) == 1:
             continue
         elif len(matches) > 1:
@@ -581,6 +581,19 @@ def deployment_instructions() -> str:
         return render_template(jinja_environment, "vision_deployment_instructions.md")
     else:
         return "No instructions found"
+
+
+def vision_data_instructions() -> str:
+    """Return the instructions from what kind of data is accepted by the vision AutoML engine"""
+    if jinja_environment is not None:
+        try:
+            return render_template(jinja_environment, "vision_accepted_format.md")
+        except Exception as e:
+            logger.error(f"Failed to render accepted format instructions: {e}")
+            return "No accepted format instructions available"
+    else:
+        logger.warning("jinja_environment is None, returning default formats")
+        return "Ask the agent for help"
 
 
 def serialize_and_zip_model(workdir: Path) -> Path:

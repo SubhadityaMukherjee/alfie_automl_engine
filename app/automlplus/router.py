@@ -11,7 +11,11 @@ from jinja2 import Environment, FileSystemLoader
 
 from app.automlplus.tools.vlm import AltTextChecker, ImagePromptRunner
 from app.automlplus.tools.static import ReadabilityAnalyzer
-from app.automlplus.utils import extract_text_from_html_bytes, json_safe
+from app.automlplus.utils import (
+    automl_plus_data_instructions,
+    extract_text_from_html_bytes,
+    json_safe,
+)
 from app.automlplus.website_accessibility.pipeline import (
     resolve_coroutines,
     run_accessibility_pipeline,
@@ -26,6 +30,20 @@ if not _jinja_path:
     raise RuntimeError("JINJAPATH environment variable is not set")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
+
+
+@router.post("/accepted_format/")
+async def show_accepted_format_instructions() -> JSONResponse:
+    """Show accepted format instructions from a template"""
+    try:
+        return JSONResponse(
+            content={"instructions": automl_plus_data_instructions()}, status_code=200
+        )
+    except Exception as e:
+        logger.exception(
+            "Unexpected error in finding data format instructions in automlplus"
+        )
+        return JSONResponse(status_code=500, content={"error": str(e)})
 
 
 @router.post("/image_tools/image_to_website/")
