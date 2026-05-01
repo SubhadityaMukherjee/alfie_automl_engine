@@ -3,10 +3,12 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
+import numpy as np
 import pandas as pd
 import torch
 from dotenv import find_dotenv, load_dotenv
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 from torch.utils.data import DataLoader, Dataset
 from transformers import (
     AutoFeatureExtractor,
@@ -18,6 +20,7 @@ from transformers import (
 from .dataset import (
     CausalLMFromCSVDataset,
     ImageClassificationFromCSVDataset,
+    MultimodalClassificationDataset,
     QuestionAnsweringFromCSVDataset,
     Seq2SeqFromCSVDataset,
     TextClassificationFromCSVDataset,
@@ -189,6 +192,276 @@ class ImageClassificationDataModule:
         ).pixel_values
         return {
             "pixel_values": pixel_values,
+            "labels": torch.tensor(labels, dtype=torch.long),
+        }
+
+    def train_dataloader(self) -> DataLoader:
+        if self.train_dataset is None:
+            raise RuntimeError("Train dataset not initialized. Call setup() first.")
+        return DataLoader(
+            self.train_dataset,
+            batch_size=self.batch_size,
+            shuffle=self.shuffle,
+            num_workers=self.num_workers,
+            collate_fn=self._collate_fn,
+        )
+
+    def val_dataloader(self) -> DataLoader:
+        if self.val_dataset is None:
+            raise RuntimeError(
+                "Validation dataset not initialized. Call setup() first."
+            )
+        return DataLoader(
+            self.val_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=self._collate_fn,
+        )
+
+    def test_dataloader(self) -> DataLoader:
+        if self.test_dataset is None:
+            raise RuntimeError("Test dataset not initialized. Call setup() first.")
+        return DataLoader(
+            self.test_dataset,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            collate_fn=self._collate_fn,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Multimodal image classification (image + tabular auxiliary features)
+# ---------------------------------------------------------------------------
+
+
+def _infer_column_types(
+    df: pd.DataFrame, columns: list[str]
+) -> tuple[list[str], list[str]]:
+    """Split *columns* into (numeric_cols, categorical_cols) based on dtype."""
+    numeric_cols: list[str] = []
+    categorical_cols: list[str] = []
+    for col in columns:
+        if col not in df.columns:
+            continue
+        dtype = df[col].dtype
+        if pd.api.types.is_numeric_dtype(dtype):
+            numeric_cols.append(col)
+        else:
+            categorical_cols.append(col)
+    return numeric_cols, categorical_cols
+
+
+class MultimodalClassificationDataModule:
+    """Handles dataset preparation and dataloaders for multimodal image
+    classification tasks where the CSV contains auxiliary metadata columns
+    alongside the filename and label.
+
+    Numeric auxiliary columns are standard-scaled; categorical/string columns
+    are ordinal-encoded.  Scalers/encoders are fit on the **training split
+    only** and then applied to validation and test splits.
+    """
+
+    def __init__(
+        self,
+        csv_file: Path,
+        root_dir: Path,
+        img_col: str = "filename",
+        label_col: str = "label",
+        auxiliary_columns: list[str] | None = None,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+        num_workers: int = DEFAULT_NUM_WORKERS,
+        transform: Callable | None = None,
+        shuffle: bool = True,
+        val_split: float = DEFAULT_VAL_SPLIT,
+        test_split: float = DEFAULT_TEST_SPLIT,
+        seed: int = 42,
+        hf_model_id: str = DEFAULT_IMAGE_CLASSIFIER_HF_ID,
+    ) -> None:
+        self.csv_file = Path(csv_file)
+        self.root_dir = Path(root_dir)
+        self.img_col: str = img_col
+        self.label_col: str = label_col
+        self.auxiliary_columns: list[str] = auxiliary_columns or []
+        self.batch_size: int = batch_size
+        self.num_workers: int = num_workers
+        self.transform: Callable | None = transform
+        self.shuffle: bool = shuffle
+        self.val_split: float = val_split
+        self.test_split: float = test_split
+        self.seed: int = seed
+        self.hf_model_id: str = hf_model_id
+
+        self.num_classes: int = 0
+        self.aux_feature_dim: int = 0
+        self.train_dataset: MultimodalClassificationDataset | None = None
+        self.val_dataset: MultimodalClassificationDataset | None = None
+        self.test_dataset: MultimodalClassificationDataset | None = None
+        self.processor: AutoImageProcessor | None = None
+        self.id2label: dict[int, str] = {}
+        self.label2id: dict[str, int] = {}
+
+        self.numeric_cols: list[str] = []
+        self.categorical_cols: list[str] = []
+        self.scaler: StandardScaler | None = None
+        self.encoder: OrdinalEncoder | None = None
+
+        logger.info(
+            "Initializing MultimodalClassificationDataModule with CSV: %s", csv_file
+        )
+        self.setup()
+
+    def setup(self) -> None:
+        try:
+            logger.info("Reading dataset from %s", self.csv_file)
+            df: pd.DataFrame = pd.read_csv(self.csv_file)
+        except FileNotFoundError as e:
+            logger.error("Dataset file not found: %s", e)
+            raise
+        except pd.errors.EmptyDataError:
+            logger.error("Dataset file is empty: %s", self.csv_file)
+            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+        except pd.errors.ParserError as e:
+            logger.error("Failed to parse dataset CSV: %s", e)
+            raise
+        except Exception as e:
+            logger.error("Unexpected error reading dataset: %s", e)
+            raise
+
+        self.numeric_cols, self.categorical_cols = _infer_column_types(
+            df, self.auxiliary_columns
+        )
+        self.aux_feature_dim = len(self.auxiliary_columns)
+        logger.info(
+            "Auxiliary columns — numeric: %s, categorical: %s (total dim=%d)",
+            self.numeric_cols,
+            self.categorical_cols,
+            self.aux_feature_dim,
+        )
+
+        try:
+            train_df, temp_df = train_test_split(
+                df,
+                test_size=self.val_split + self.test_split,
+                stratify=df[self.label_col],
+                random_state=self.seed,
+            )
+        except ValueError as e:
+            logger.error(
+                "Failed to split dataset (insufficient samples or invalid stratification): %s",
+                e,
+            )
+            raise
+
+        try:
+            relative_val = self.val_split / (self.val_split + self.test_split)
+            val_df, test_df = train_test_split(
+                temp_df,
+                test_size=1 - relative_val,
+                stratify=temp_df[self.label_col],
+                random_state=self.seed,
+            )
+        except ValueError as e:
+            logger.error("Failed to split validation/test data: %s", e)
+            raise
+
+        logger.info(
+            "Split completed: train=%d, val=%d, test=%d",
+            len(train_df),
+            len(val_df),
+            len(test_df),
+        )
+
+        train_df = self._encode_auxiliary(train_df, fit=True)
+        val_df = self._encode_auxiliary(val_df, fit=False)
+        test_df = self._encode_auxiliary(test_df, fit=False)
+
+        try:
+            self.train_dataset = MultimodalClassificationDataset(
+                csv_file=train_df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                label_col=self.label_col,
+                auxiliary_columns=self.auxiliary_columns,
+                transform=self.transform,
+            )
+            self.val_dataset = MultimodalClassificationDataset(
+                csv_file=val_df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                label_col=self.label_col,
+                auxiliary_columns=self.auxiliary_columns,
+                transform=self.transform,
+            )
+            self.test_dataset = MultimodalClassificationDataset(
+                csv_file=test_df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                label_col=self.label_col,
+                auxiliary_columns=self.auxiliary_columns,
+                transform=self.transform,
+            )
+        except Exception as e:
+            logger.error("Failed to create datasets: %s", e)
+            raise
+
+        self.num_classes = len(self.train_dataset.classes)
+        self.id2label = {i: c for i, c in enumerate(self.train_dataset.classes)}
+        self.label2id = {c: i for i, c in enumerate(self.train_dataset.classes)}
+
+        try:
+            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load processor from %s: %s", self.hf_model_id, e)
+            raise
+        logger.info("Loaded processor from: %s", self.hf_model_id)
+
+    def _encode_auxiliary(self, df: pd.DataFrame, fit: bool) -> pd.DataFrame:
+        """Encode auxiliary columns in-place.  If *fit* is True, fit the
+        scaler/encoder on *df* (must be the training split)."""
+        df = df.copy()
+
+        if self.numeric_cols:
+            subset = df[self.numeric_cols].fillna(0.0)
+            if fit:
+                self.scaler = StandardScaler()
+                df[self.numeric_cols] = self.scaler.fit_transform(subset)
+            else:
+                if self.scaler is None:
+                    raise RuntimeError(
+                        "Scaler not fitted. Call setup() with training data first."
+                    )
+                df[self.numeric_cols] = self.scaler.transform(subset)
+
+        if self.categorical_cols:
+            subset = df[self.categorical_cols].astype(str).fillna("missing")
+            if fit:
+                self.encoder = OrdinalEncoder(
+                    handle_unknown="use_encoded_value", unknown_value=-1
+                )
+                encoded = self.encoder.fit_transform(subset)
+            else:
+                if self.encoder is None:
+                    raise RuntimeError(
+                        "OrdinalEncoder not fitted. Call setup() with training data first."
+                    )
+                encoded = self.encoder.transform(subset)
+            for i, col in enumerate(self.categorical_cols):
+                df[col] = encoded[:, i].astype(float)
+
+        return df
+
+    def _collate_fn(self, batch: list[tuple[Any, Any, Any]]) -> dict[str, torch.Tensor]:
+        images, aux_values, labels = zip(*batch)
+        if self.processor is None:
+            raise RuntimeError("Processor not initialized. Call setup() first.")
+        pixel_values = self.processor(
+            images=list(images), return_tensors="pt"
+        ).pixel_values
+        return {
+            "pixel_values": pixel_values,
+            "aux_features": torch.tensor(np.stack(aux_values), dtype=torch.float32),
             "labels": torch.tensor(labels, dtype=torch.long),
         }
 

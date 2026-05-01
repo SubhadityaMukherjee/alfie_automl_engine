@@ -1,12 +1,15 @@
-from .datamodule import ClassificationData
-from .dataset import ImageClassificationFromCSVDataset
-from .model import ClassificationModel
+from .datamodule import ClassificationData, MultimodalClassificationDataModule
+from .dataset import ImageClassificationFromCSVDataset, MultimodalClassificationDataset
+from .model import ClassificationModel, MultimodalClassificationModel
 from .trainer import EarlyStopping, FabricTrainer
 
 __all__ = [
     "ImageClassificationFromCSVDataset",
+    "MultimodalClassificationDataset",
     "ClassificationData",
+    "MultimodalClassificationDataModule",
     "ClassificationModel",
+    "MultimodalClassificationModel",
     "FabricTrainer",
     "EarlyStopping",
 ]

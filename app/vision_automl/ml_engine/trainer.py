@@ -18,6 +18,7 @@ from app.vision_automl.ml_engine.datamodule import (
     ImageSegmentationDataModule,
     KeypointDetectionDataModule,
     MaskedLMDataModule,
+    MultimodalClassificationDataModule,
     ObjectDetectionDataModule,
     QuestionAnsweringDataModule,
     Seq2SeqLMDataModule,
@@ -31,6 +32,7 @@ from app.vision_automl.ml_engine.model import (
     ImageSegmentationModel,
     KeypointDetectionModel,
     MaskedLMModel,
+    MultimodalClassificationModel,
     ObjectDetectionModel,
     QuestionAnsweringModel,
     Seq2SeqLMModel,
@@ -364,6 +366,59 @@ def optuna_objective_image_classification(
         model_kwargs={
             "model_id": model_id,
             "num_classes": datamodule.num_classes,
+            "id2label": datamodule.id2label,
+            "label2id": datamodule.label2id,
+        },
+        optimizer_kwargs={"lr": lr, "weight_decay": weight_decay},
+        loss_fn=nn.CrossEntropyLoss(),
+        epochs=config["max_epochs"],
+        callbacks=[EarlyStopping(patience=config["early_stopping_patience"])],
+        model_computes_loss=False,
+    )
+    test_loss, _ = trainer.fit(trial=trial)
+    return test_loss
+
+
+def optuna_objective_image_classification_multimodal(
+    trial: optuna.Trial,
+    *,
+    csv_path: Path,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+    auxiliary_columns: list[str],
+    model_size: str,
+    timeout_per_trial: float | None,
+    config: dict,
+) -> float:
+    models = config[f"{model_size}_models"]
+    model_id = trial.suggest_categorical("model_id", models)
+    lr = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
+    batch_size = trial.suggest_categorical("batch_size", config["batch_sizes"])
+    weight_decay = trial.suggest_float(
+        "weight_decay",
+        config["weight_decay_low"],
+        config["weight_decay_high"],
+        log=True,
+    )
+
+    datamodule = MultimodalClassificationDataModule(
+        csv_file=csv_path,
+        root_dir=images_dir,
+        img_col=filename_column,
+        label_col=label_column,
+        auxiliary_columns=auxiliary_columns,
+        batch_size=batch_size,
+        hf_model_id=model_id,
+    )
+
+    trainer = FabricTrainer(
+        datamodule=datamodule,
+        model_class=MultimodalClassificationModel,
+        model_kwargs={
+            "model_id": model_id,
+            "num_classes": datamodule.num_classes,
+            "aux_feature_dim": datamodule.aux_feature_dim,
             "id2label": datamodule.id2label,
             "label2id": datamodule.label2id,
         },
@@ -824,6 +879,7 @@ def optuna_objective_masked_lm(
 
 OBJECTIVE_REGISTRY: dict[str, Callable] = {
     "image_classification": optuna_objective_image_classification,
+    "image_classification_multimodal": optuna_objective_image_classification_multimodal,
     "image_segmentation": optuna_objective_image_segmentation,
     "object_detection": optuna_objective_object_detection,
     "video_classification": optuna_objective_video_classification,

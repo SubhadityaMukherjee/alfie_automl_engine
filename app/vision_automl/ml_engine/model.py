@@ -61,6 +61,122 @@ class ImageClassificationModel(nn.Module):
 ClassificationModel = ImageClassificationModel
 
 
+class MultimodalClassificationModel(nn.Module):
+    """Multimodal image classification model that fuses vision embeddings
+    with auxiliary tabular features via early (concatenation) fusion.
+
+    Architecture:
+        1. HF vision backbone (without classification head) produces image embeddings.
+        2. A small MLP processes tabular auxiliary features.
+        3. Image and tabular embeddings are concatenated and passed through a
+           fusion classifier head.
+    """
+
+    def __init__(
+        self,
+        model_id: str = "google/vit-base-patch16-224",
+        num_classes: int = 2,
+        aux_feature_dim: int = 0,
+        freeze_backbone: bool = True,
+        id2label: dict | None = None,
+        label2id: dict | None = None,
+        fusion_hidden_dim: int = 128,
+    ):
+        super().__init__()
+        self.aux_feature_dim = aux_feature_dim
+
+        from transformers import AutoConfig
+
+        config_kwargs = {
+            "num_labels": num_classes,
+            "id2label": id2label or {i: str(i) for i in range(num_classes)},
+            "label2id": label2id or {str(i): i for i in range(num_classes)},
+        }
+        try:
+            hf_config = AutoConfig.from_pretrained(model_id, **config_kwargs)
+            self.backbone = AutoModelForImageClassification.from_pretrained(
+                model_id,
+                config=hf_config,
+                ignore_mismatched_sizes=True,
+            )
+        except Exception as e:
+            logger.error("Failed to load vision backbone from %s: %s", model_id, e)
+            raise
+
+        if freeze_backbone:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+            if hasattr(self.backbone, "classifier"):
+                for param in self.backbone.classifier.parameters():
+                    param.requires_grad = True
+
+        vision_dim = self._get_vision_embed_dim()
+        tabular_dim = max(aux_feature_dim, 1)
+
+        self.tabular_mlp = (
+            nn.Sequential(
+                nn.Linear(tabular_dim, fusion_hidden_dim),
+                nn.ReLU(),
+                nn.Linear(fusion_hidden_dim, fusion_hidden_dim),
+                nn.ReLU(),
+            )
+            if aux_feature_dim > 0
+            else nn.Identity()
+        )
+
+        self.fusion_head = nn.Sequential(
+            nn.Linear(
+                vision_dim + fusion_hidden_dim if aux_feature_dim > 0 else vision_dim,
+                fusion_hidden_dim,
+            ),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(fusion_hidden_dim, num_classes),
+        )
+
+    def _get_vision_embed_dim(self) -> int:
+        model = self.backbone
+        if hasattr(model, "classifier") and hasattr(model.classifier, "in_features"):
+            return model.classifier.in_features
+        if hasattr(model, "fc") and hasattr(model.fc, "in_features"):
+            return model.fc.in_features
+        config = getattr(model, "config", None)
+        if config is not None:
+            hidden_size = getattr(config, "hidden_size", None)
+            if hidden_size is not None:
+                return hidden_size
+        raise ValueError(
+            "Cannot determine vision embedding dimension from model config"
+        )
+
+    def _extract_vision_embeddings(self, pixel_values: torch.Tensor) -> torch.Tensor:
+        if hasattr(self.backbone, "classifier"):
+            original_classifier = self.backbone.classifier
+            self.backbone.classifier = nn.Identity()
+            try:
+                embeddings = self.backbone(pixel_values)
+                if hasattr(embeddings, "logits"):
+                    embeddings = embeddings.logits
+            finally:
+                self.backbone.classifier = original_classifier
+            return embeddings
+        output = self.backbone(pixel_values)
+        return output.logits if hasattr(output, "logits") else output
+
+    def forward(
+        self, pixel_values: torch.Tensor, aux_features: torch.Tensor | None = None
+    ) -> torch.Tensor:
+        vision_embeds = self._extract_vision_embeddings(pixel_values)
+
+        if aux_features is not None and self.aux_feature_dim > 0:
+            tabular_embeds = self.tabular_mlp(aux_features)
+            combined = torch.cat([vision_embeds, tabular_embeds], dim=-1)
+        else:
+            combined = vision_embeds
+
+        return self.fusion_head(combined)
+
+
 class ImageSegmentationModel(nn.Module):
     """Thin nn.Module wrapping HF AutoModelForImageSegmentation."""
 
@@ -335,6 +451,7 @@ class MaskedLMModel(nn.Module):
 
 MODEL_REGISTRY: dict[str, type[nn.Module]] = {
     "image_classification": ImageClassificationModel,
+    "image_classification_multimodal": MultimodalClassificationModel,
     "image_segmentation": ImageSegmentationModel,
     "object_detection": ObjectDetectionModel,
     "video_classification": VideoClassificationModel,

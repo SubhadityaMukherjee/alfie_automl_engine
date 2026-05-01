@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from typing import Optional, Union
 
+import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
@@ -308,3 +309,112 @@ class CausalLMFromCSVDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.item()
         return str(self.df.iloc[idx][self.text_col])
+
+
+class MultimodalClassificationDataset(Dataset):
+    """Torch dataset for multimodal image classification with auxiliary tabular features.
+
+    In addition to image + label (like ``ImageClassificationFromCSVDataset``),
+    this dataset also returns auxiliary feature values from extra CSV columns.
+    Raw values are returned here; encoding/scaling is handled by the datamodule.
+
+    Returns ``(PIL.Image, aux_array, int_label)`` per sample.
+    """
+
+    def __init__(
+        self,
+        csv_file: Union[Path, pd.DataFrame],
+        root_dir: Path,
+        img_col: str = "filename",
+        label_col: str = "label",
+        auxiliary_columns: list[str] | None = None,
+        transform: Optional[T.Compose] = None,
+    ):
+        if isinstance(csv_file, Path):
+            try:
+                self.label_csv = pd.read_csv(csv_file)
+            except FileNotFoundError:
+                logger.error("Dataset CSV file not found: %s", csv_file)
+                raise
+            except pd.errors.EmptyDataError:
+                logger.error("Dataset CSV file is empty: %s", csv_file)
+                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+            except pd.errors.ParserError as e:
+                logger.error("Failed to parse dataset CSV file: %s", e)
+                raise
+            except Exception as e:
+                logger.error("Unexpected error reading dataset CSV file: %s", e)
+                raise
+        elif isinstance(csv_file, pd.DataFrame):
+            self.label_csv = csv_file.reset_index(drop=True)
+        else:
+            raise ValueError("csv_file must be a path or DataFrame")
+
+        self.root_dir = root_dir
+        self.img_col = img_col
+        self.label_col = label_col
+        self.auxiliary_columns = auxiliary_columns or []
+        self.transform = transform
+
+        if self.label_csv[self.label_col].dtype not in [int, float]:
+            self.classes = sorted(self.label_csv[self.label_col].unique().tolist())
+            self.class_to_idx = {
+                cls_name: idx for idx, cls_name in enumerate(self.classes)
+            }
+            self.idx_to_class = {
+                idx: cls_name for cls_name, idx in self.class_to_idx.items()
+            }
+            self.label_csv[self.label_col] = self.label_csv[self.label_col].map(
+                self.class_to_idx
+            )
+        else:
+            self.classes = sorted(self.label_csv[self.label_col].unique().tolist())
+            self.class_to_idx = {cls: cls for cls in self.classes}
+            self.idx_to_class = {cls: cls for cls in self.classes}
+
+    def __len__(self):
+        return len(self.label_csv)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.item()
+
+        row = self.label_csv.iloc[idx]
+        label_idx = int(row[self.label_col])
+        label_name = self.idx_to_class[label_idx]
+
+        filename = str(row[self.img_col]).strip()
+
+        img_path = self.root_dir / label_name / filename
+        if not img_path.exists():
+            logger.error(
+                "Image not found: root_dir=%s, label_name=%s, filename=%s",
+                self.root_dir,
+                label_name,
+                filename,
+            )
+            raise FileNotFoundError(
+                f"Image not found\n"
+                f"Expected path: {img_path}\n"
+                f"root_dir: {self.root_dir}\n"
+                f"label_name: {label_name}\n"
+                f"filename: {repr(filename)}"
+            )
+
+        try:
+            img = Image.open(img_path).convert("RGB")
+        except Exception as e:
+            logger.error("Failed to open or convert image %s: %s", img_path, e)
+            raise
+
+        if self.transform:
+            img = self.transform(img)
+
+        if self.auxiliary_columns:
+            aux_values = np.array(
+                [row[col] for col in self.auxiliary_columns], dtype=np.float32
+            )
+        else:
+            aux_values = np.array([], dtype=np.float32)
+
+        return img, aux_values, torch.tensor(label_idx, dtype=torch.long)

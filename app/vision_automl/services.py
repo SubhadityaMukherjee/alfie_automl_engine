@@ -447,6 +447,74 @@ def validate_vision_inputs(
     return None
 
 
+def _discover_auxiliary_columns(
+    df: pd.DataFrame,
+    filename_column: str,
+    label_column: str,
+    exclude_columns: list[str] | None = None,
+) -> list[str]:
+    """Auto-discover auxiliary columns in *df*.
+
+    All columns except ``filename_column``, ``label_column``, and any
+    columns listed in ``exclude_columns`` are treated as auxiliary features.
+    """
+    exclude = {filename_column, label_column}
+    if exclude_columns:
+        exclude.update(exclude_columns)
+    return [col for col in df.columns if col not in exclude]
+
+
+def validate_multimodal_inputs(
+    csv_path: Path,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+    exclude_columns: list[str] | None = None,
+) -> tuple[str | None, list[str]]:
+    """Validate dataset structure for multimodal image classification.
+
+    Auto-discovers auxiliary columns (all columns except ``filename_column``,
+    ``label_column``, and ``exclude_columns``), validates their presence and
+    contents, and checks image file existence.
+
+    Returns:
+        (error_string_or_None, auxiliary_columns_list).
+    """
+    try:
+        df = pd.read_csv(csv_path)
+    except Exception as e:
+        return f"Could not read labels CSV: {e}", []
+
+    for col, role in [(filename_column, "Filename"), (label_column, "Label")]:
+        if col not in df.columns:
+            return f"{role} column '{col}' not found in labels CSV", []
+
+    auxiliary_columns = _discover_auxiliary_columns(
+        df, filename_column, label_column, exclude_columns
+    )
+
+    if not auxiliary_columns:
+        return (
+            "No auxiliary columns found in the CSV. "
+            "Use the standard /best_model/ endpoint for image-only classification.",
+            [],
+        )
+
+    for col in auxiliary_columns:
+        if df[col].isnull().all():
+            return f"Auxiliary column '{col}' is entirely null", []
+
+    df = normalize_dataframe_filenames(df, filename_column, csv_path)
+
+    missing = collect_missing_files(df, images_dir, filename_column, label_column)
+    if missing:
+        preview = missing[:5]
+        suffix = "..." if len(missing) > 5 else ""
+        return f"Missing {len(missing)} image file(s): {preview}{suffix}", []
+
+    return None, auxiliary_columns
+
+
 # ---------------------------------------------------------------------------
 # Training  (mirrors tabular: train_automl)
 # ---------------------------------------------------------------------------
@@ -470,6 +538,32 @@ async def train_automl(
         images_dir=images_dir,
         filename_column=filename_column,
         label_column=label_column,
+        n_trials=max(1, min(25, time_budget // 60)),
+        timeout=time_budget,
+        model_size=model_size,
+        workdir=workdir,
+    )
+
+
+async def train_automl_multimodal(
+    csv_path: Path,
+    images_dir: Path,
+    filename_column: str,
+    label_column: str,
+    auxiliary_columns: list[str],
+    time_budget: int,
+    model_size: str,
+    workdir: Path,
+) -> dict:
+    """Run Optuna-based multimodal vision AutoML and return the result dict."""
+    return await run_in_threadpool(
+        run_optuna_search,
+        task_type="image_classification_multimodal",
+        csv_path=csv_path,
+        images_dir=images_dir,
+        filename_column=filename_column,
+        label_column=label_column,
+        auxiliary_columns=auxiliary_columns,
         n_trials=max(1, min(25, time_budget // 60)),
         timeout=time_budget,
         model_size=model_size,
