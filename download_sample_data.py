@@ -20,26 +20,32 @@ WGET_FILES = {
 
 HF_DATASETS = [
     {"repo_id": "msubhaditya/garbage_collection_subset", "local_dir": BASE_DIR},
+    {"repo_id": "msubhaditya/imdb_multimodal_subset", "local_dir": BASE_DIR},
 ]
 
 for folder, urls in WGET_FILES.items():
     dest = BASE_DIR / folder
-    dest.mkdir(parents=True, exist_ok=True)
-    for url in urls:
-        subprocess.run(["wget", "-P", str(dest), url], check=True)
+    if not dest.exists():
+        dest.mkdir(parents=True, exist_ok=True)
+        for url in urls:
+            subprocess.run(["wget", "-P", str(dest), url], check=True)
 
 for ds in HF_DATASETS:
     snapshot_download(
         repo_id=ds["repo_id"],
         repo_type="dataset",
         local_dir=ds["local_dir"],
-        local_dir_use_symlinks=False,
     )
 
 
 # Upload them to autodw (IF it is running)
 def upload_dataset_file(
-    file_path: str, user_id: int, dataset_id: int, name: str, tags: str = ""
+    file_path: str,
+    user_id: int,
+    dataset_id: int,
+    name: str,
+    description: str = "",
+    tags: str = "",
 ) -> dict:
     url = f"http://localhost:8000/datasets/upload/{user_id}"
 
@@ -51,6 +57,7 @@ def upload_dataset_file(
             data={
                 "dataset_id": dataset_id,
                 "name": name,
+                "description": description,
                 "tags": tags,
             },
         )
@@ -65,21 +72,19 @@ def upload_dataset_zip(
     dataset_id: int,
     name: str,
     description: str = "",
-    preserve_structure: bool = True,
     tags: str = "",
 ) -> dict:
-    url = f"http://localhost:8000/datasets/upload/folder/{user_id}"
+    url = f"http://localhost:8000/datasets/upload/{user_id}"
 
     with open(file_path, "rb") as f:
         response = requests.post(
             url,
             headers={"accept": "application/json"},
-            files={"zip_file": (file_path, f, "application/zip")},
+            files={"file": (file_path, f, "application/zip")},
             data={
                 "dataset_id": dataset_id,
                 "name": name,
                 "description": description,
-                "preserve_structure": str(preserve_structure).lower(),
                 "tags": tags,
             },
         )
@@ -91,11 +96,17 @@ def upload_dataset_zip(
 result = upload_dataset_file(
     "./sample_data/knot_theory/train.csv", user_id=1, dataset_id=1, name="knot theory"
 )
-result = upload_dataset_file(
+result = upload_dataset_zip(
     "./sample_data/Garbage_Dataset_Classification_subset.zip",
     user_id=1,
     dataset_id=2,
     name="Garbage classification subset",
+)
+result = upload_dataset_zip(
+    "./sample_data/imdb_subset.zip",
+    user_id=1,
+    dataset_id=3,
+    name="IMDB Subset",
 )
 
 # Test website for website accessibility
