@@ -8,7 +8,29 @@ import requests
 from bs4 import BeautifulSoup
 from PIL import Image
 
+from app.core.utils import render_template
+
+from jinja2 import Environment, FileSystemLoader
+
 logger = logging.getLogger(__name__)
+_jinja_path = os.getenv("JINJAPATH")
+if not _jinja_path:
+    raise RuntimeError("JINJAPATH environment variable is not set")
+
+jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
+
+
+def automl_plus_data_instructions() -> str:
+    """Return the instructions from what kind of data is accepted by the tabular AutoML engine"""
+    if jinja_environment is not None:
+        try:
+            return render_template(jinja_environment, "automl_plus_accepted_format.md")
+        except Exception as e:
+            logger.error(f"Failed to render accepted format instructions: {e}")
+            return "No accepted format instructions available"
+    else:
+        logger.warning("jinja_environment is None, returning default formats")
+        return "Ask the agent for help"
 
 
 class ImageConverter:

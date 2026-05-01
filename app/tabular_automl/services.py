@@ -364,6 +364,7 @@ def train_automl(
 
 
 def deployment_instructions() -> str:
+    """Return the deployment instructions from a markdown file"""
     if jinja_environment is not None:
         try:
             return render_template(
@@ -375,6 +376,19 @@ def deployment_instructions() -> str:
     else:
         logger.warning("jinja_environment is None, returning default instructions")
         return "No instructions found"
+
+
+def tabular_data_instructions() -> str:
+    """Return the instructions from what kind of data is accepted by the tabular AutoML engine"""
+    if jinja_environment is not None:
+        try:
+            return render_template(jinja_environment, "tabular_accepted_format.md")
+        except Exception as e:
+            logger.error(f"Failed to render accepted format instructions: {e}")
+            return "No accepted format instructions available"
+    else:
+        logger.warning("jinja_environment is None, returning default formats")
+        return "Ask the agent for help"
 
 
 def serialize_and_zip_predictor(

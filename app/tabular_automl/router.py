@@ -22,6 +22,7 @@ from app.tabular_automl.services import (
     upload_model,
     validate_tabular_inputs,
     deployment_instructions,
+    tabular_data_instructions,
 )
 from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 
@@ -40,6 +41,20 @@ async def show_deployment_instructions() -> JSONResponse:
     except Exception as e:
         logger.exception(
             "Unexpected error in finding deployment instructions in tabular"
+        )
+        return JSONResponse(status_code=500, content={"error": str(e)})
+
+
+@router.post("/accepted_format/")
+async def show_accepted_format_instructions() -> JSONResponse:
+    """Show accepted format instructions from a template"""
+    try:
+        return JSONResponse(
+            content={"instructions": tabular_data_instructions()}, status_code=200
+        )
+    except Exception as e:
+        logger.exception(
+            "Unexpected error in finding data format instructions in tabular"
         )
         return JSONResponse(status_code=500, content={"error": str(e)})
 
