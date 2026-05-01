@@ -1,6 +1,7 @@
 # Docker instructions
 
 ## Running everything
+
 - Simply do `docker compose up` in the main folder (assuming you have docker installed)
 - After that you can `curl` any of the services you want
 - For information on the ports, please look at your .env file
@@ -19,7 +20,6 @@ curl -s -X POST "http://localhost:8001/automl_tabular/best_model/" \
 
 ## Pushing to repo
 
-Login: echo {PASS}  | docker login gitlab.catalink.eu:5050 -u {USER} --password-stdin
+Login: echo {PASS} | docker login gitlab.catalink.eu:5050 -u {USER} --password-stdin
 Build & tag: docker build -t gitlab.catalink.eu:5050/external/alfie_eu/alfie/{MODULE}:{TAG}
 Push: docker push gitlab.catalink.eu:5050/external/alfie_eu/alfie/{MODULE}:{TAG}
-
