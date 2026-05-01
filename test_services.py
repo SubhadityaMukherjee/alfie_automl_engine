@@ -48,6 +48,11 @@ SERVICES = {
         "uvicorn_target": "app.vision_automl.main:app",
         "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT', 8002)})",
     },
+    "multimodal": {
+        "port": 8002,
+        "uvicorn_target": "app.vision_automl.main:app",
+        "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT', 8002)})",
+    },
 }
 
 DEFAULT_READY_TIMEOUT_S = 240.0
@@ -330,6 +335,38 @@ def test_visionmvp() -> None:
     print()
 
 
+def test_multimodal() -> None:
+    print("=== Testing AutoML Vision - Multimodal ===")
+    cmd = [
+        "curl",
+        "-s",
+        "-X",
+        "POST",
+        "http://localhost:8002/automl_vision/multimodal_best_model/",
+        "-H",
+        "Content-Type: multipart/form-data",
+        "-F",
+        "user_id=1",
+        "-F",
+        "dataset_id=3",
+        "-F",
+        "filename_column=movie_id",
+        "-F",
+        "label_column=genre",
+        "-F",
+        "time_budget=10",
+        "-F",
+        "model_size=small",
+    ]
+    cp = run(cmd, capture_output=True, check=False)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
+    print()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run and test ALFIE services (Python replacement for test_services.sh)"
@@ -346,6 +383,7 @@ def main() -> int:
             "visionmvp",
             "im2web",
             "tabularmvp",
+            "multimodal",
         ],
         help="Which services to run and test",
     )
@@ -404,6 +442,9 @@ def main() -> int:
 
         if "visionmvp" in targets:
             test_visionmvp()
+
+        if "multimodal" in targets:
+            test_multimodal()
 
         print("=== All tests completed ===")
         return 0

@@ -9,6 +9,7 @@ from app.vision_automl.ml_engine.configs import (
 
 ALL_TASK_TYPES = [
     "image_classification",
+    "image_classification_multimodal",
     "image_segmentation",
     "object_detection",
     "video_classification",

@@ -8,6 +8,7 @@ _CONFIGS_DIR = Path(__file__).parent
 SUPPORTED_TASK_TYPES: frozenset[str] = frozenset(
     {
         "image_classification",
+        "image_classification_multimodal",
         "image_segmentation",
         "object_detection",
         "video_classification",
