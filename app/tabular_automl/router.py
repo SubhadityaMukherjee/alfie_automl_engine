@@ -66,7 +66,7 @@ async def find_best_model_for_mvp(
     dataset_id: Annotated[str, Form(..., description="Dataset id from AutoDW")],
     dataset_version: Annotated[
         str | None, Form(description="Dataset version (e.g., 'v1', 'v2')")
-    ] = "",
+    ] = "v1",
     target_column_name: Annotated[
         str, Form(..., description="Name of the target column")
     ] = "",

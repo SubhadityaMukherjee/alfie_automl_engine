@@ -81,7 +81,7 @@ async def find_best_model_for_vision(
     dataset_id: Annotated[str, Form(..., description="Dataset id from AutoDW")],
     dataset_version: Annotated[
         str | None, Form(description="Optional dataset version")
-    ] = None,
+    ] = "v1",
     filename_column: Annotated[
         str, Form(..., description="Filename column in labels.csv")
     ] = "filename",
