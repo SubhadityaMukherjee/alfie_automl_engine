@@ -30,9 +30,7 @@ class AutoMLLeaderboardError(AutoMLRuntimeError):
     """Raised when leaderboard generation fails."""
 
 
-class AutoDWDownloadError(
-    AutoMLRuntimeError
-):  # TODO probably change this with AutoDW error or something
+class AutoDWDownloadError(AutoMLRuntimeError):
     """Raised when downloading a dataset or resource fails."""
 
 
