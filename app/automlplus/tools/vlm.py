@@ -18,6 +18,12 @@ from jinja2 import Environment
 
 from app.automlplus.utils import ImageConverter
 from app.core.chat_handler import ChatHandler
+from app.core.exceptions import (
+    AutoMLChatError,
+    AutoMLImageError,
+    AutoMLRuntimeError,
+    AutoMLValidationError,
+)
 from app.core.utils import render_template
 
 load_dotenv(find_dotenv())
@@ -62,7 +68,9 @@ class ImagePromptRunner:
         model_name = ImagePromptRunner._resolve_model(model)
         try:
             if image_bytes is None and not image_path_or_url:
-                raise ValueError("Provide either image_bytes or image_path_or_url")
+                raise AutoMLValidationError(
+                    "Provide either image_bytes or image_path_or_url"
+                )
 
             image_b64 = (
                 ImageConverter.bytes_to_base64(image_bytes)
@@ -91,7 +99,9 @@ class ImagePromptRunner:
         model_name = ImagePromptRunner._resolve_model(model)
 
         if image_bytes is None and not image_path_or_url:
-            raise ValueError("Provide either image_bytes or image_path_or_url")
+            raise AutoMLValidationError(
+                "Provide either image_bytes or image_path_or_url"
+            )
 
         try:
             image_b64 = (
@@ -101,7 +111,7 @@ class ImagePromptRunner:
             )
         except Exception as e:
             logger.exception("Failed to convert image to base64 in run_stream")
-            raise RuntimeError(f"Image conversion failed: {e}") from e
+            raise AutoMLImageError(f"Image conversion failed: {e}") from e
 
         try:
             messages = ImagePromptRunner.build_messages(
@@ -109,7 +119,7 @@ class ImagePromptRunner:
             )
         except Exception as e:
             logger.exception("Failed to build messages in run_stream")
-            raise RuntimeError(f"Message building failed: {e}") from e
+            raise AutoMLChatError(f"Message building failed: {e}") from e
 
         try:
             return ChatHandler.chat_stream_messages_sync(
@@ -117,7 +127,7 @@ class ImagePromptRunner:
             )
         except Exception as e:
             logger.exception("Failed to start streaming in run_stream")
-            raise RuntimeError(f"Streaming failed: {e}") from e
+            raise AutoMLChatError(f"Streaming failed: {e}") from e
 
 
 class AltTextChecker:

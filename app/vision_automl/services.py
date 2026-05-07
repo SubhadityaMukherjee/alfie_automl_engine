@@ -16,9 +16,15 @@ import pandas as pd
 import requests
 from fastapi.concurrency import run_in_threadpool
 from huggingface_hub import HfApi
-
 from jinja2 import Environment, FileSystemLoader
 
+from app.core.exceptions import (
+    AutoDWDownloadError,
+    AutoDWUploadError,
+    AutoMLConfigError,
+    AutoMLDataError,
+    AutoMLSerializationError,
+)
 from app.core.utils import render_template
 from app.vision_automl.ml_engine.trainer import run_optuna_search
 
@@ -31,7 +37,7 @@ logger = logging.getLogger(__name__)
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
 _jinja_path = os.getenv("JINJAPATH")
 if not _jinja_path:
-    raise RuntimeError("JINJAPATH environment variable is not set")
+    raise AutoMLConfigError("JINJAPATH environment variable is not set")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
@@ -193,19 +199,6 @@ def sort_models_by_size(
 
 
 # ---------------------------------------------------------------------------
-# Exceptions
-# ---------------------------------------------------------------------------
-
-
-class DatasetValidationError(ValueError):
-    """Raised when the uploaded dataset fails structural validation."""
-
-
-class AutodwError(Exception):
-    """Raised on AutoDW communication failures."""
-
-
-# ---------------------------------------------------------------------------
 # Dataset fetch & extraction  (mirrors tabular: fetch_dataset_metadata +
 #                               resolve_download_url + download_dataset)
 # ---------------------------------------------------------------------------
@@ -231,9 +224,20 @@ def fetch_dataset_metadata(
         autodw_base, user_id, dataset_id, dataset_version
     )
     logger.debug("Fetching dataset metadata: %s", metadata_url)
-    resp = requests.get(metadata_url, timeout=15)
-    resp.raise_for_status()
-    return resp.json()
+    try:
+        resp = requests.get(metadata_url, timeout=15)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        logger.error(f"Failed to fetch dataset metadata: {e}")
+        raise AutoDWDownloadError(
+            f"Failed to fetch dataset metadata from AutoDW: {e}"
+        ) from e
+
+    try:
+        return resp.json()
+    except (ValueError, json.JSONDecodeError) as e:
+        logger.error(f"Failed to parse JSON response from AutoDW: {e}")
+        raise AutoDWDownloadError(f"Invalid JSON response from AutoDW: {e}") from e
 
 
 def resolve_download_url(
@@ -269,16 +273,23 @@ def resolve_download_url(
 def download_dataset(download_url: str, workdir: Path, original_filename: str) -> Path:
     """Stream-download the ZIP dataset and return its local path."""
     zip_path = workdir / original_filename
-    with requests.get(
-        download_url,
-        stream=True,
-        timeout=60,
-        headers={"Accept-Encoding": "gzip, deflate"},
-    ) as resp:
-        resp.raise_for_status()
-        with open(zip_path, "wb") as f:
-            for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
+    try:
+        with requests.get(
+            download_url,
+            stream=True,
+            timeout=60,
+            headers={"Accept-Encoding": "gzip, deflate"},
+        ) as resp:
+            resp.raise_for_status()
+            with open(zip_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                    f.write(chunk)
+    except requests.RequestException as e:
+        logger.error(f"Failed to download dataset from {download_url}: {e}")
+        raise AutoDWDownloadError(f"Failed to download dataset from AutoDW: {e}") from e
+    except OSError as e:
+        logger.error(f"Failed to write dataset to {zip_path}: {e}")
+        raise AutoDWDownloadError(f"Failed to save dataset file: {e}") from e
     logger.info("Dataset ZIP saved to %s", zip_path)
     return zip_path
 
@@ -313,7 +324,7 @@ def _find_valid_dataset_root(extract_dir: Path) -> Path:
         and not child.name.startswith(".")
     ]
     if not real_dirs:
-        raise DatasetValidationError("No valid dataset folder found in ZIP")
+        raise AutoMLDataError("No valid dataset folder found in ZIP")
     return real_dirs[0]
 
 
@@ -324,7 +335,7 @@ def _find_csv_file(dataset_root: Path) -> Path:
         if p.is_file() and p.name in ("labels.csv", "metadata.csv")
     ]
     if not csv_candidates:
-        raise DatasetValidationError("labels.csv or metadata.csv not found in dataset")
+        raise AutoMLDataError("labels.csv or metadata.csv not found in dataset")
     return csv_candidates[0]
 
 
@@ -337,7 +348,7 @@ def _find_or_resolve_images_dir(dataset_root: Path, csv_path: Path) -> Path:
     )
     resolved_dir = resolve_images_root(images_dir)
     if not resolved_dir.exists():
-        raise DatasetValidationError("images/ directory not found in dataset ZIP")
+        raise AutoMLDataError("images/ directory not found in dataset ZIP")
     return resolved_dir
 
 
@@ -613,7 +624,11 @@ def serialize_and_zip_model(workdir: Path) -> Path:
         logger.debug(f"No deployment_instructions found, {e}")
 
     zip_base = workdir / "vision_model"
-    shutil.make_archive(str(zip_base), "zip", model_dir)
+    try:
+        shutil.make_archive(str(zip_base), "zip", model_dir)
+    except Exception as e:
+        logger.error(f"Failed to create zip archive: {e}")
+        raise AutoMLSerializationError(f"Failed to zip model: {e}") from e
     zip_path = zip_base.with_suffix(".zip")
     logger.debug("Model artifacts zipped to %s", zip_path)
     return zip_path
@@ -681,10 +696,19 @@ def upload_model(
     task_id: str | None,
 ) -> requests.Response:
     """Upload the zipped model to AutoDW and return the raw response."""
+    if not zip_path.exists():
+        raise AutoMLDataError(f"Zip file not found: {zip_path}")
     headers = {"X-Task-ID": task_id} if task_id else {}
-    with open(zip_path, "rb") as f:
-        files = {"file": (zip_path.name, f, "application/octet-stream")}
-        logger.debug("Uploading vision model to %s", upload_url)
-        return requests.post(
-            upload_url, headers=headers, files=files, data=payload, timeout=120
-        )
+    try:
+        with open(zip_path, "rb") as f:
+            files = {"file": (zip_path.name, f, "application/octet-stream")}
+            logger.debug("Uploading vision model to %s", upload_url)
+            return requests.post(
+                upload_url, headers=headers, files=files, data=payload, timeout=120
+            )
+    except requests.RequestException as e:
+        logger.error(f"Failed to upload model to {upload_url}: {e}")
+        raise AutoDWUploadError(f"Failed to upload model to AutoDW: {e}") from e
+    except OSError as e:
+        logger.error(f"Failed to read zip file {zip_path}: {e}")
+        raise AutoDWUploadError(f"Failed to read zip file: {e}") from e

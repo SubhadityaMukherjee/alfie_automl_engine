@@ -10,19 +10,26 @@ from pathlib import Path
 import pandas as pd
 import requests
 from fastapi import UploadFile
-
-from app.tabular_automl.modules import AutoMLTrainer
-from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
-
-from app.core.utils import render_template
-
 from jinja2 import Environment, FileSystemLoader
+
+from app.core.exceptions import (
+    AutoDWDownloadError,
+    AutoDWUploadError,
+    AutoMLConfigError,
+    AutoMLDataError,
+    AutoMLRuntimeError,
+    AutoMLSerializationError,
+    AutoMLValidationError,
+)
+from app.core.utils import render_template
+from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
+from app.tabular_automl.modules import AutoMLTrainer
 
 logger = logging.getLogger(__name__)
 
 _jinja_path = os.getenv("JINJAPATH")
 if not _jinja_path:
-    raise RuntimeError("JINJAPATH environment variable is not set")
+    raise AutoMLConfigError("JINJAPATH environment variable is not set")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
@@ -43,7 +50,7 @@ def create_session_directory(upload_root: Path = UPLOAD_ROOT) -> tuple[str, Path
         session_dir.mkdir(parents=True, exist_ok=True)
     except Exception as e:
         logging.error(f"Failed to create session directory {session_dir}: {e}")
-        raise RuntimeError(f"Failed to create session directory: {e}") from e
+        raise AutoMLRuntimeError(f"Failed to create session directory: {e}") from e
 
     logging.debug(f"Session directory created at {session_dir}")
     return session_id, session_dir
@@ -52,7 +59,7 @@ def create_session_directory(upload_root: Path = UPLOAD_ROOT) -> tuple[str, Path
 def save_upload(file: UploadFile, destination: Path) -> None:
     """Persist an uploaded file to the given destination path."""
     if not hasattr(file, "file"):
-        raise ValueError("file must have a 'file' attribute")
+        raise AutoMLValidationError("file must have a 'file' attribute")
 
     if destination.parent:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -63,19 +70,19 @@ def save_upload(file: UploadFile, destination: Path) -> None:
         logging.debug(f"File saved to {destination}")
     except IOError as e:
         logging.error(f"Failed to write file to {destination}: {e}")
-        raise RuntimeError(f"Failed to save uploaded file: {e}") from e
+        raise AutoMLRuntimeError(f"Failed to save uploaded file: {e}") from e
     except Exception as e:
         logging.error(f"Unexpected error saving file to {destination}: {e}")
-        raise RuntimeError(f"Unexpected error saving file: {e}") from e
+        raise AutoMLRuntimeError(f"Unexpected error saving file: {e}") from e
 
 
 def load_table(file_path: Path) -> pd.DataFrame:
     """Load a table file into a DataFrame based on file extension."""
     if not file_path.exists():
-        raise FileNotFoundError(f"File not found: {file_path}")
+        raise AutoMLDataError(f"File not found: {file_path}")
 
     if not file_path.is_file():
-        raise ValueError(f"Path is not a file: {file_path}")
+        raise AutoMLDataError(f"Path is not a file: {file_path}")
 
     suffix = file_path.suffix.lower()
 
@@ -99,13 +106,13 @@ def load_table(file_path: Path) -> pd.DataFrame:
         return pd.read_csv(file_path)
     except pd.errors.EmptyDataError:
         logging.error(f"File is empty: {file_path}")
-        raise ValueError(f"File is empty: {file_path}") from None
+        raise AutoMLDataError(f"File is empty: {file_path}") from None
     except pd.errors.ParserError as e:
         logging.error(f"Failed to parse file {file_path}: {e}")
-        raise ValueError(f"Failed to parse file: {e}") from e
+        raise AutoMLDataError(f"Failed to parse file: {e}") from e
     except Exception as e:
         logging.error(f"Unexpected error loading table from {file_path}: {e}")
-        raise RuntimeError(f"Failed to load table: {e}") from e
+        raise AutoMLRuntimeError(f"Failed to load table: {e}") from e
 
 
 def validate_tabular_inputs(
@@ -130,10 +137,10 @@ def validate_tabular_inputs(
 
     try:
         train_df = load_table(train_path)
-    except FileNotFoundError as e:
+    except AutoMLDataError as e:
         logging.error(f"Training file not found: {e}")
         return f"Training file not found: {e}"
-    except ValueError as e:
+    except AutoMLDataError as e:
         logging.error(f"Could not read training data: {e}")
         return f"Could not read training data: {e}"
     except Exception as e:
@@ -189,13 +196,13 @@ def fetch_dataset_metadata(
     """Fetch and return dataset metadata from AutoDW."""
 
     if not autodw_base or not isinstance(autodw_base, str):
-        raise ValueError("autodw_base must be a non-empty string")
+        raise AutoMLValidationError("autodw_base must be a non-empty string")
 
     if not user_id or not isinstance(user_id, str):
-        raise ValueError("user_id must be a non-empty string")
+        raise AutoMLValidationError("user_id must be a non-empty string")
 
     if not dataset_id or not isinstance(dataset_id, str):
-        raise ValueError("dataset_id must be a non-empty string")
+        raise AutoMLValidationError("dataset_id must be a non-empty string")
 
     metadata_url = _build_metadata_url(
         autodw_base, user_id, dataset_id, dataset_version
@@ -207,26 +214,28 @@ def fetch_dataset_metadata(
         resp.raise_for_status()
     except requests.Timeout:
         logger.error(f"Timeout fetching metadata from {metadata_url}")
-        raise RuntimeError("Timeout fetching dataset metadata from AutoDW") from None
+        raise AutoDWDownloadError(
+            "Timeout fetching dataset metadata from AutoDW"
+        ) from None
     except requests.ConnectionError as e:
         logger.error(f"Connection error fetching metadata: {e}")
-        raise RuntimeError(f"Failed to connect to AutoDW: {e}") from e
+        raise AutoDWDownloadError(f"Failed to connect to AutoDW: {e}") from e
     except requests.HTTPError as e:
         logger.error(f"HTTP error fetching metadata: {e}")
-        raise RuntimeError(f"AutoDW returned HTTP error: {e}") from e
+        raise AutoDWDownloadError(f"AutoDW returned HTTP error: {e}") from e
     except Exception as e:
         logger.error(f"Unexpected error fetching metadata: {e}")
-        raise RuntimeError(f"Unexpected error fetching metadata: {e}") from e
+        raise AutoDWDownloadError(f"Unexpected error fetching metadata: {e}") from e
 
     try:
         metadata = resp.json()
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse JSON response from AutoDW: {e}")
-        raise RuntimeError(f"Invalid JSON response from AutoDW: {e}") from e
+        raise AutoDWDownloadError(f"Invalid JSON response from AutoDW: {e}") from e
 
     if not isinstance(metadata, dict):
         logger.error(f"Metadata is not a dict: {type(metadata)}")
-        raise RuntimeError(
+        raise AutoDWDownloadError(
             f"Invalid metadata format: expected dict, got {type(metadata)}"
         )
 
@@ -272,7 +281,7 @@ def download_dataset(download_url: str, dest_path: Path) -> None:
     """Stream-download a dataset file to dest_path."""
 
     if not download_url or not isinstance(download_url, str):
-        raise ValueError("download_url must be a non-empty string")
+        raise AutoMLValidationError("download_url must be a non-empty string")
 
     if dest_path.parent and not dest_path.parent.exists():
         dest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -286,28 +295,30 @@ def download_dataset(download_url: str, dest_path: Path) -> None:
     except requests.RequestException as e:
         if isinstance(e, requests.Timeout):
             logger.error(f"Timeout downloading from {download_url}")
-            raise RuntimeError("Timeout downloading dataset") from e
+            raise AutoDWDownloadError("Timeout downloading dataset") from e
         elif isinstance(e, requests.ConnectionError):
             logger.error(f"Connection error downloading dataset: {e}")
-            raise RuntimeError(f"Failed to connect to download URL: {e}") from e
+            raise AutoDWDownloadError(f"Failed to connect to download URL: {e}") from e
         elif isinstance(e, requests.HTTPError):
             logger.error(f"HTTP error downloading dataset: {e}")
-            raise RuntimeError(f"HTTP error downloading dataset: {e}") from e
+            raise AutoDWDownloadError(f"HTTP error downloading dataset: {e}") from e
         else:
             logger.error(f"Request error downloading dataset: {e}")
-            raise RuntimeError(f"Request error downloading dataset: {e}") from e
+            raise AutoDWDownloadError(f"Request error downloading dataset: {e}") from e
     except OSError as e:
         logger.error(f"Failed to write dataset to {dest_path}: {e}")
-        raise RuntimeError(f"Failed to save dataset file: {e}") from e
+        raise AutoDWDownloadError(f"Failed to save dataset file: {e}") from e
     except Exception as e:
         logger.error(f"Unexpected error downloading dataset: {e}")
-        raise RuntimeError(f"Unexpected error downloading dataset: {e}") from e
+        raise AutoDWDownloadError(f"Unexpected error downloading dataset: {e}") from e
 
     if not dest_path.exists():
-        raise RuntimeError(f"Download completed but file not created at {dest_path}")
+        raise AutoDWDownloadError(
+            f"Download completed but file not created at {dest_path}"
+        )
 
     if dest_path.stat().st_size == 0:
-        raise RuntimeError(f"Downloaded file is empty: {dest_path}")
+        raise AutoDWDownloadError(f"Downloaded file is empty: {dest_path}")
 
     logger.info(f"Dataset saved to {dest_path}")
 
@@ -322,28 +333,28 @@ def train_automl(
     """Train an AutoML model and return (leaderboard, predictor)."""
 
     if not target_column_name or not isinstance(target_column_name, str):
-        raise ValueError("target_column_name must be a non-empty string")
+        raise AutoMLDataError("target_column_name must be a non-empty string")
 
     if not isinstance(time_budget, int) or time_budget <= 0:
-        raise ValueError("time_budget must be a positive integer")
+        raise AutoMLConfigError("time_budget must be a positive integer")
 
     try:
         os.makedirs(save_model_path, exist_ok=True)
     except OSError as e:
         logger.error(f"Failed to create model directory {save_model_path}: {e}")
-        raise RuntimeError(f"Failed to create model directory: {e}") from e
+        raise AutoMLRuntimeError(f"Failed to create model directory: {e}") from e
 
     try:
         trainer = AutoMLTrainer(save_model_path=save_model_path)
-    except ValueError as e:
+    except AutoMLConfigError as e:
         logger.error(f"Failed to initialize AutoML trainer: {e}")
-        raise RuntimeError(f"Failed to initialize trainer: {e}") from e
+        raise AutoMLRuntimeError(f"Failed to initialize trainer: {e}") from e
 
     try:
         train_df = load_table(dataset_path)
-    except Exception as e:
+    except AutoMLDataError as e:
         logger.error(f"Failed to load training data: {e}")
-        raise RuntimeError(f"Failed to load training data: {e}") from e
+        raise AutoMLRuntimeError(f"Failed to load training data: {e}") from e
 
     try:
         return trainer.train(
@@ -352,15 +363,15 @@ def train_automl(
             target_column=target_column_name,
             time_limit=int(time_budget),
         )
-    except ValueError as e:
+    except AutoMLValidationError as e:
         logger.error(f"Training validation error: {e}")
         raise
-    except RuntimeError as e:
+    except AutoMLRuntimeError as e:
         logger.error(f"Training runtime error: {e}")
         raise
     except Exception as e:
         logger.error(f"Unexpected error during training: {e}")
-        raise RuntimeError(f"Unexpected error during training: {e}") from e
+        raise AutoMLRuntimeError(f"Unexpected error during training: {e}") from e
 
 
 def deployment_instructions() -> str:
@@ -397,10 +408,12 @@ def serialize_and_zip_predictor(
     """Pickle the predictor and zip the model directory. Returns the zip path."""
 
     if predictor is None:
-        raise ValueError("predictor cannot be None")
+        raise AutoMLValidationError("predictor cannot be None")
 
     if not save_model_path.exists():
-        raise ValueError(f"save_model_path does not exist: {save_model_path}")
+        raise AutoMLValidationError(
+            f"save_model_path does not exist: {save_model_path}"
+        )
 
     predictor_path = save_model_path / "predictor.pkl"
 
@@ -410,10 +423,10 @@ def serialize_and_zip_predictor(
         logger.debug(f"Predictor serialized to {predictor_path}")
     except IOError as e:
         logger.error(f"Failed to write predictor pickle: {e}")
-        raise RuntimeError(f"Failed to serialize predictor: {e}") from e
+        raise AutoMLSerializationError(f"Failed to serialize predictor: {e}") from e
     except pickle.PicklingError as e:
         logger.error(f"Failed to pickle predictor: {e}")
-        raise RuntimeError(f"Failed to pickle predictor: {e}") from e
+        raise AutoMLSerializationError(f"Failed to pickle predictor: {e}") from e
 
     try:
         instructions_path = save_model_path / "tabular_deployment_instructions.md"
@@ -435,10 +448,10 @@ def serialize_and_zip_predictor(
         logger.debug(f"Model zipped to {zip_path}")
     except Exception as e:
         logger.error(f"Failed to create zip archive: {e}")
-        raise RuntimeError(f"Failed to zip model: {e}") from e
+        raise AutoMLSerializationError(f"Failed to zip model: {e}") from e
 
     if not zip_path.exists():
-        raise RuntimeError(f"Zip file was not created at {zip_path}")
+        raise AutoMLSerializationError(f"Zip file was not created at {zip_path}")
 
     return zip_path
 
@@ -453,22 +466,22 @@ def build_upload_payload(
     """Return (model_id, form_data_dict) for the AutoDW upload request."""
 
     if not dataset_id or not isinstance(dataset_id, str):
-        raise ValueError("dataset_id must be a non-empty string")
+        raise AutoMLValidationError("dataset_id must be a non-empty string")
 
     if not task_type or not isinstance(task_type, str):
-        raise ValueError("task_type must be a non-empty string")
+        raise AutoMLValidationError("task_type must be a non-empty string")
 
     try:
         model_id = f"automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"
     except Exception as e:
         logger.error(f"Failed to generate model_id: {e}")
-        raise RuntimeError(f"Failed to generate model_id: {e}") from e
+        raise AutoMLRuntimeError(f"Failed to generate model_id: {e}") from e
 
     try:
         leaderboard_str = json.dumps(leaderboard_json)
     except TypeError as e:
         logger.error(f"Failed to serialize leaderboard_json: {e}")
-        raise RuntimeError(f"Failed to serialize leaderboard: {e}") from e
+        raise AutoMLSerializationError(f"Failed to serialize leaderboard: {e}") from e
 
     version = dataset_version or metadata.get("version", "v1")
     if not isinstance(version, str):
@@ -501,13 +514,13 @@ def upload_model(
     """Upload the zipped model to AutoDW. Returns the raw response."""
 
     if not upload_url or not isinstance(upload_url, str):
-        raise ValueError("upload_url must be a non-empty string")
+        raise AutoMLValidationError("upload_url must be a non-empty string")
 
     if not zip_path.exists():
-        raise FileNotFoundError(f"Zip file not found: {zip_path}")
+        raise AutoMLDataError(f"Zip file not found: {zip_path}")
 
     if not isinstance(payload, dict) or not payload:
-        raise ValueError("payload must be a non-empty dict")
+        raise AutoMLValidationError("payload must be a non-empty dict")
 
     headers = {"X-Task-ID": task_id} if task_id else {}
     if task_id:
@@ -523,19 +536,19 @@ def upload_model(
     except requests.RequestException as e:
         if isinstance(e, requests.Timeout):
             logger.error(f"Timeout uploading to {upload_url}")
-            raise RuntimeError("Timeout uploading model to AutoDW") from e
+            raise AutoDWUploadError("Timeout uploading model to AutoDW") from e
         elif isinstance(e, requests.ConnectionError):
             logger.error(f"Connection error uploading model: {e}")
-            raise RuntimeError(f"Failed to connect to upload URL: {e}") from e
+            raise AutoDWUploadError(f"Failed to connect to upload URL: {e}") from e
         elif isinstance(e, requests.HTTPError):
             logger.error(f"HTTP error uploading model: {e}")
-            raise RuntimeError(f"HTTP error uploading model: {e}") from e
+            raise AutoDWUploadError(f"HTTP error uploading model: {e}") from e
         else:
             logger.error(f"Request error uploading model: {e}")
-            raise RuntimeError(f"Request error uploading model: {e}") from e
+            raise AutoDWUploadError(f"Request error uploading model: {e}") from e
     except OSError as e:
         logger.error(f"Failed to read zip file {zip_path}: {e}")
-        raise RuntimeError(f"Failed to read zip file: {e}") from e
+        raise AutoDWUploadError(f"Failed to read zip file: {e}") from e
     except Exception as e:
         logger.error(f"Unexpected error uploading model: {e}")
-        raise RuntimeError(f"Unexpected error uploading model: {e}") from e
+        raise AutoDWUploadError(f"Unexpected error uploading model: {e}") from e

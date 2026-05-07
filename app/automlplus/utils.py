@@ -6,16 +6,21 @@ from typing import Any
 
 import requests
 from bs4 import BeautifulSoup
+from jinja2 import Environment, FileSystemLoader
 from PIL import Image
 
+from app.core.exceptions import (
+    AutoDWDownloadError,
+    AutoMLConfigError,
+    AutoMLImageError,
+    AutoMLValidationError,
+)
 from app.core.utils import render_template
-
-from jinja2 import Environment, FileSystemLoader
 
 logger = logging.getLogger(__name__)
 _jinja_path = os.getenv("JINJAPATH")
 if not _jinja_path:
-    raise RuntimeError("JINJAPATH environment variable is not set")
+    raise AutoMLConfigError("JINJAPATH environment variable is not set")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
@@ -40,7 +45,7 @@ class ImageConverter:
     def to_base64(image_path_or_url: str) -> str:
         logger.info("Converting image to base64: %s", image_path_or_url)
         if not image_path_or_url or not isinstance(image_path_or_url, str):
-            raise ValueError(
+            raise AutoMLValidationError(
                 f"image_path_or_url must be a non-empty string, got: {type(image_path_or_url)}"
             )
 
@@ -51,13 +56,13 @@ class ImageConverter:
                 resp.raise_for_status()
                 content_type = resp.headers.get("Content-Type", "")
                 if "image" not in content_type:
-                    raise ValueError(
+                    raise AutoMLValidationError(
                         f"URL does not point to an image: {image_path_or_url} (Content-Type: {content_type})"
                     )
                 image = Image.open(BytesIO(resp.content))
             else:
                 if not os.path.isfile(image_path_or_url):
-                    raise FileNotFoundError(f"No such file: {image_path_or_url}")
+                    raise AutoMLValidationError(f"No such file: {image_path_or_url}")
                 image = Image.open(image_path_or_url)
 
             image = image.convert("RGBA")
@@ -66,19 +71,19 @@ class ImageConverter:
             return base64.b64encode(buffer.getvalue()).decode("utf-8")
         except requests.RequestException as e:
             logger.exception("Failed to fetch image from URL: %s", image_path_or_url)
-            raise ValueError(f"Failed to fetch image from URL: {e}") from e
+            raise AutoDWDownloadError(f"Failed to fetch image from URL: {e}") from e
         except (IOError, OSError) as e:
             logger.exception("Failed to read image file: %s", image_path_or_url)
-            raise ValueError(f"Failed to read image file: {e}") from e
+            raise AutoMLImageError(f"Failed to read image file: {e}") from e
         except Exception as e:
             logger.exception("Image conversion failed")
-            raise ValueError(f"Image conversion failed: {e}") from e
+            raise AutoMLImageError(f"Image conversion failed: {e}") from e
 
     @staticmethod
     def bytes_to_base64(image_bytes: bytes) -> str:
         """Convert raw image bytes to base64 PNG string."""
         if not image_bytes or not isinstance(image_bytes, (bytes, bytearray)):
-            raise ValueError(
+            raise AutoMLValidationError(
                 f"image_bytes must be non-empty bytes, got: {type(image_bytes)}"
             )
 
@@ -89,10 +94,10 @@ class ImageConverter:
             return base64.b64encode(buffer.getvalue()).decode("utf-8")
         except (IOError, OSError) as e:
             logger.exception("Failed to decode image bytes")
-            raise ValueError(f"Invalid image data: {e}") from e
+            raise AutoMLImageError(f"Invalid image data: {e}") from e
         except Exception as e:
             logger.exception("Image bytes conversion failed")
-            raise ValueError(f"Image bytes conversion failed: {e}") from e
+            raise AutoMLImageError(f"Image bytes conversion failed: {e}") from e
 
 
 def extract_text_from_html_bytes(content: bytes) -> str:

@@ -10,11 +10,22 @@ import torch
 from torch import nn, optim
 from tqdm import tqdm
 
+from app.core.exceptions import AutoMLConfigError, AutoMLTrainingError
 from app.vision_automl.ml_engine.configs import load_task_config
+
+# Backward-compat import alias kept for external code that references
+# ClassificationData / ClassificationModel directly.
 from app.vision_automl.ml_engine.datamodule import (
     AudioClassificationDataModule,
     CausalLMDataModule,
+)
+from app.vision_automl.ml_engine.datamodule import (
     ImageClassificationDataModule,
+)  # noqa: F401
+from app.vision_automl.ml_engine.datamodule import (
+    ImageClassificationDataModule as ClassificationData,
+)
+from app.vision_automl.ml_engine.datamodule import (
     ImageSegmentationDataModule,
     KeypointDetectionDataModule,
     MaskedLMDataModule,
@@ -25,10 +36,12 @@ from app.vision_automl.ml_engine.datamodule import (
     SequenceClassificationDataModule,
     VideoClassificationDataModule,
 )
+from app.vision_automl.ml_engine.model import AudioClassificationModel, CausalLMModel
+from app.vision_automl.ml_engine.model import ImageClassificationModel  # noqa: F401
 from app.vision_automl.ml_engine.model import (
-    AudioClassificationModel,
-    CausalLMModel,
-    ImageClassificationModel,
+    ImageClassificationModel as ClassificationModel,
+)
+from app.vision_automl.ml_engine.model import (
     ImageSegmentationModel,
     KeypointDetectionModel,
     MaskedLMModel,
@@ -39,15 +52,6 @@ from app.vision_automl.ml_engine.model import (
     SequenceClassificationModel,
     VideoClassificationModel,
 )
-
-# Backward-compat import alias kept for external code that references
-# ClassificationData / ClassificationModel directly.
-from app.vision_automl.ml_engine.datamodule import (
-    ImageClassificationDataModule as ClassificationData,
-)  # noqa: F401
-from app.vision_automl.ml_engine.model import (
-    ImageClassificationModel as ClassificationModel,
-)  # noqa: F401
 
 # Configure module-level logger
 logger = logging.getLogger(__name__)
@@ -922,7 +926,7 @@ def run_optuna_search(
         ValueError: If ``task_type`` is not in ``OBJECTIVE_REGISTRY``.
     """
     if task_type not in OBJECTIVE_REGISTRY:
-        raise ValueError(
+        raise AutoMLConfigError(
             f"Unknown task type '{task_type}'. "
             f"Supported: {sorted(OBJECTIVE_REGISTRY)}"
         )
@@ -962,7 +966,7 @@ def run_optuna_search(
 
     completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
     if not completed:
-        raise RuntimeError(
+        raise AutoMLTrainingError(
             f"All {len(study.trials)} Optuna trial(s) failed or were pruned. "
             "Check your dataset, model IDs, and time budget."
         )

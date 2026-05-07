@@ -8,6 +8,7 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 
+from app.core.exceptions import AutoMLRuntimeError
 from app.vision_automl.ml_engine.datamodule import ClassificationData
 
 # ---------------------------------------------------------------------------
@@ -191,7 +192,7 @@ def test_collate_fn_raises_if_processor_none(data_module):
     data_module.processor = None
     images = [Image.new("RGB", (10, 10))]
     labels = [0]
-    with pytest.raises(RuntimeError, match="Processor not initialized"):
+    with pytest.raises(AutoMLRuntimeError, match="Processor not initialized"):
         data_module._collate_fn(list(zip(images, labels)))
 
 
@@ -202,17 +203,17 @@ def test_collate_fn_raises_if_processor_none(data_module):
 
 def test_train_dataloader_raises_if_dataset_none(data_module):
     data_module.train_dataset = None
-    with pytest.raises(RuntimeError, match="Train dataset not initialized"):
+    with pytest.raises(AutoMLRuntimeError, match="Train dataset not initialized"):
         data_module.train_dataloader()
 
 
 def test_val_dataloader_raises_if_dataset_none(data_module):
     data_module.val_dataset = None
-    with pytest.raises(RuntimeError, match="Validation dataset not initialized"):
+    with pytest.raises(AutoMLRuntimeError, match="Validation dataset not initialized"):
         data_module.val_dataloader()
 
 
 def test_test_dataloader_raises_if_dataset_none(data_module):
     data_module.test_dataset = None
-    with pytest.raises(RuntimeError, match="Test dataset not initialized"):
+    with pytest.raises(AutoMLRuntimeError, match="Test dataset not initialized"):
         data_module.test_dataloader()

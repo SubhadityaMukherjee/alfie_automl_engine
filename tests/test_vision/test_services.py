@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 import requests
 
+from app.core.exceptions import AutoMLDataError, AutoDWDownloadError
 from app.vision_automl.services import (
-    DatasetValidationError,
     _build_metadata_url,
     _find_csv_file,
     _find_or_resolve_images_dir,
@@ -202,7 +202,7 @@ def test_fetch_dataset_metadata_raises_on_http_error(mock_get):
     mock_resp = MagicMock()
     mock_resp.raise_for_status.side_effect = requests.HTTPError("404")
     mock_get.return_value = mock_resp
-    with pytest.raises(requests.HTTPError):
+    with pytest.raises(AutoDWDownloadError):
         fetch_dataset_metadata("http://base", "u1", "d1", None)
 
 
@@ -270,7 +270,7 @@ def test_download_dataset_raises_on_http_error(mock_get, tmp_path):
     mock_get.return_value.__enter__ = lambda s: mock_resp
     mock_get.return_value.__exit__ = MagicMock(return_value=False)
 
-    with pytest.raises(requests.HTTPError):
+    with pytest.raises(AutoDWDownloadError):
         download_dataset("http://example.com/dl", tmp_path, "dataset.zip")
 
 
@@ -295,7 +295,7 @@ def test_find_valid_dataset_root_skips_dotdirs(tmp_path):
 
 def test_find_valid_dataset_root_raises_when_no_valid_dirs(tmp_path):
     (tmp_path / "__MACOSX").mkdir()
-    with pytest.raises(DatasetValidationError, match="No valid dataset folder"):
+    with pytest.raises(AutoMLDataError, match="No valid dataset folder"):
         _find_valid_dataset_root(tmp_path)
 
 
@@ -317,7 +317,7 @@ def test_find_csv_file_finds_metadata_csv(tmp_path):
 
 
 def test_find_csv_file_raises_when_not_found(tmp_path):
-    with pytest.raises(DatasetValidationError, match="labels.csv or metadata.csv"):
+    with pytest.raises(AutoMLDataError, match="labels.csv or metadata.csv"):
         _find_csv_file(tmp_path)
 
 
@@ -347,7 +347,7 @@ def test_find_or_resolve_images_dir_finds_images_subdir(tmp_path):
 def test_find_or_resolve_images_dir_raises_when_not_found(tmp_path):
     csv_path = tmp_path / "labels.csv"
     # No images/ directory at all
-    with pytest.raises(DatasetValidationError, match="images/"):
+    with pytest.raises(AutoMLDataError, match="images/"):
         _find_or_resolve_images_dir(tmp_path, csv_path)
 
 
@@ -397,7 +397,7 @@ def test_extract_and_locate_dataset_missing_csv_raises(tmp_path):
 
     workdir = tmp_path / "work"
     workdir.mkdir()
-    with pytest.raises(DatasetValidationError, match="labels.csv or metadata.csv"):
+    with pytest.raises(AutoMLDataError, match="labels.csv or metadata.csv"):
         extract_and_locate_dataset(zip_path, workdir)
 
 
@@ -408,7 +408,7 @@ def test_extract_and_locate_dataset_no_valid_root_raises(tmp_path):
 
     workdir = tmp_path / "work"
     workdir.mkdir()
-    with pytest.raises(DatasetValidationError, match="No valid dataset folder"):
+    with pytest.raises(AutoMLDataError, match="No valid dataset folder"):
         extract_and_locate_dataset(zip_path, workdir)
 
 

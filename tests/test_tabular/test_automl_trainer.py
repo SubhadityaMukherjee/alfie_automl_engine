@@ -4,6 +4,7 @@ import tempfile
 import pandas as pd
 import pytest
 
+from app.core.exceptions import AutoMLDataError
 from app.tabular_automl.modules import AutoMLTrainer
 
 
@@ -58,7 +59,7 @@ def test_train_leaderboard_works(trainer_class: AutoMLTrainer, small_df: pd.Data
 def test_train_leaderboard_exception(
     trainer_class: AutoMLTrainer, small_df: pd.DataFrame
 ):
-    with pytest.raises(ValueError):
+    with pytest.raises(AutoMLDataError):
         trainer_class.train(
             train_df=small_df, test_df=None, target_column="wrong_target", time_limit=2
         )

@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 import torch
 
+from app.core.exceptions import AutoMLDataError, AutoMLValidationError
 from app.vision_automl.ml_engine.dataset import MultimodalClassificationDataset
 
 
@@ -67,7 +68,7 @@ def test_init_without_auxiliary_columns():
 
 
 def test_init_invalid_csv_file_type():
-    with pytest.raises(ValueError, match="path or DataFrame"):
+    with pytest.raises(AutoMLValidationError, match="path or DataFrame"):
         MultimodalClassificationDataset(csv_file=42, root_dir=Path("/x"))
 
 
@@ -214,7 +215,7 @@ def test_getitem_file_not_found_raises(tmp_path):
         label_col="label",
         auxiliary_columns=["age"],
     )
-    with pytest.raises(FileNotFoundError, match="Image not found"):
+    with pytest.raises(AutoMLDataError, match="Image not found"):
         ds[0]
 
 
