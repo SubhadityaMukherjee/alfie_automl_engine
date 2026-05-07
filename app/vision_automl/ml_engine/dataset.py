@@ -46,15 +46,18 @@ class ImageClassificationFromCSVDataset(Dataset):
         else:
             raise AutoMLValidationError("csv_file must be a path or DataFrame")
 
-        self.root_dir = root_dir
+        self.root_dir = Path(root_dir)
         self.img_col = img_col
         self.label_col = label_col
         # By default, do not apply torchvision transforms so that a Hugging Face
         # AutoImageProcessor can handle preprocessing in a DataLoader collate_fn.
         self.transform = transform
 
-        if self.label_csv[self.label_col].dtype not in [int, float]:
-            self.classes = sorted(self.label_csv[self.label_col].unique().tolist())
+        label_series = self.label_csv[self.label_col]
+        self._use_label_subdir: bool = not pd.api.types.is_numeric_dtype(label_series)
+
+        if self._use_label_subdir:
+            self.classes = sorted(label_series.unique().tolist())
             self.class_to_idx = {
                 cls_name: idx for idx, cls_name in enumerate(self.classes)
             }
@@ -65,9 +68,13 @@ class ImageClassificationFromCSVDataset(Dataset):
                 self.class_to_idx
             )
         else:
-            self.classes = sorted(self.label_csv[self.label_col].unique().tolist())
-            self.class_to_idx = {cls: cls for cls in self.classes}
-            self.idx_to_class = {cls: cls for cls in self.classes}
+            raw_vals = sorted(label_series.dropna().unique().tolist())
+            self.classes = raw_vals
+            self.class_to_idx = {v: i for i, v in enumerate(raw_vals)}
+            self.idx_to_class = {i: v for v, i in self.class_to_idx.items()}
+            self.label_csv[self.label_col] = self.label_csv[self.label_col].map(
+                self.class_to_idx
+            )
 
     def __len__(self):
         """Return number of samples."""
@@ -79,26 +86,31 @@ class ImageClassificationFromCSVDataset(Dataset):
 
         row = self.label_csv.iloc[idx]
         label_idx = int(row[self.label_col])
-        label_name = self.idx_to_class[label_idx]
 
-        filename = str(row[self.img_col]).strip()
+        filename = str(row[self.img_col]).strip().replace("\\", "/")
 
-        img_path = self.root_dir / label_name / filename
+        if self._use_label_subdir:
+            label_name = self.idx_to_class[label_idx]
+            img_path = self.root_dir / str(label_name) / filename
+        else:
+            img_path = self.root_dir / filename
+
         if not img_path.exists():
             logger.error(
-                "Image not found: root_dir=%s, label_name=%s, filename=%s",
+                "Image not found: root_dir=%s, use_label_subdir=%s, filename=%s",
                 self.root_dir,
-                label_name,
+                self._use_label_subdir,
                 filename,
             )
             print(os.listdir(self.root_dir))
-            print(os.listdir(self.root_dir / label_name))
+            if self._use_label_subdir:
+                print(os.listdir(self.root_dir / str(label_name)))
 
             raise AutoMLDataError(
                 f"Image not found\n"
                 f"Expected path: {img_path}\n"
                 f"root_dir: {self.root_dir}\n"
-                f"label_name: {label_name}\n"
+                f"use_label_subdir: {self._use_label_subdir}\n"
                 f"filename: {repr(filename)}"
             )
 

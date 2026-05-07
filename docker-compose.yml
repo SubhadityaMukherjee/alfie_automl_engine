@@ -39,6 +39,10 @@ services:
     env_file: ".env"
     volumes:
       - vision_data:/data
+    environment:
+      - "AUTODW_URL=${AUTODW_URL-http://host.docker.internal:8000}"
+    extra_hosts:
+      - "host.docker.internal=host-gateway"
     restart: always
 
 volumes:
