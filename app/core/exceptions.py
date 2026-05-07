@@ -40,3 +40,11 @@ class AutoDWUploadError(AutoMLRuntimeError):
 
 class AutoMLSerializationError(AutoMLRuntimeError):
     """Raised when serializing or pickling a model fails."""
+
+
+class AutoMLImageError(AutoMLRuntimeError):
+    """Raised when image conversion or processing fails."""
+
+
+class AutoMLChatError(AutoMLRuntimeError):
+    """Raised when an LLM/VLM call fails."""

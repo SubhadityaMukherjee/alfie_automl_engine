@@ -9,6 +9,7 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 
+from app.core.exceptions import AutoMLRuntimeError
 from app.vision_automl.ml_engine.datamodule import (
     MultimodalClassificationDataModule,
     _infer_column_types,
@@ -190,7 +191,7 @@ def test_encode_auxiliary_raises_if_scaler_not_fitted():
     dm.scaler = None
     dm.encoder = None
     df = pd.DataFrame({"age": [1.0, 2.0]})
-    with pytest.raises(RuntimeError, match="Scaler not fitted"):
+    with pytest.raises(AutoMLRuntimeError, match="Scaler not fitted"):
         dm._encode_auxiliary(df, fit=False)
 
 
@@ -201,7 +202,7 @@ def test_encode_auxiliary_raises_if_encoder_not_fitted():
     dm.scaler = None
     dm.encoder = None
     df = pd.DataFrame({"color": ["red", "blue"]})
-    with pytest.raises(RuntimeError, match="OrdinalEncoder not fitted"):
+    with pytest.raises(AutoMLRuntimeError, match="OrdinalEncoder not fitted"):
         dm._encode_auxiliary(df, fit=False)
 
 
@@ -253,7 +254,7 @@ def test_collate_fn_empty_aux_features(multimodal_data_module):
 def test_collate_fn_raises_if_processor_none(multimodal_data_module):
     multimodal_data_module.processor = None
     batch = [(Image.new("RGB", (10, 10)), np.array([1.0], dtype=np.float32), 0)]
-    with pytest.raises(RuntimeError, match="Processor not initialized"):
+    with pytest.raises(AutoMLRuntimeError, match="Processor not initialized"):
         multimodal_data_module._collate_fn(batch)
 
 
@@ -294,17 +295,17 @@ def test_test_dataloader_not_shuffled(multimodal_data_module):
 
 def test_train_dataloader_raises_if_dataset_none(multimodal_data_module):
     multimodal_data_module.train_dataset = None
-    with pytest.raises(RuntimeError, match="Train dataset not initialized"):
+    with pytest.raises(AutoMLRuntimeError, match="Train dataset not initialized"):
         multimodal_data_module.train_dataloader()
 
 
 def test_val_dataloader_raises_if_dataset_none(multimodal_data_module):
     multimodal_data_module.val_dataset = None
-    with pytest.raises(RuntimeError, match="Validation dataset not initialized"):
+    with pytest.raises(AutoMLRuntimeError, match="Validation dataset not initialized"):
         multimodal_data_module.val_dataloader()
 
 
 def test_test_dataloader_raises_if_dataset_none(multimodal_data_module):
     multimodal_data_module.test_dataset = None
-    with pytest.raises(RuntimeError, match="Test dataset not initialized"):
+    with pytest.raises(AutoMLRuntimeError, match="Test dataset not initialized"):
         multimodal_data_module.test_dataloader()

@@ -1,4 +1,5 @@
 import logging
+
 import torch
 from torch import nn
 from transformers import (
@@ -14,6 +15,8 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoModelForVideoClassification,
 )
+
+from app.core.exceptions import AutoMLConfigError, AutoMLTrainingError
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +48,9 @@ class ImageClassificationModel(nn.Module):
             logger.error(
                 "Failed to load image classification model from %s: %s", model_id, e
             )
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load image classification model from {model_id}: {e}"
+            ) from e
         if freeze_backbone:
             for param in self.model.parameters():
                 param.requires_grad = False
@@ -101,7 +106,9 @@ class MultimodalClassificationModel(nn.Module):
             )
         except Exception as e:
             logger.error("Failed to load vision backbone from %s: %s", model_id, e)
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load vision backbone from {model_id}: {e}"
+            ) from e
 
         if freeze_backbone:
             for param in self.backbone.parameters():
@@ -145,7 +152,7 @@ class MultimodalClassificationModel(nn.Module):
             hidden_size = getattr(config, "hidden_size", None)
             if hidden_size is not None:
                 return hidden_size
-        raise ValueError(
+        raise AutoMLConfigError(
             "Cannot determine vision embedding dimension from model config"
         )
 
@@ -200,7 +207,9 @@ class ImageSegmentationModel(nn.Module):
             logger.error(
                 "Failed to load image segmentation model from %s: %s", model_id, e
             )
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load image segmentation model from {model_id}: {e}"
+            ) from e
 
     def forward(self, pixel_values: torch.Tensor, labels: torch.Tensor | None = None):
         """Returns loss (scalar) when labels provided, else logits."""
@@ -223,7 +232,9 @@ class ObjectDetectionModel(nn.Module):
             logger.error(
                 "Failed to load object detection model from %s: %s", model_id, e
             )
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load object detection model from {model_id}: {e}"
+            ) from e
 
     def forward(self, pixel_values: torch.Tensor, labels=None):
         """Returns loss when labels provided (list of dicts), else raw output."""
@@ -254,7 +265,9 @@ class VideoClassificationModel(nn.Module):
             logger.error(
                 "Failed to load video classification model from %s: %s", model_id, e
             )
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load video classification model from {model_id}: {e}"
+            ) from e
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         return self.model(pixel_values=pixel_values).logits
@@ -274,7 +287,9 @@ class KeypointDetectionModel(nn.Module):
             logger.error(
                 "Failed to load keypoint detection model from %s: %s", model_id, e
             )
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load keypoint detection model from {model_id}: {e}"
+            ) from e
 
     def forward(self, pixel_values: torch.Tensor, labels=None):
         """Returns loss when labels provided, else raw output."""
@@ -305,7 +320,9 @@ class AudioClassificationModel(nn.Module):
             logger.error(
                 "Failed to load audio classification model from %s: %s", model_id, e
             )
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load audio classification model from {model_id}: {e}"
+            ) from e
 
     def forward(self, input_values: torch.Tensor) -> torch.Tensor:
         return self.model(input_values=input_values).logits
@@ -334,7 +351,9 @@ class SequenceClassificationModel(nn.Module):
             logger.error(
                 "Failed to load sequence classification model from %s: %s", model_id, e
             )
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load sequence classification model from {model_id}: {e}"
+            ) from e
 
     def forward(
         self,
@@ -355,7 +374,9 @@ class QuestionAnsweringModel(nn.Module):
             logger.error(
                 "Failed to load question answering model from %s: %s", model_id, e
             )
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load question answering model from {model_id}: {e}"
+            ) from e
 
     def forward(
         self,
@@ -385,7 +406,9 @@ class CausalLMModel(nn.Module):
             self.model = AutoModelForCausalLM.from_pretrained(model_id)
         except Exception as e:
             logger.error("Failed to load causal LM model from %s: %s", model_id, e)
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load causal LM model from {model_id}: {e}"
+            ) from e
 
     def forward(
         self,
@@ -408,7 +431,9 @@ class Seq2SeqLMModel(nn.Module):
             self.model = AutoModelForSeq2SeqLM.from_pretrained(model_id)
         except Exception as e:
             logger.error("Failed to load seq2seq LM model from %s: %s", model_id, e)
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load seq2seq LM model from {model_id}: {e}"
+            ) from e
 
     def forward(
         self,
@@ -435,7 +460,9 @@ class MaskedLMModel(nn.Module):
             self.model = AutoModelForMaskedLM.from_pretrained(model_id)
         except Exception as e:
             logger.error("Failed to load masked LM model from %s: %s", model_id, e)
-            raise
+            raise AutoMLTrainingError(
+                f"Failed to load masked LM model from {model_id}: {e}"
+            ) from e
 
     def forward(
         self,

@@ -18,6 +18,8 @@ from typing import Any, Dict, List, Tuple
 
 import textstat  # type: ignore
 
+from app.core.exceptions import AutoMLValidationError
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +64,7 @@ def split_chunks(
     Line ranges are accurate even when chunks start/end mid-line.
     """
     if chunk_size <= 0:
-        raise ValueError("chunk_size must be > 0")
+        raise AutoMLValidationError("chunk_size must be > 0")
 
     if not content or not content.strip():
         logger.warning("Empty content provided to split_chunks")

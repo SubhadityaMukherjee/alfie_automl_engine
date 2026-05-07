@@ -8,6 +8,7 @@ from fastapi import FastAPI
 
 from app.automlplus.router import router
 from app.core.chat_handler import ChatHandler
+from app.core.exceptions import AutoMLRuntimeError
 from app.core.logging import configure_service_logging
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ async def lifespan(app: FastAPI):
         await ChatHandler.init()
     except Exception as e:
         logger.critical("Failed to initialize ChatHandler: %s", e)
-        raise RuntimeError(f"ChatHandler initialization failed: {e}") from e
+        raise AutoMLRuntimeError(f"ChatHandler initialization failed: {e}") from e
     yield
 
 

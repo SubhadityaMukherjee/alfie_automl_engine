@@ -10,25 +10,22 @@ import requests
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 
-from app.core.exceptions import (
-    AutoMLValidationError,
-    AutoMLRuntimeError,
-)
+from app.core.exceptions import AutoMLRuntimeError, AutoMLValidationError
+from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 from app.tabular_automl.services import (
     SUPPORTED_FILE_TYPES,
     build_upload_payload,
     convert_leaderboard_safely,
+    deployment_instructions,
     download_dataset,
     fetch_dataset_metadata,
     resolve_download_url,
     serialize_and_zip_predictor,
+    tabular_data_instructions,
     train_automl,
     upload_model,
     validate_tabular_inputs,
-    deployment_instructions,
-    tabular_data_instructions,
 )
-from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 
 logger = logging.getLogger(__name__)
 

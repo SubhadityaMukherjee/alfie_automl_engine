@@ -9,8 +9,8 @@ from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
-from app.automlplus.tools.vlm import AltTextChecker, ImagePromptRunner
 from app.automlplus.tools.static import ReadabilityAnalyzer
+from app.automlplus.tools.vlm import AltTextChecker, ImagePromptRunner
 from app.automlplus.utils import (
     automl_plus_data_instructions,
     extract_text_from_html_bytes,
@@ -20,6 +20,7 @@ from app.automlplus.website_accessibility.pipeline import (
     resolve_coroutines,
     run_accessibility_pipeline,
 )
+from app.core.exceptions import AutoMLConfigError
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/automlplus", tags=["automlplus"])
 
 _jinja_path = os.getenv("JINJAPATH")
 if not _jinja_path:
-    raise RuntimeError("JINJAPATH environment variable is not set")
+    raise AutoMLConfigError("JINJAPATH environment variable is not set")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 

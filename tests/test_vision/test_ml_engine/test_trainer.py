@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from app.core.exceptions import AutoMLConfigError
 from app.vision_automl.ml_engine.configs import SUPPORTED_TASK_TYPES
 from app.vision_automl.ml_engine.trainer import (
     EarlyStopping,
@@ -138,7 +139,7 @@ def test_objective_registry_values_are_callable():
 
 
 def test_run_optuna_search_raises_for_unknown_task(tmp_path):
-    with pytest.raises(ValueError, match="Unknown task type"):
+    with pytest.raises(AutoMLConfigError, match="Unknown task type"):
         run_optuna_search(
             task_type="flying_toaster",
             csv_path=tmp_path / "labels.csv",

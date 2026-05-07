@@ -17,6 +17,8 @@ from transformers import (
     DataCollatorForLanguageModeling,
 )
 
+from app.core.exceptions import AutoMLDataError, AutoMLRuntimeError
+
 from .dataset import (
     CausalLMFromCSVDataset,
     ImageClassificationFromCSVDataset,
@@ -105,7 +107,7 @@ class ImageClassificationDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -186,7 +188,7 @@ class ImageClassificationDataModule:
     def _collate_fn(self, batch: list[tuple[Any, Any]]) -> dict[str, torch.Tensor]:
         images, labels = zip(*batch)
         if self.processor is None:
-            raise RuntimeError("Processor not initialized. Call setup() first.")
+            raise AutoMLRuntimeError("Processor not initialized. Call setup() first.")
         pixel_values = self.processor(
             images=list(images), return_tensors="pt"
         ).pixel_values
@@ -197,7 +199,9 @@ class ImageClassificationDataModule:
 
     def train_dataloader(self) -> DataLoader:
         if self.train_dataset is None:
-            raise RuntimeError("Train dataset not initialized. Call setup() first.")
+            raise AutoMLRuntimeError(
+                "Train dataset not initialized. Call setup() first."
+            )
         return DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
@@ -208,7 +212,7 @@ class ImageClassificationDataModule:
 
     def val_dataloader(self) -> DataLoader:
         if self.val_dataset is None:
-            raise RuntimeError(
+            raise AutoMLRuntimeError(
                 "Validation dataset not initialized. Call setup() first."
             )
         return DataLoader(
@@ -221,7 +225,9 @@ class ImageClassificationDataModule:
 
     def test_dataloader(self) -> DataLoader:
         if self.test_dataset is None:
-            raise RuntimeError("Test dataset not initialized. Call setup() first.")
+            raise AutoMLRuntimeError(
+                "Test dataset not initialized. Call setup() first."
+            )
         return DataLoader(
             self.test_dataset,
             batch_size=self.batch_size,
@@ -321,7 +327,7 @@ class MultimodalClassificationDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -429,7 +435,7 @@ class MultimodalClassificationDataModule:
                 df[self.numeric_cols] = self.scaler.fit_transform(subset)
             else:
                 if self.scaler is None:
-                    raise RuntimeError(
+                    raise AutoMLRuntimeError(
                         "Scaler not fitted. Call setup() with training data first."
                     )
                 df[self.numeric_cols] = self.scaler.transform(subset)
@@ -443,7 +449,7 @@ class MultimodalClassificationDataModule:
                 encoded = self.encoder.fit_transform(subset)
             else:
                 if self.encoder is None:
-                    raise RuntimeError(
+                    raise AutoMLRuntimeError(
                         "OrdinalEncoder not fitted. Call setup() with training data first."
                     )
                 encoded = self.encoder.transform(subset)
@@ -455,7 +461,7 @@ class MultimodalClassificationDataModule:
     def _collate_fn(self, batch: list[tuple[Any, Any, Any]]) -> dict[str, torch.Tensor]:
         images, aux_values, labels = zip(*batch)
         if self.processor is None:
-            raise RuntimeError("Processor not initialized. Call setup() first.")
+            raise AutoMLRuntimeError("Processor not initialized. Call setup() first.")
         pixel_values = self.processor(
             images=list(images), return_tensors="pt"
         ).pixel_values
@@ -467,7 +473,9 @@ class MultimodalClassificationDataModule:
 
     def train_dataloader(self) -> DataLoader:
         if self.train_dataset is None:
-            raise RuntimeError("Train dataset not initialized. Call setup() first.")
+            raise AutoMLRuntimeError(
+                "Train dataset not initialized. Call setup() first."
+            )
         return DataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
@@ -478,7 +486,7 @@ class MultimodalClassificationDataModule:
 
     def val_dataloader(self) -> DataLoader:
         if self.val_dataset is None:
-            raise RuntimeError(
+            raise AutoMLRuntimeError(
                 "Validation dataset not initialized. Call setup() first."
             )
         return DataLoader(
@@ -491,7 +499,9 @@ class MultimodalClassificationDataModule:
 
     def test_dataloader(self) -> DataLoader:
         if self.test_dataset is None:
-            raise RuntimeError("Test dataset not initialized. Call setup() first.")
+            raise AutoMLRuntimeError(
+                "Test dataset not initialized. Call setup() first."
+            )
         return DataLoader(
             self.test_dataset,
             batch_size=self.batch_size,
@@ -550,7 +560,7 @@ class ImageSegmentationDataModule(ImageClassificationDataModule):
     def _collate_fn(self, batch: list[tuple[Any, Any]]) -> dict[str, torch.Tensor]:
         images, labels = zip(*batch)
         if self.processor is None:
-            raise RuntimeError("Processor not initialized.")
+            raise AutoMLRuntimeError("Processor not initialized.")
         encoding = self.processor(images=list(images), return_tensors="pt")
         return {
             "pixel_values": encoding.pixel_values,
@@ -618,7 +628,7 @@ class ObjectDetectionDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -665,6 +675,7 @@ class ObjectDetectionDataModule:
 
     def _make_dataset(self, df: pd.DataFrame) -> Dataset:
         import json as _json
+
         from PIL import Image as _Image
 
         root = self.root_dir
@@ -774,7 +785,7 @@ class VideoClassificationDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -817,7 +828,7 @@ class VideoClassificationDataModule:
             self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -965,7 +976,7 @@ class KeypointDetectionDataModule(ImageClassificationDataModule):
     def _collate_fn(self, batch):
         images, labels = zip(*batch)
         if self.processor is None:
-            raise RuntimeError("Processor not initialized.")
+            raise AutoMLRuntimeError("Processor not initialized.")
         encoding = self.processor(images=list(images), return_tensors="pt")
         return {
             "pixel_values": encoding.pixel_values,
@@ -1029,7 +1040,7 @@ class AudioClassificationDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -1117,7 +1128,7 @@ class AudioClassificationDataModule:
     def _collate_fn(self, batch):
         waveforms, labels = zip(*batch)
         if self.feature_extractor is None:
-            raise RuntimeError("Feature extractor not initialized.")
+            raise AutoMLRuntimeError("Feature extractor not initialized.")
         inputs = self.feature_extractor(
             [w.numpy() for w in waveforms],
             sampling_rate=self.sampling_rate,
@@ -1199,7 +1210,7 @@ class SequenceClassificationDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -1253,7 +1264,7 @@ class SequenceClassificationDataModule:
     def _collate_fn(self, batch: list[tuple[str, int]]) -> dict[str, torch.Tensor]:
         texts, labels = zip(*batch)
         if self.tokenizer is None:
-            raise RuntimeError("Tokenizer not initialized.")
+            raise AutoMLRuntimeError("Tokenizer not initialized.")
         encoding = self.tokenizer(
             list(texts),
             padding=True,
@@ -1342,7 +1353,7 @@ class QuestionAnsweringDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -1396,7 +1407,7 @@ class QuestionAnsweringDataModule:
 
     def _collate_fn(self, batch: list[dict]) -> dict[str, torch.Tensor]:
         if self.tokenizer is None:
-            raise RuntimeError("Tokenizer not initialized.")
+            raise AutoMLRuntimeError("Tokenizer not initialized.")
         questions = [b["question"] for b in batch]
         contexts = [b["context"] for b in batch]
         answer_starts = [b["answer_start"] for b in batch]
@@ -1505,7 +1516,7 @@ class CausalLMDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -1544,7 +1555,7 @@ class CausalLMDataModule:
 
     def _collate_fn(self, batch: list[str]) -> dict[str, torch.Tensor]:
         if self.tokenizer is None:
-            raise RuntimeError("Tokenizer not initialized.")
+            raise AutoMLRuntimeError("Tokenizer not initialized.")
         encoding = self.tokenizer(
             batch,
             padding=True,
@@ -1630,7 +1641,7 @@ class Seq2SeqLMDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -1672,7 +1683,7 @@ class Seq2SeqLMDataModule:
 
     def _collate_fn(self, batch: list[tuple[str, str]]) -> dict[str, torch.Tensor]:
         if self.tokenizer is None:
-            raise RuntimeError("Tokenizer not initialized.")
+            raise AutoMLRuntimeError("Tokenizer not initialized.")
         inputs, targets = zip(*batch)
         src = self.tokenizer(
             list(inputs),
@@ -1768,7 +1779,7 @@ class MaskedLMDataModule:
             raise
         except pd.errors.EmptyDataError:
             logger.error("Dataset file is empty: %s", self.csv_file)
-            raise ValueError(f"Dataset file is empty: {self.csv_file}")
+            raise AutoMLDataError(f"Dataset file is empty: {self.csv_file}")
         except pd.errors.ParserError as e:
             logger.error("Failed to parse dataset CSV: %s", e)
             raise
@@ -1815,7 +1826,7 @@ class MaskedLMDataModule:
 
     def _tokenize(self, batch: list[str]) -> dict[str, torch.Tensor]:
         if self.tokenizer is None:
-            raise RuntimeError("Tokenizer not initialized.")
+            raise AutoMLRuntimeError("Tokenizer not initialized.")
         return self.tokenizer(
             batch,
             padding=True,

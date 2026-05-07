@@ -20,6 +20,7 @@ from typing import Any, List
 
 from app.automlplus.tools.static import split_chunks
 from app.automlplus.tools.text import ChunkResult, _process_single_chunk
+from app.core.exceptions import AutoMLRuntimeError, AutoMLValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -38,16 +39,16 @@ async def run_accessibility_pipeline(
         return []
 
     if chunk_size <= 0:
-        raise ValueError(f"chunk_size must be > 0, got {chunk_size}")
+        raise AutoMLValidationError(f"chunk_size must be > 0, got {chunk_size}")
 
     if concurrency <= 0:
-        raise ValueError(f"concurrency must be > 0, got {concurrency}")
+        raise AutoMLValidationError(f"concurrency must be > 0, got {concurrency}")
 
     try:
         chunks, ranges = split_chunks(content, chunk_size)
     except Exception as e:
         logger.exception("Failed to split content into chunks")
-        raise RuntimeError(f"Failed to split content into chunks: {e}") from e
+        raise AutoMLRuntimeError(f"Failed to split content into chunks: {e}") from e
 
     logger.info("Processing the website in %d chunks", len(chunks))
 
@@ -69,7 +70,7 @@ async def run_accessibility_pipeline(
         )
     except Exception as e:
         logger.exception("Failed to process chunks")
-        raise RuntimeError(f"Failed to process chunks: {e}") from e
+        raise AutoMLRuntimeError(f"Failed to process chunks: {e}") from e
 
     return results
 

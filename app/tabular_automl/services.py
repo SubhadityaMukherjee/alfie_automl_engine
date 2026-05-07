@@ -10,23 +10,20 @@ from pathlib import Path
 import pandas as pd
 import requests
 from fastapi import UploadFile
-
-from app.tabular_automl.modules import AutoMLTrainer
-from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
+from jinja2 import Environment, FileSystemLoader
 
 from app.core.exceptions import (
+    AutoDWDownloadError,
+    AutoDWUploadError,
     AutoMLConfigError,
     AutoMLDataError,
-    AutoDWDownloadError,
     AutoMLRuntimeError,
     AutoMLSerializationError,
-    AutoDWUploadError,
     AutoMLValidationError,
 )
-
 from app.core.utils import render_template
-
-from jinja2 import Environment, FileSystemLoader
+from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
+from app.tabular_automl.modules import AutoMLTrainer
 
 logger = logging.getLogger(__name__)
 

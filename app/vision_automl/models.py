@@ -3,7 +3,6 @@ from typing import Annotated, Literal, Union
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Base models
 # ---------------------------------------------------------------------------

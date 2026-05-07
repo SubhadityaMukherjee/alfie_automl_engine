@@ -10,6 +10,8 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms as T
 
+from app.core.exceptions import AutoMLDataError, AutoMLValidationError
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +34,7 @@ class ImageClassificationFromCSVDataset(Dataset):
                 raise
             except pd.errors.EmptyDataError:
                 logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
             except pd.errors.ParserError as e:
                 logger.error("Failed to parse dataset CSV file: %s", e)
                 raise
@@ -42,7 +44,7 @@ class ImageClassificationFromCSVDataset(Dataset):
         elif isinstance(csv_file, pd.DataFrame):
             self.label_csv = csv_file.reset_index(drop=True)
         else:
-            raise ValueError("csv_file must be a path or DataFrame")
+            raise AutoMLValidationError("csv_file must be a path or DataFrame")
 
         self.root_dir = root_dir
         self.img_col = img_col
@@ -92,7 +94,7 @@ class ImageClassificationFromCSVDataset(Dataset):
             print(os.listdir(self.root_dir))
             print(os.listdir(self.root_dir / label_name))
 
-            raise FileNotFoundError(
+            raise AutoMLDataError(
                 f"Image not found\n"
                 f"Expected path: {img_path}\n"
                 f"root_dir: {self.root_dir}\n"
@@ -134,7 +136,7 @@ class TextClassificationFromCSVDataset(Dataset):
                 raise
             except pd.errors.EmptyDataError:
                 logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
             except pd.errors.ParserError as e:
                 logger.error("Failed to parse dataset CSV file: %s", e)
                 raise
@@ -144,7 +146,7 @@ class TextClassificationFromCSVDataset(Dataset):
         elif isinstance(csv_file, pd.DataFrame):
             self.df = csv_file.reset_index(drop=True)
         else:
-            raise ValueError("csv_file must be a path or DataFrame")
+            raise AutoMLValidationError("csv_file must be a path or DataFrame")
 
         self.text_col = text_col
         self.label_col = label_col
@@ -191,7 +193,7 @@ class QuestionAnsweringFromCSVDataset(Dataset):
                 raise
             except pd.errors.EmptyDataError:
                 logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
             except pd.errors.ParserError as e:
                 logger.error("Failed to parse dataset CSV file: %s", e)
                 raise
@@ -201,7 +203,7 @@ class QuestionAnsweringFromCSVDataset(Dataset):
         elif isinstance(csv_file, pd.DataFrame):
             self.df = csv_file.reset_index(drop=True)
         else:
-            raise ValueError("csv_file must be a path or DataFrame")
+            raise AutoMLValidationError("csv_file must be a path or DataFrame")
 
         self.question_col = question_col
         self.context_col = context_col
@@ -243,7 +245,7 @@ class Seq2SeqFromCSVDataset(Dataset):
                 raise
             except pd.errors.EmptyDataError:
                 logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
             except pd.errors.ParserError as e:
                 logger.error("Failed to parse dataset CSV file: %s", e)
                 raise
@@ -253,7 +255,7 @@ class Seq2SeqFromCSVDataset(Dataset):
         elif isinstance(csv_file, pd.DataFrame):
             self.df = csv_file.reset_index(drop=True)
         else:
-            raise ValueError("csv_file must be a path or DataFrame")
+            raise AutoMLValidationError("csv_file must be a path or DataFrame")
 
         self.input_col = input_col
         self.target_col = target_col
@@ -288,7 +290,7 @@ class CausalLMFromCSVDataset(Dataset):
                 raise
             except pd.errors.EmptyDataError:
                 logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
             except pd.errors.ParserError as e:
                 logger.error("Failed to parse dataset CSV file: %s", e)
                 raise
@@ -298,7 +300,7 @@ class CausalLMFromCSVDataset(Dataset):
         elif isinstance(csv_file, pd.DataFrame):
             self.df = csv_file.reset_index(drop=True)
         else:
-            raise ValueError("csv_file must be a path or DataFrame")
+            raise AutoMLValidationError("csv_file must be a path or DataFrame")
 
         self.text_col = text_col
 
@@ -338,7 +340,7 @@ class MultimodalClassificationDataset(Dataset):
                 raise
             except pd.errors.EmptyDataError:
                 logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise ValueError(f"Dataset CSV file is empty: {csv_file}")
+                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
             except pd.errors.ParserError as e:
                 logger.error("Failed to parse dataset CSV file: %s", e)
                 raise
@@ -348,7 +350,7 @@ class MultimodalClassificationDataset(Dataset):
         elif isinstance(csv_file, pd.DataFrame):
             self.label_csv = csv_file.reset_index(drop=True)
         else:
-            raise ValueError("csv_file must be a path or DataFrame")
+            raise AutoMLValidationError("csv_file must be a path or DataFrame")
 
         self.root_dir = root_dir
         self.img_col = img_col
@@ -393,7 +395,7 @@ class MultimodalClassificationDataset(Dataset):
                 label_name,
                 filename,
             )
-            raise FileNotFoundError(
+            raise AutoMLDataError(
                 f"Image not found\n"
                 f"Expected path: {img_path}\n"
                 f"root_dir: {self.root_dir}\n"

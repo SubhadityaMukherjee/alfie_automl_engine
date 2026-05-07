@@ -11,13 +11,12 @@ from typing import Annotated
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 
+from app.core.exceptions import AutoDWDownloadError, AutoMLValidationError
 from app.vision_automl.models import SUPPORTED_VISION_TASK_TYPES
-
 from app.vision_automl.services import (
-    AutodwError,
-    DatasetValidationError,
     build_upload_payload,
     convert_leaderboard_safely,
+    deployment_instructions,
     download_dataset,
     extract_and_locate_dataset,
     fetch_dataset_metadata,
@@ -28,7 +27,6 @@ from app.vision_automl.services import (
     upload_model,
     validate_multimodal_inputs,
     validate_vision_inputs,
-    deployment_instructions,
     vision_data_instructions,
 )
 
@@ -211,9 +209,9 @@ async def find_best_model_for_vision(
             },
         )
 
-    except DatasetValidationError as e:
+    except AutoMLValidationError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
-    except AutodwError as e:
+    except AutoDWDownloadError as e:
         return JSONResponse(status_code=502, content={"error": f"AutoDW error: {e}"})
     except Exception as e:
         logger.exception("Unexpected error during vision AutoML")
@@ -358,9 +356,9 @@ async def find_best_model_for_multimodal_vision(
             },
         )
 
-    except DatasetValidationError as e:
+    except AutoMLValidationError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
-    except AutodwError as e:
+    except AutoDWDownloadError as e:
         return JSONResponse(status_code=502, content={"error": f"AutoDW error: {e}"})
     except Exception as e:
         logger.exception("Unexpected error during multimodal vision AutoML")

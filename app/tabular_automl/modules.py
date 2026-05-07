@@ -13,7 +13,6 @@ from app.core.exceptions import (
     AutoMLTrainingError,
 )
 
-
 logger = logging.getLogger(__name__)
 
 load_dotenv(find_dotenv())
