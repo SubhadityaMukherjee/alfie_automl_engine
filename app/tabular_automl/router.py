@@ -10,6 +10,10 @@ import requests
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 
+from app.core.exceptions import (
+    AutoMLValidationError,
+    AutoMLRuntimeError,
+)
 from app.tabular_automl.services import (
     SUPPORTED_FILE_TYPES,
     build_upload_payload,
@@ -270,13 +274,13 @@ async def find_best_model_for_mvp(
                     task_type,
                     time_budget,
                 )
-            except ValueError as e:
+            except AutoMLValidationError as e:
                 logger.error(f"Validation error during training: {e}")
                 return JSONResponse(
                     status_code=400,
                     content={"error": f"Training validation failed: {e}"},
                 )
-            except RuntimeError as e:
+            except AutoMLRuntimeError as e:
                 logger.error(f"Training runtime error: {e}")
                 return JSONResponse(
                     status_code=500, content={"error": f"Model training failed: {e}"}
