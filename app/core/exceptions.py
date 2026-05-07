@@ -28,3 +28,17 @@ class AutoMLDeploymentError(AutoMLRuntimeError):
 
 class AutoMLLeaderboardError(AutoMLRuntimeError):
     """Raised when leaderboard generation fails."""
+
+
+class AutoDWDownloadError(
+    AutoMLRuntimeError
+):  # TODO probably change this with AutoDW error or something
+    """Raised when downloading a dataset or resource fails."""
+
+
+class AutoDWUploadError(AutoMLRuntimeError):
+    """Raised when uploading a model or artifact fails."""
+
+
+class AutoMLSerializationError(AutoMLRuntimeError):
+    """Raised when serializing or pickling a model fails."""
