@@ -348,15 +348,15 @@ def test_multimodal() -> None:
         "-F",
         "user_id=1",
         "-F",
-        "dataset_id=3",
+        "dataset_id=5",
         "-F",
-        "filename_column=movie_id",
+        "filename_column=image_file_path",
         "-F",
-        "label_column=genre",
+        "label_column=label",
         "-F",
-        "time_budget=10",
+        "time_budget=60",
         "-F",
-        "model_size=small",
+        "model_size=medium",
     ]
     cp = run(cmd, capture_output=True, check=False)
     data = parse_json(cp.stdout or "")

@@ -395,7 +395,7 @@ class MultimodalClassificationDataset(Dataset):
 
         row = self.label_csv.iloc[idx]
         label_idx = int(row[self.label_col])
-        label_name = self.idx_to_class[label_idx]
+        label_name = str(self.idx_to_class[label_idx])
 
         filename = str(row[self.img_col]).strip()
 
