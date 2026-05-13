@@ -2,7 +2,9 @@
 *.log
 logs/
 processes.pid
-.DS_store
+.DS_Store
+plans/
+CLAUDE.md
 .webui_secret_key
 sample_data/
 AutogluonModels/
