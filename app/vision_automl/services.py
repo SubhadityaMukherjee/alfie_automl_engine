@@ -618,7 +618,7 @@ def serialize_and_zip_model(workdir: Path) -> Path:
     model_dir.mkdir(exist_ok=True)
 
     try:
-        with open(workdir / "vision_deployment_instructions.md") as f:
+        with open(workdir / "vision_deployment_instructions.md", "w") as f:
             f.write(deployment_instructions())
     except Exception as e:
         logger.debug(f"No deployment_instructions found, {e}")
