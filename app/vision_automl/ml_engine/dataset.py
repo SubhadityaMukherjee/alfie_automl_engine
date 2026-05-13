@@ -102,9 +102,12 @@ class ImageClassificationFromCSVDataset(Dataset):
                 self._use_label_subdir,
                 filename,
             )
-            print(os.listdir(self.root_dir))
+            logger.debug("root_dir contents: %s", os.listdir(self.root_dir))
             if self._use_label_subdir:
-                print(os.listdir(self.root_dir / str(label_name)))
+                logger.debug(
+                    "label subdir contents: %s",
+                    os.listdir(self.root_dir / str(label_name)),
+                )
 
             raise AutoMLDataError(
                 f"Image not found\n"

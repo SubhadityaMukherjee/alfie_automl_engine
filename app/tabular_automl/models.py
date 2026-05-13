@@ -14,7 +14,7 @@ class TabularTask(BaseModel):
     """Base Pydantic model describing common tabular task inputs."""
 
     target_feature: str
-    time_stamp_col: pd.DataFrame | None = None
+    time_stamp_col: str | None = None
     train_file_path: Path
     test_file_path: Path | None = None
 

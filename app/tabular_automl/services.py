@@ -140,9 +140,6 @@ def validate_tabular_inputs(
     except AutoMLDataError as e:
         logging.error(f"Training file not found: {e}")
         return f"Training file not found: {e}"
-    except AutoMLDataError as e:
-        logging.error(f"Could not read training data: {e}")
-        return f"Could not read training data: {e}"
     except Exception as e:
         logging.error(f"Unexpected error reading training data: {e}")
         return f"Unexpected error reading training data: {e}"

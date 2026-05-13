@@ -67,7 +67,7 @@ async def show_accepted_format_instructions() -> JSONResponse:
         )
     except Exception as e:
         logger.exception(
-            "Unexpected error in finding data format instructions in tabular"
+            "Unexpected error in finding data format instructions in vision"
         )
         return JSONResponse(status_code=500, content={"error": str(e)})
 
