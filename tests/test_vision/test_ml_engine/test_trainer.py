@@ -1,7 +1,6 @@
 """Tests for app/vision_automl/ml_engine/trainer.py — EarlyStopping (fast, no ML)."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -11,7 +10,7 @@ from app.vision_automl.ml_engine.trainer import (
     EarlyStopping,
     run_optuna_search,
 )
-from app.vision_automl.schemas.optuna_objectives import OBJECTIVE_REGISTRY
+from app.core.schemas.optuna_objectives import OBJECTIVE_REGISTRY
 
 
 # ---------------------------------------------------------------------------

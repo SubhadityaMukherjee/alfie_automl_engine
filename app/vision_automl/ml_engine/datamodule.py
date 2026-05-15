@@ -24,7 +24,7 @@ from .dataset import (
     Seq2SeqFromCSVDataset,
     TextClassificationFromCSVDataset,
 )
-from ..schemas.datamodule import (
+from app.core.schemas import (
     BaseDataModule,
     DEFAULT_BATCH_SIZE,
     DEFAULT_NUM_WORKERS,
