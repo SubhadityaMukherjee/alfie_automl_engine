@@ -1,79 +1,36 @@
-import json
 import logging
 import os
 import pickle
 import shutil
-import uuid
-from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-import requests
-from fastapi import UploadFile
-from jinja2 import Environment, FileSystemLoader
 
 from app.core.exceptions import (
-    AutoDWDownloadError,
-    AutoDWUploadError,
     AutoMLConfigError,
     AutoMLDataError,
     AutoMLRuntimeError,
     AutoMLSerializationError,
     AutoMLValidationError,
 )
-from app.core.utils import render_template
+from app.core.service_helpers import (
+    build_upload_payload as _core_build_upload_payload,
+    download_dataset as _core_download_dataset,
+    fetch_dataset_metadata,
+    resolve_download_url,
+    upload_model,
+)
+from app.core.utils import jinja_environment, render_template
 from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 from app.tabular_automl.modules import AutoMLTrainer
 
 logger = logging.getLogger(__name__)
-
-_jinja_path = os.getenv("JINJAPATH")
-if not _jinja_path:
-    raise AutoMLConfigError("JINJAPATH environment variable is not set")
-
-jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
 
 UPLOAD_ROOT = Path("uploaded_data")
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 SUPPORTED_FILE_TYPES = {"csv", "tsv", "parquet"}
-
-
-def create_session_directory(upload_root: Path = UPLOAD_ROOT) -> tuple[str, Path]:
-    """Create and return a new session id and directory path."""
-
-    session_id = str(uuid.uuid4())
-    session_dir = upload_root / session_id
-
-    try:
-        session_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        logging.error(f"Failed to create session directory {session_dir}: {e}")
-        raise AutoMLRuntimeError(f"Failed to create session directory: {e}") from e
-
-    logging.debug(f"Session directory created at {session_dir}")
-    return session_id, session_dir
-
-
-def save_upload(file: UploadFile, destination: Path) -> None:
-    """Persist an uploaded file to the given destination path."""
-    if not hasattr(file, "file"):
-        raise AutoMLValidationError("file must have a 'file' attribute")
-
-    if destination.parent:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        with open(destination, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        logging.debug(f"File saved to {destination}")
-    except IOError as e:
-        logging.error(f"Failed to write file to {destination}: {e}")
-        raise AutoMLRuntimeError(f"Failed to save uploaded file: {e}") from e
-    except Exception as e:
-        logging.error(f"Unexpected error saving file to {destination}: {e}")
-        raise AutoMLRuntimeError(f"Unexpected error saving file: {e}") from e
 
 
 def load_table(file_path: Path) -> pd.DataFrame:
@@ -175,149 +132,9 @@ def convert_leaderboard_safely(leaderboard):
     return leaderboard_json, leaderboard_str
 
 
-def _build_metadata_url(
-    autodw_base: str, user_id: str, dataset_id: str, dataset_version: str | None
-) -> str:
-    url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
-    if dataset_version:
-        url = f"{url}/version/{dataset_version}"
-    return url
-
-
-def fetch_dataset_metadata(
-    autodw_base: str,
-    user_id: str,
-    dataset_id: str,
-    dataset_version: str | None,
-) -> dict:
-    """Fetch and return dataset metadata from AutoDW."""
-
-    if not autodw_base or not isinstance(autodw_base, str):
-        raise AutoMLValidationError("autodw_base must be a non-empty string")
-
-    if not user_id or not isinstance(user_id, str):
-        raise AutoMLValidationError("user_id must be a non-empty string")
-
-    if not dataset_id or not isinstance(dataset_id, str):
-        raise AutoMLValidationError("dataset_id must be a non-empty string")
-
-    metadata_url = _build_metadata_url(
-        autodw_base, user_id, dataset_id, dataset_version
-    )
-    logger.debug(f"Fetching dataset metadata: {metadata_url}")
-
-    try:
-        resp = requests.get(metadata_url, timeout=15)
-        resp.raise_for_status()
-    except requests.Timeout:
-        logger.error(f"Timeout fetching metadata from {metadata_url}")
-        raise AutoDWDownloadError(
-            "Timeout fetching dataset metadata from AutoDW"
-        ) from None
-    except requests.ConnectionError as e:
-        logger.error(f"Connection error fetching metadata: {e}")
-        raise AutoDWDownloadError(f"Failed to connect to AutoDW: {e}") from e
-    except requests.HTTPError as e:
-        logger.error(f"HTTP error fetching metadata: {e}")
-        raise AutoDWDownloadError(f"AutoDW returned HTTP error: {e}") from e
-    except Exception as e:
-        logger.error(f"Unexpected error fetching metadata: {e}")
-        raise AutoDWDownloadError(f"Unexpected error fetching metadata: {e}") from e
-
-    try:
-        metadata = resp.json()
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON response from AutoDW: {e}")
-        raise AutoDWDownloadError(f"Invalid JSON response from AutoDW: {e}") from e
-
-    if not isinstance(metadata, dict):
-        logger.error(f"Metadata is not a dict: {type(metadata)}")
-        raise AutoDWDownloadError(
-            f"Invalid metadata format: expected dict, got {type(metadata)}"
-        )
-
-    return metadata
-
-
-def resolve_download_url(
-    autodw_base: str,
-    user_id: str,
-    dataset_id: str,
-    dataset_version: str | None,
-    metadata: dict,
-    dataset_split: str | None,
-) -> str:
-    """Determine the correct dataset download URL, accounting for splits."""
-    base_url = _build_metadata_url(autodw_base, user_id, dataset_id, dataset_version)
-    download_url = f"{base_url}/download"
-
-    has_split = bool(metadata.get("custom_metadata", {}).get("split"))
-    effective_split = (
-        dataset_split
-        if (has_split and dataset_split in ("train", "test", "drift"))
-        else None
-    )
-
-    if effective_split:
-        download_url = f"{download_url}?split={effective_split}"
-        logger.info(
-            f"Dataset has splits; downloading '{effective_split}' split from: {download_url}"
-        )
-    else:
-        if dataset_split and not has_split:
-            logger.warning(
-                f"dataset_split='{dataset_split}' was requested but dataset has no splits; "
-                "downloading full dataset."
-            )
-        logger.debug(f"Downloading full dataset file: {download_url}")
-
-    return download_url
-
-
 def download_dataset(download_url: str, dest_path: Path) -> None:
     """Stream-download a dataset file to dest_path."""
-
-    if not download_url or not isinstance(download_url, str):
-        raise AutoMLValidationError("download_url must be a non-empty string")
-
-    if dest_path.parent and not dest_path.parent.exists():
-        dest_path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        with requests.get(download_url, stream=True, timeout=30) as resp:
-            resp.raise_for_status()
-            with open(dest_path, "wb") as f:
-                for chunk in resp.iter_content(8192):
-                    f.write(chunk)
-    except requests.RequestException as e:
-        if isinstance(e, requests.Timeout):
-            logger.error(f"Timeout downloading from {download_url}")
-            raise AutoDWDownloadError("Timeout downloading dataset") from e
-        elif isinstance(e, requests.ConnectionError):
-            logger.error(f"Connection error downloading dataset: {e}")
-            raise AutoDWDownloadError(f"Failed to connect to download URL: {e}") from e
-        elif isinstance(e, requests.HTTPError):
-            logger.error(f"HTTP error downloading dataset: {e}")
-            raise AutoDWDownloadError(f"HTTP error downloading dataset: {e}") from e
-        else:
-            logger.error(f"Request error downloading dataset: {e}")
-            raise AutoDWDownloadError(f"Request error downloading dataset: {e}") from e
-    except OSError as e:
-        logger.error(f"Failed to write dataset to {dest_path}: {e}")
-        raise AutoDWDownloadError(f"Failed to save dataset file: {e}") from e
-    except Exception as e:
-        logger.error(f"Unexpected error downloading dataset: {e}")
-        raise AutoDWDownloadError(f"Unexpected error downloading dataset: {e}") from e
-
-    if not dest_path.exists():
-        raise AutoDWDownloadError(
-            f"Download completed but file not created at {dest_path}"
-        )
-
-    if dest_path.stat().st_size == 0:
-        raise AutoDWDownloadError(f"Downloaded file is empty: {dest_path}")
-
-    logger.info(f"Dataset saved to {dest_path}")
+    _core_download_dataset(download_url, dest_path)
 
 
 def train_automl(
@@ -461,91 +278,19 @@ def build_upload_payload(
     leaderboard_json: list | dict,
 ) -> tuple[str, dict]:
     """Return (model_id, form_data_dict) for the AutoDW upload request."""
+    instructions = deployment_instructions()
+    extra = {}
+    if isinstance(instructions, str):
+        extra["deployment_instructions"] = instructions
 
-    if not dataset_id or not isinstance(dataset_id, str):
-        raise AutoMLValidationError("dataset_id must be a non-empty string")
-
-    if not task_type or not isinstance(task_type, str):
-        raise AutoMLValidationError("task_type must be a non-empty string")
-
-    try:
-        model_id = f"automl_{dataset_id}_{int(datetime.utcnow().timestamp())}"
-    except Exception as e:
-        logger.error(f"Failed to generate model_id: {e}")
-        raise AutoMLRuntimeError(f"Failed to generate model_id: {e}") from e
-
-    try:
-        leaderboard_str = json.dumps(leaderboard_json)
-    except TypeError as e:
-        logger.error(f"Failed to serialize leaderboard_json: {e}")
-        raise AutoMLSerializationError(f"Failed to serialize leaderboard: {e}") from e
-
-    version = dataset_version or metadata.get("version", "v1")
-    if not isinstance(version, str):
-        version = "v1"
-
-    data = {
-        "model_id": model_id,
-        "name": f"AutoML Model - {model_id}",
-        "description": "AutoML trained model for tabular data",
-        "framework": "sklearn",
-        "model_type": task_type,
-        "training_dataset": str(dataset_id),
-        "training_dataset_version": version,
-        "leaderboard": leaderboard_str,
-        "deployment_instructions": deployment_instructions(),
-    }
-
-    if not isinstance(data["deployment_instructions"], str):
-        data["deployment_instructions"] = ""
-
-    return model_id, data
-
-
-def upload_model(
-    upload_url: str,
-    zip_path: Path,
-    payload: dict,
-    task_id: str | None,
-) -> requests.Response:
-    """Upload the zipped model to AutoDW. Returns the raw response."""
-
-    if not upload_url or not isinstance(upload_url, str):
-        raise AutoMLValidationError("upload_url must be a non-empty string")
-
-    if not zip_path.exists():
-        raise AutoMLDataError(f"Zip file not found: {zip_path}")
-
-    if not isinstance(payload, dict) or not payload:
-        raise AutoMLValidationError("payload must be a non-empty dict")
-
-    headers = {"X-Task-ID": task_id} if task_id else {}
-    if task_id:
-        logger.debug(f"Including X-Task-ID header: {task_id}")
-
-    try:
-        with open(zip_path, "rb") as f:
-            files = {"file": (zip_path.name, f, "application/octet-stream")}
-            logger.debug(f"Uploading model to {upload_url}")
-            return requests.post(
-                upload_url, headers=headers, files=files, data=payload, timeout=120
-            )
-    except requests.RequestException as e:
-        if isinstance(e, requests.Timeout):
-            logger.error(f"Timeout uploading to {upload_url}")
-            raise AutoDWUploadError("Timeout uploading model to AutoDW") from e
-        elif isinstance(e, requests.ConnectionError):
-            logger.error(f"Connection error uploading model: {e}")
-            raise AutoDWUploadError(f"Failed to connect to upload URL: {e}") from e
-        elif isinstance(e, requests.HTTPError):
-            logger.error(f"HTTP error uploading model: {e}")
-            raise AutoDWUploadError(f"HTTP error uploading model: {e}") from e
-        else:
-            logger.error(f"Request error uploading model: {e}")
-            raise AutoDWUploadError(f"Request error uploading model: {e}") from e
-    except OSError as e:
-        logger.error(f"Failed to read zip file {zip_path}: {e}")
-        raise AutoDWUploadError(f"Failed to read zip file: {e}") from e
-    except Exception as e:
-        logger.error(f"Unexpected error uploading model: {e}")
-        raise AutoDWUploadError(f"Unexpected error uploading model: {e}") from e
+    return _core_build_upload_payload(
+        dataset_id,
+        dataset_version,
+        metadata,
+        task_type,
+        leaderboard_json,
+        name=f"AutoML Model - {dataset_id}",
+        description="AutoML trained model for tabular data",
+        framework="sklearn",
+        extra_fields=extra,
+    )

@@ -47,7 +47,9 @@ def test_init_from_csv_path(tmp_path):
 
 
 def test_init_invalid_csv_file_type():
-    with pytest.raises(AutoMLValidationError, match="path or DataFrame"):
+    with pytest.raises(
+        AutoMLValidationError, match="csv_file must be a Path or DataFrame"
+    ):
         ImageClassificationFromCSVDataset(csv_file=42, root_dir=Path("/x"))
 
 
@@ -65,7 +67,7 @@ def test_labels_encoded_as_integers():
         csv_file=df, root_dir=Path("/x"), img_col="filename", label_col="label"
     )
     # After encoding, the label column should contain numeric values
-    assert pd.api.types.is_numeric_dtype(ds.label_csv["label"])
+    assert pd.api.types.is_numeric_dtype(ds.df["label"])
 
 
 def test_integer_labels_in_dataframe():

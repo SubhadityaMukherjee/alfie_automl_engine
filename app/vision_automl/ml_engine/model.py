@@ -158,23 +158,17 @@ class MultimodalClassificationModel(nn.Module):
 
     def _extract_vision_embeddings(self, pixel_values: torch.Tensor) -> torch.Tensor:
         if hasattr(self.backbone, "classifier"):
-            embeddings = self._forward_until(self.backbone, "classifier", pixel_values)
-            if isinstance(embeddings, (tuple, list)):
-                embeddings = embeddings[0]
+            original_classifier = self.backbone.classifier
+            self.backbone.classifier = nn.Identity()
+            try:
+                embeddings = self.backbone(pixel_values)
+                if hasattr(embeddings, "logits"):
+                    embeddings = embeddings.logits
+            finally:
+                self.backbone.classifier = original_classifier
             return embeddings
         output = self.backbone(pixel_values)
         return output.logits if hasattr(output, "logits") else output
-
-    @staticmethod
-    def _forward_until(
-        model: nn.Module, stop_before: str, x: torch.Tensor
-    ) -> torch.Tensor:
-        out = x
-        for name, child in model.named_children():
-            if name == stop_before:
-                break
-            out = child(out)
-        return out
 
     def forward(
         self, pixel_values: torch.Tensor, aux_features: torch.Tensor | None = None
@@ -480,19 +474,3 @@ class MaskedLMModel(nn.Module):
         return self.model(
             input_ids=input_ids, attention_mask=attention_mask, labels=labels
         ).loss
-
-
-MODEL_REGISTRY: dict[str, type[nn.Module]] = {
-    "image_classification": ImageClassificationModel,
-    "image_classification_multimodal": MultimodalClassificationModel,
-    "image_segmentation": ImageSegmentationModel,
-    "object_detection": ObjectDetectionModel,
-    "video_classification": VideoClassificationModel,
-    "keypoint_detection": KeypointDetectionModel,
-    "audio_classification": AudioClassificationModel,
-    "text_classification": SequenceClassificationModel,
-    "question_answering": QuestionAnsweringModel,
-    "causal_lm": CausalLMModel,
-    "seq2seq_lm": Seq2SeqLMModel,
-    "masked_lm": MaskedLMModel,
-}

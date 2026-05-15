@@ -1,11 +1,7 @@
 from pathlib import Path
-from typing import Annotated, Literal, Union
+from typing import Literal
 
-from pydantic import BaseModel, Field
-
-# ---------------------------------------------------------------------------
-# Base models
-# ---------------------------------------------------------------------------
+from pydantic import BaseModel
 
 
 class ImageTask(BaseModel):
@@ -27,11 +23,6 @@ class TextTask(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
-
-
-# ---------------------------------------------------------------------------
-# Image tasks
-# ---------------------------------------------------------------------------
 
 
 class ImageClassificationTask(ImageTask):
@@ -78,11 +69,6 @@ class KeypointDetectionTask(ImageTask):
     task_type: Literal["keypoint_detection"] = "keypoint_detection"
 
 
-# ---------------------------------------------------------------------------
-# Audio tasks
-# ---------------------------------------------------------------------------
-
-
 class AudioClassificationTask(BaseModel):
     """Configuration for audio classification tasks.
 
@@ -96,11 +82,6 @@ class AudioClassificationTask(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
-
-
-# ---------------------------------------------------------------------------
-# Text tasks
-# ---------------------------------------------------------------------------
 
 
 class SequenceClassificationTask(TextTask):
@@ -149,29 +130,6 @@ class MaskedLMTask(TextTask):
     task_type: Literal["masked_lm"] = "masked_lm"
 
 
-# ---------------------------------------------------------------------------
-# Existing tasks kept for backward compatibility
-# ---------------------------------------------------------------------------
-
-
-class ImageMultiLabelClassificationTask(ImageTask):
-    """Configuration for multi-label image classification tasks."""
-
-    task_type: str = "image_multilabel_classification"
-    label_format: Literal["csv", "json"] = "csv"  # required
-
-
-class ImageRegressionTask(ImageTask):
-    """Configuration for image regression tasks (predict numeric values)."""
-
-    task_type: str = "image_regression"
-    label_format: Literal["csv"] = "csv"  # regression needs exact values
-
-
-# ---------------------------------------------------------------------------
-# Supported task type slug set (mirrors ml_engine/configs)
-# ---------------------------------------------------------------------------
-
 SUPPORTED_VISION_TASK_TYPES: frozenset[str] = frozenset(
     {
         "image_classification",
@@ -187,21 +145,3 @@ SUPPORTED_VISION_TASK_TYPES: frozenset[str] = frozenset(
         "masked_lm",
     }
 )
-
-# Discriminated union of all first-class task schemas
-VisionTask = Annotated[
-    Union[
-        ImageClassificationTask,
-        ImageSegmentationTask,
-        ObjectDetectionTask,
-        VideoClassificationTask,
-        KeypointDetectionTask,
-        AudioClassificationTask,
-        SequenceClassificationTask,
-        QuestionAnsweringTask,
-        CausalLMTask,
-        Seq2SeqLMTask,
-        MaskedLMTask,
-    ],
-    Field(discriminator="task_type"),
-]

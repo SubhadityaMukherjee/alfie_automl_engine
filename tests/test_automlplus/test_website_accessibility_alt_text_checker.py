@@ -10,9 +10,7 @@ from app.automlplus.tools.vlm import AltTextChecker
 
 load_dotenv(find_dotenv())
 
-jinja_path = os.getenv("JINJAPATH")
-if not jinja_path:
-    raise RuntimeError("JINJAPATH environment variable is not set")
+jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
 
 
 logger = logging.getLogger(__name__)

@@ -1,7 +1,6 @@
 """Tests for app/vision_automl/ml_engine/trainer.py — EarlyStopping (fast, no ML)."""
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -9,9 +8,10 @@ from app.core.exceptions import AutoMLConfigError
 from app.vision_automl.ml_engine.configs import SUPPORTED_TASK_TYPES
 from app.vision_automl.ml_engine.trainer import (
     EarlyStopping,
-    OBJECTIVE_REGISTRY,
     run_optuna_search,
 )
+from app.core.schemas.optuna_objectives import OBJECTIVE_REGISTRY
+
 
 # ---------------------------------------------------------------------------
 # EarlyStopping — pure logic, no model/HF downloads needed

@@ -20,15 +20,12 @@ from app.automlplus.website_accessibility.pipeline import (
     resolve_coroutines,
     run_accessibility_pipeline,
 )
-from app.core.exceptions import AutoMLConfigError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/automlplus", tags=["automlplus"])
 
-_jinja_path = os.getenv("JINJAPATH")
-if not _jinja_path:
-    raise AutoMLConfigError("JINJAPATH environment variable is not set")
+_jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
@@ -52,14 +49,7 @@ async def image_to_website(
     image_file: UploadFile | None = File(default=None),
 ) -> JSONResponse:
     """Convert an uploaded image into a basic HTML website structure."""
-    logger.info("Starting image-to-website conversion")
-    try:
-        # TODO: Implement image-to-website logic (currently placeholder)
-        logger.info("Image-to-website conversion completed successfully")
-        return JSONResponse(content={})
-    except Exception as e:
-        logger.exception("Error during image-to-website conversion: %s", e)
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+    return JSONResponse(content={"error": "Not implemented"}, status_code=501)
 
 
 @router.post("/web_access/check-alt-text/")

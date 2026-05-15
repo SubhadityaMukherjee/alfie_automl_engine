@@ -11,7 +11,7 @@ from app.core.chat_handler import ChatHandler
 
 load_dotenv(find_dotenv())
 
-jinja_path = os.getenv("JINJAPATH")
+jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
 if not jinja_path:
     raise RuntimeError("JINJAPATH environment variable is not set")
 
