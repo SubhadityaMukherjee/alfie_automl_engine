@@ -6,7 +6,6 @@ import pandas as pd
 import pytest
 
 from app.tabular_automl.services import (
-    create_session_directory,
     load_table,
     validate_tabular_inputs,
 )
@@ -40,13 +39,6 @@ def test_load_table(file_fixture, fake_data):
 
     assert isinstance(df, pd.DataFrame)
     assert list(df["col_1"]) == list(fake_data["col_1"])
-
-
-def test_create_session_directory():
-    tmp_dir = tempfile.mkdtemp()
-    session_id, session_dir = create_session_directory(upload_root=Path(tmp_dir))
-    assert type(session_id) == str
-    assert os.path.exists(session_dir)
 
 
 @pytest.mark.parametrize(

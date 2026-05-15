@@ -28,12 +28,6 @@ from app.vision_automl.ml_engine.trainer import run_optuna_search
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Constants / config
-# ---------------------------------------------------------------------------
-
-autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
-
 
 # ---------------------------------------------------------------------------
 # Dataset helpers

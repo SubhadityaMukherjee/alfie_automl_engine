@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Literal, Annotated, Union
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ImageTask(BaseModel):
@@ -130,20 +130,6 @@ class MaskedLMTask(TextTask):
     task_type: Literal["masked_lm"] = "masked_lm"
 
 
-class ImageMultiLabelClassificationTask(ImageTask):
-    """Configuration for multi-label image classification tasks."""
-
-    task_type: str = "image_multilabel_classification"
-    label_format: Literal["csv", "json"] = "csv"  # required
-
-
-class ImageRegressionTask(ImageTask):
-    """Configuration for image regression tasks (predict numeric values)."""
-
-    task_type: str = "image_regression"
-    label_format: Literal["csv"] = "csv"  # regression needs exact values
-
-
 SUPPORTED_VISION_TASK_TYPES: frozenset[str] = frozenset(
     {
         "image_classification",
@@ -159,19 +145,3 @@ SUPPORTED_VISION_TASK_TYPES: frozenset[str] = frozenset(
         "masked_lm",
     }
 )
-VisionTask = Annotated[
-    Union[
-        ImageClassificationTask,
-        ImageSegmentationTask,
-        ObjectDetectionTask,
-        VideoClassificationTask,
-        KeypointDetectionTask,
-        AudioClassificationTask,
-        SequenceClassificationTask,
-        QuestionAnsweringTask,
-        CausalLMTask,
-        Seq2SeqLMTask,
-        MaskedLMTask,
-    ],
-    Field(discriminator="task_type"),
-]

@@ -1,8 +1,7 @@
 """Chat handling utilities for async LLM requests.
 
-Provides a simple queued interface (`ChatQueue`) and a static facade
-(`ChatHandler`) to interact with Azure AI Inference models, supporting both
-regular and streaming responses.
+Provides a static facade (`ChatHandler`) to interact with Azure AI Inference
+models, supporting both regular and streaming responses.
 """
 
 import asyncio
@@ -16,62 +15,17 @@ from azure.core.credentials import AzureKeyCredential
 
 logger = logging.getLogger(__name__)
 
+_MAX_CONCURRENT = 4
 
-class ChatQueue:
-    """Async work queue for chat requests, supporting streaming and non-streaming calls."""
 
-    def __init__(self, num_workers=4):
-        self.queue = asyncio.Queue()
-        self.tasks = []
-        self.num_workers = num_workers
-        self.semaphore = asyncio.Semaphore(num_workers)
+class ChatHandler:
+    _semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
 
-    async def start(self):
-        logger.debug("Started Chat task")
-        self.tasks = [
-            asyncio.create_task(self.worker()) for _ in range(self.num_workers)
-        ]
-
-    async def worker(self):
-        while True:
-            (
-                fut,
-                message,
-                context,
-                backend,
-                model,
-                stream,
-                stream_queue,
-            ) = await self.queue.get()
-            try:
-                if stream:
-                    async for chunk in ChatHandler.dispatch_stream(
-                        message, context, backend, model
-                    ):
-                        await stream_queue.put(chunk)
-                    await stream_queue.put(None)
-                    fut.set_result(True)
-                else:
-                    result = await ChatHandler.dispatch(
-                        message, context, backend, model
-                    )
-                    fut.set_result(result)
-            except Exception as e:
-                if stream:
-                    await stream_queue.put(f"[ERROR] {str(e)}")
-                    await stream_queue.put(None)
-                fut.set_exception(e)
-            finally:
-                self.queue.task_done()
-
-    async def submit(
-        self, message, context="", backend="azure", model="gpt-4o-mini", stream=False
+    @staticmethod
+    async def chat(
+        message, context="", backend="azure", model="gpt-4o-mini", stream=False
     ):
-        async with self.semaphore:
-
-            logger.debug(
-                f"Submitted {message} message with backend {backend}, model {model}, stream {stream}"
-            )
+        async with ChatHandler._semaphore:
             if stream:
 
                 async def stream_gen():
@@ -83,21 +37,6 @@ class ChatQueue:
                 return stream_gen()
             else:
                 return await ChatHandler.dispatch(message, context, backend, model)
-
-
-class ChatHandler:
-    queue = ChatQueue()
-
-    @staticmethod
-    async def init():
-        logger.debug("Started queue")
-        await ChatHandler.queue.start()
-
-    @staticmethod
-    async def chat(
-        message, context="", backend="azure", model="gpt-4o-mini", stream=False
-    ):
-        return await ChatHandler.queue.submit(message, context, backend, model, stream)
 
     @staticmethod
     async def dispatch(message, context, backend, model):

@@ -9,8 +9,6 @@ from app.core.schemas.ml_tasks import (
     AudioClassificationTask,
     CausalLMTask,
     ImageClassificationTask,
-    ImageMultiLabelClassificationTask,
-    ImageRegressionTask,
     ImageSegmentationTask,
     ImageTask,
     KeypointDetectionTask,
@@ -64,52 +62,6 @@ def test_image_classification_task_inherits_defaults():
     task = ImageClassificationTask(train_dir=Path("x"))
     assert task.label_format == "folder"
     assert task.test_dir is None
-
-
-def test_image_multilabel_task_type():
-    task = ImageMultiLabelClassificationTask(train_dir=Path("x"))
-    assert task.task_type == "image_multilabel_classification"
-    assert task.label_format == "csv"
-
-
-def test_image_multilabel_task_json_format():
-    task = ImageMultiLabelClassificationTask(train_dir=Path("x"), label_format="json")
-    assert task.label_format == "json"
-
-
-def test_image_multilabel_task_rejects_folder_format():
-    with pytest.raises(ValidationError):
-        ImageMultiLabelClassificationTask(train_dir=Path("x"), label_format="folder")
-
-
-def test_image_regression_task_type():
-    task = ImageRegressionTask(train_dir=Path("x"))
-    assert task.task_type == "image_regression"
-    assert task.label_format == "csv"
-
-
-def test_image_regression_task_rejects_folder_format():
-    with pytest.raises(ValidationError):
-        ImageRegressionTask(train_dir=Path("x"), label_format="folder")
-
-
-def test_image_regression_task_rejects_json_format():
-    with pytest.raises(ValidationError):
-        ImageRegressionTask(train_dir=Path("x"), label_format="json")
-
-
-@pytest.mark.parametrize(
-    "task_cls, expected_type",
-    [
-        (ImageClassificationTask, "image_classification"),
-        (ImageMultiLabelClassificationTask, "image_multilabel_classification"),
-        (ImageRegressionTask, "image_regression"),
-    ],
-)
-def test_task_type_is_string(task_cls, expected_type):
-    task = task_cls(train_dir=Path("x"))
-    assert isinstance(task.task_type, str)
-    assert task.task_type == expected_type
 
 
 # ---------------------------------------------------------------------------

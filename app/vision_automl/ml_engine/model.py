@@ -474,19 +474,3 @@ class MaskedLMModel(nn.Module):
         return self.model(
             input_ids=input_ids, attention_mask=attention_mask, labels=labels
         ).loss
-
-
-MODEL_REGISTRY: dict[str, type[nn.Module]] = {
-    "image_classification": ImageClassificationModel,
-    "image_classification_multimodal": MultimodalClassificationModel,
-    "image_segmentation": ImageSegmentationModel,
-    "object_detection": ObjectDetectionModel,
-    "video_classification": VideoClassificationModel,
-    "keypoint_detection": KeypointDetectionModel,
-    "audio_classification": AudioClassificationModel,
-    "text_classification": SequenceClassificationModel,
-    "question_answering": QuestionAnsweringModel,
-    "causal_lm": CausalLMModel,
-    "seq2seq_lm": Seq2SeqLMModel,
-    "masked_lm": MaskedLMModel,
-}

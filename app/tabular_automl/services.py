@@ -2,11 +2,9 @@ import logging
 import os
 import pickle
 import shutil
-import uuid
 from pathlib import Path
 
 import pandas as pd
-from fastapi import UploadFile
 
 from app.core.exceptions import (
     AutoMLConfigError,
@@ -33,42 +31,6 @@ UPLOAD_ROOT = Path("uploaded_data")
 UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 SUPPORTED_FILE_TYPES = {"csv", "tsv", "parquet"}
-
-
-def create_session_directory(upload_root: Path = UPLOAD_ROOT) -> tuple[str, Path]:
-    """Create and return a new session id and directory path."""
-
-    session_id = str(uuid.uuid4())
-    session_dir = upload_root / session_id
-
-    try:
-        session_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as e:
-        logging.error(f"Failed to create session directory {session_dir}: {e}")
-        raise AutoMLRuntimeError(f"Failed to create session directory: {e}") from e
-
-    logging.debug(f"Session directory created at {session_dir}")
-    return session_id, session_dir
-
-
-def save_upload(file: UploadFile, destination: Path) -> None:
-    """Persist an uploaded file to the given destination path."""
-    if not hasattr(file, "file"):
-        raise AutoMLValidationError("file must have a 'file' attribute")
-
-    if destination.parent:
-        destination.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        with open(destination, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        logging.debug(f"File saved to {destination}")
-    except IOError as e:
-        logging.error(f"Failed to write file to {destination}: {e}")
-        raise AutoMLRuntimeError(f"Failed to save uploaded file: {e}") from e
-    except Exception as e:
-        logging.error(f"Unexpected error saving file to {destination}: {e}")
-        raise AutoMLRuntimeError(f"Unexpected error saving file: {e}") from e
 
 
 def load_table(file_path: Path) -> pd.DataFrame:

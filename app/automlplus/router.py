@@ -49,14 +49,7 @@ async def image_to_website(
     image_file: UploadFile | None = File(default=None),
 ) -> JSONResponse:
     """Convert an uploaded image into a basic HTML website structure."""
-    logger.info("Starting image-to-website conversion")
-    try:
-        # TODO: Implement image-to-website logic (currently placeholder)
-        logger.info("Image-to-website conversion completed successfully")
-        return JSONResponse(content={})
-    except Exception as e:
-        logger.exception("Error during image-to-website conversion: %s", e)
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+    return JSONResponse(content={"error": "Not implemented"}, status_code=501)
 
 
 @router.post("/web_access/check-alt-text/")
