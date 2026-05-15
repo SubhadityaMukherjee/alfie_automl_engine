@@ -20,15 +20,12 @@ from app.automlplus.website_accessibility.pipeline import (
     resolve_coroutines,
     run_accessibility_pipeline,
 )
-from app.core.exceptions import AutoMLConfigError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/automlplus", tags=["automlplus"])
 
-_jinja_path = os.getenv("JINJAPATH")
-if not _jinja_path:
-    raise AutoMLConfigError("JINJAPATH environment variable is not set")
+_jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 

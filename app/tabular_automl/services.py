@@ -27,9 +27,7 @@ from app.tabular_automl.modules import AutoMLTrainer
 
 logger = logging.getLogger(__name__)
 
-_jinja_path = os.getenv("JINJAPATH")
-if not _jinja_path:
-    raise AutoMLConfigError("JINJAPATH environment variable is not set")
+_jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 

@@ -21,7 +21,6 @@ from jinja2 import Environment, FileSystemLoader
 from app.core.exceptions import (
     AutoDWDownloadError,
     AutoDWUploadError,
-    AutoMLConfigError,
     AutoMLDataError,
     AutoMLSerializationError,
 )
@@ -35,9 +34,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
-_jinja_path = os.getenv("JINJAPATH")
-if not _jinja_path:
-    raise AutoMLConfigError("JINJAPATH environment variable is not set")
+_jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
