@@ -9,9 +9,10 @@ from app.core.exceptions import AutoMLConfigError
 from app.vision_automl.ml_engine.configs import SUPPORTED_TASK_TYPES
 from app.vision_automl.ml_engine.trainer import (
     EarlyStopping,
-    OBJECTIVE_REGISTRY,
     run_optuna_search,
 )
+from app.vision_automl.ml_engine.models import OBJECTIVE_REGISTRY
+
 
 # ---------------------------------------------------------------------------
 # EarlyStopping — pure logic, no model/HF downloads needed
