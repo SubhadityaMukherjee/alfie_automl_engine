@@ -11,8 +11,8 @@ import pytest
 import requests
 
 from app.core.exceptions import AutoMLDataError, AutoDWDownloadError
+from app.core.service_helpers import build_metadata_url as _build_metadata_url
 from app.vision_automl.services import (
-    _build_metadata_url,
     _find_csv_file,
     _find_or_resolve_images_dir,
     _find_valid_dataset_root,
@@ -186,7 +186,7 @@ def test_build_metadata_url_empty_version_treated_as_no_version():
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.services.requests.get")
+@patch("app.core.service_helpers.requests.get")
 def test_fetch_dataset_metadata_success(mock_get):
     mock_resp = MagicMock()
     mock_resp.json.return_value = {"file_type": "zip"}
@@ -197,7 +197,7 @@ def test_fetch_dataset_metadata_success(mock_get):
     mock_get.assert_called_once()
 
 
-@patch("app.vision_automl.services.requests.get")
+@patch("app.core.service_helpers.requests.get")
 def test_fetch_dataset_metadata_raises_on_http_error(mock_get):
     mock_resp = MagicMock()
     mock_resp.raise_for_status.side_effect = requests.HTTPError("404")
@@ -249,7 +249,7 @@ def test_resolve_download_url_with_version():
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.services.requests.get")
+@patch("app.core.service_helpers.requests.get")
 def test_download_dataset_writes_zip_file(mock_get, tmp_path):
     mock_resp = MagicMock()
     mock_resp.raise_for_status = MagicMock()
@@ -263,7 +263,7 @@ def test_download_dataset_writes_zip_file(mock_get, tmp_path):
     assert (tmp_path / "dataset.zip").read_bytes() == b"chunk1chunk2"
 
 
-@patch("app.vision_automl.services.requests.get")
+@patch("app.core.service_helpers.requests.get")
 def test_download_dataset_raises_on_http_error(mock_get, tmp_path):
     mock_resp = MagicMock()
     mock_resp.raise_for_status.side_effect = requests.HTTPError("503")

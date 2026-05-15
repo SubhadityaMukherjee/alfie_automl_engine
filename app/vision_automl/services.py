@@ -4,7 +4,6 @@ Mirrors the structure of tabular_automl/services.py so both pipelines
 share a consistent public API consumed by their respective main.py files.
 """
 
-import datetime
 import json
 import logging
 import os
@@ -13,18 +12,18 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import requests
 from fastapi.concurrency import run_in_threadpool
 from huggingface_hub import HfApi
-from jinja2 import Environment, FileSystemLoader
 
-from app.core.exceptions import (
-    AutoDWDownloadError,
-    AutoDWUploadError,
-    AutoMLDataError,
-    AutoMLSerializationError,
+from app.core.exceptions import AutoMLDataError, AutoMLSerializationError
+from app.core.service_helpers import (
+    build_upload_payload as _core_build_upload_payload,
+    download_dataset as _core_download_dataset,
+    fetch_dataset_metadata,
+    resolve_download_url,
+    upload_model,
 )
-from app.core.utils import render_template
+from app.core.utils import jinja_environment, render_template
 from app.vision_automl.ml_engine.trainer import run_optuna_search
 
 logger = logging.getLogger(__name__)
@@ -34,9 +33,6 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 autodw_url = os.getenv("AUTODW_URL", "http://localhost:8000")
-_jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
-
-jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
 
 # ---------------------------------------------------------------------------
@@ -196,99 +192,14 @@ def sort_models_by_size(
 
 
 # ---------------------------------------------------------------------------
-# Dataset fetch & extraction  (mirrors tabular: fetch_dataset_metadata +
-#                               resolve_download_url + download_dataset)
+# Dataset fetch & extraction
 # ---------------------------------------------------------------------------
-
-
-def _build_metadata_url(
-    autodw_base: str, user_id: str, dataset_id: str, dataset_version: str | None
-) -> str:
-    url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
-    if dataset_version:
-        url = f"{url}/version/{dataset_version}"
-    return url
-
-
-def fetch_dataset_metadata(
-    autodw_base: str,
-    user_id: str,
-    dataset_id: str,
-    dataset_version: str | None,
-) -> dict:
-    """Fetch and return dataset metadata from AutoDW."""
-    metadata_url = _build_metadata_url(
-        autodw_base, user_id, dataset_id, dataset_version
-    )
-    logger.debug("Fetching dataset metadata: %s", metadata_url)
-    try:
-        resp = requests.get(metadata_url, timeout=15)
-        resp.raise_for_status()
-    except requests.RequestException as e:
-        logger.error(f"Failed to fetch dataset metadata: {e}")
-        raise AutoDWDownloadError(
-            f"Failed to fetch dataset metadata from AutoDW: {e}"
-        ) from e
-
-    try:
-        return resp.json()
-    except (ValueError, json.JSONDecodeError) as e:
-        logger.error(f"Failed to parse JSON response from AutoDW: {e}")
-        raise AutoDWDownloadError(f"Invalid JSON response from AutoDW: {e}") from e
-
-
-def resolve_download_url(
-    autodw_base: str,
-    user_id: str,
-    dataset_id: str,
-    dataset_version: str | None,
-    metadata: dict,
-    split: str | None,
-) -> str:
-    """Determine the correct dataset download URL, accounting for splits."""
-    base_url = _build_metadata_url(autodw_base, user_id, dataset_id, dataset_version)
-    download_url = f"{base_url}/download"
-
-    has_split = bool(metadata.get("custom_metadata", {}).get("split"))
-    if split and has_split:
-        download_url = f"{download_url}?split={split}"
-        logger.info(
-            "Dataset has splits; downloading '%s' split from: %s", split, download_url
-        )
-    else:
-        if split and not has_split:
-            logger.warning(
-                "split='%s' was requested but dataset has no splits; "
-                "downloading full dataset.",
-                split,
-            )
-        logger.debug("Downloading full dataset ZIP: %s", download_url)
-
-    return download_url
 
 
 def download_dataset(download_url: str, workdir: Path, original_filename: str) -> Path:
     """Stream-download the ZIP dataset and return its local path."""
-    zip_path = workdir / original_filename
-    try:
-        with requests.get(
-            download_url,
-            stream=True,
-            timeout=60,
-            headers={"Accept-Encoding": "gzip, deflate"},
-        ) as resp:
-            resp.raise_for_status()
-            with open(zip_path, "wb") as f:
-                for chunk in resp.iter_content(chunk_size=1024 * 1024):
-                    f.write(chunk)
-    except requests.RequestException as e:
-        logger.error(f"Failed to download dataset from {download_url}: {e}")
-        raise AutoDWDownloadError(f"Failed to download dataset from AutoDW: {e}") from e
-    except OSError as e:
-        logger.error(f"Failed to write dataset to {zip_path}: {e}")
-        raise AutoDWDownloadError(f"Failed to save dataset file: {e}") from e
-    logger.info("Dataset ZIP saved to %s", zip_path)
-    return zip_path
+    dest_path = workdir / original_filename
+    return _core_download_dataset(download_url, dest_path)
 
 
 # ---------------------------------------------------------------------------
@@ -665,47 +576,15 @@ def build_upload_payload(
     task_type: str,
     leaderboard_json: dict,
 ) -> tuple[str, dict]:
-    """
-    Return (model_id, form_data_dict) for the AutoDW upload request.
-
-    Mirrors tabular's ``build_upload_payload``.
-    """
-    model_id = (
-        f"vision_automl_{dataset_id}_{int(datetime.datetime.utcnow().timestamp())}"
+    """Return (model_id, form_data_dict) for the AutoDW upload request."""
+    return _core_build_upload_payload(
+        dataset_id,
+        dataset_version,
+        metadata,
+        task_type,
+        leaderboard_json,
+        model_id_prefix="vision_automl",
+        name=f"Vision AutoML Model - {dataset_id}",
+        description="AutoML trained vision model",
+        framework="pytorch",
     )
-    data = {
-        "model_id": model_id,
-        "name": f"Vision AutoML Model - {dataset_id}",
-        "description": "AutoML trained vision model",
-        "framework": "pytorch",
-        "model_type": task_type,
-        "training_dataset": str(dataset_id),
-        "training_dataset_version": dataset_version or metadata.get("version", "v1"),
-        "leaderboard": json.dumps(leaderboard_json),
-    }
-    return model_id, data
-
-
-def upload_model(
-    upload_url: str,
-    zip_path: Path,
-    payload: dict,
-    task_id: str | None,
-) -> requests.Response:
-    """Upload the zipped model to AutoDW and return the raw response."""
-    if not zip_path.exists():
-        raise AutoMLDataError(f"Zip file not found: {zip_path}")
-    headers = {"X-Task-ID": task_id} if task_id else {}
-    try:
-        with open(zip_path, "rb") as f:
-            files = {"file": (zip_path.name, f, "application/octet-stream")}
-            logger.debug("Uploading vision model to %s", upload_url)
-            return requests.post(
-                upload_url, headers=headers, files=files, data=payload, timeout=120
-            )
-    except requests.RequestException as e:
-        logger.error(f"Failed to upload model to {upload_url}: {e}")
-        raise AutoDWUploadError(f"Failed to upload model to AutoDW: {e}") from e
-    except OSError as e:
-        logger.error(f"Failed to read zip file {zip_path}: {e}")
-        raise AutoDWUploadError(f"Failed to read zip file: {e}") from e

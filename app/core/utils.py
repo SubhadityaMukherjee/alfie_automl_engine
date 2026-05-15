@@ -1,8 +1,12 @@
 import logging
+import os
 
-from jinja2 import Environment
+from jinja2 import Environment, FileSystemLoader
 
 logger = logging.getLogger(__name__)
+
+_jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
+jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
 
 def render_template(
