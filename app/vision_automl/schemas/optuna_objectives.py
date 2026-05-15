@@ -5,36 +5,38 @@ import optuna
 from optuna.distributions import CategoricalChoiceType
 from torch import nn
 
+from app.vision_automl.ml_engine import (
+    EarlyStopping,
+    FabricTrainer,
+    MultimodalClassificationDataModule,
+    MultimodalClassificationModel,
+)
 from app.vision_automl.ml_engine.datamodule import (
-    AudioClassificationDataModule,
-    CausalLMDataModule,
     ImageClassificationDataModule,
     ImageSegmentationDataModule,
-    KeypointDetectionDataModule,
-    MaskedLMDataModule,
-    MultimodalClassificationDataModule,
     ObjectDetectionDataModule,
-    QuestionAnsweringDataModule,
-    Seq2SeqLMDataModule,
-    SequenceClassificationDataModule,
     VideoClassificationDataModule,
+    KeypointDetectionDataModule,
+    AudioClassificationDataModule,
+    SequenceClassificationDataModule,
+    QuestionAnsweringDataModule,
+    CausalLMDataModule,
+    Seq2SeqLMDataModule,
+    MaskedLMDataModule,
 )
 from app.vision_automl.ml_engine.model import (
-    AudioClassificationModel,
-    CausalLMModel,
     ImageClassificationModel,
     ImageSegmentationModel,
-    KeypointDetectionModel,
-    MaskedLMModel,
-    MultimodalClassificationModel,
     ObjectDetectionModel,
-    QuestionAnsweringModel,
-    Seq2SeqLMModel,
-    SequenceClassificationModel,
     VideoClassificationModel,
+    KeypointDetectionModel,
+    AudioClassificationModel,
+    SequenceClassificationModel,
+    QuestionAnsweringModel,
+    CausalLMModel,
+    Seq2SeqLMModel,
+    MaskedLMModel,
 )
-from app.vision_automl.ml_engine.trainer import EarlyStopping, FabricTrainer
-
 
 # ---------------------------------------------------------------------------
 # Per-task Optuna objective functions
@@ -440,7 +442,6 @@ def optuna_objective_masked_lm(
 # ---------------------------------------------------------------------------
 # Registries
 # ---------------------------------------------------------------------------
-
 
 OBJECTIVE_REGISTRY: dict[str, Callable] = {
     "image_classification": optuna_objective_image_classification,

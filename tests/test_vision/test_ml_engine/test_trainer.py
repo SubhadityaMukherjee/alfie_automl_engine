@@ -11,7 +11,7 @@ from app.vision_automl.ml_engine.trainer import (
     EarlyStopping,
     run_optuna_search,
 )
-from app.vision_automl.ml_engine.models import OBJECTIVE_REGISTRY
+from app.vision_automl.schemas.optuna_objectives import OBJECTIVE_REGISTRY
 
 
 # ---------------------------------------------------------------------------

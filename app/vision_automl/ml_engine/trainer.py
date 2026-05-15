@@ -319,7 +319,7 @@ def run_optuna_search(
     Raises:
         ValueError: If ``task_type`` is not in ``OBJECTIVE_REGISTRY``.
     """
-    from app.vision_automl.ml_engine.models import OBJECTIVE_REGISTRY
+    from app.vision_automl.schemas.optuna_objectives import OBJECTIVE_REGISTRY
 
     if task_type not in OBJECTIVE_REGISTRY:
         raise AutoMLConfigError(

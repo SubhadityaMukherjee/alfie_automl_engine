@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from app.vision_automl.models import (
+from app.vision_automl.schemas.ml_tasks import (
     AudioClassificationTask,
     CausalLMTask,
     ImageClassificationTask,
