@@ -7,15 +7,15 @@ import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
-from torch.utils.data import Dataset
 from torchvision import transforms as T
 
-from app.core.exceptions import AutoMLDataError, AutoMLValidationError
+from app.core.exceptions import AutoMLDataError
+from app.core.schemas.datasets import BaseCSVDataset
 
 logger = logging.getLogger(__name__)
 
 
-class ImageClassificationFromCSVDataset(Dataset):
+class ImageClassificationFromCSVDataset(BaseCSVDataset):
     """Torch dataset that reads image paths and labels from a CSV/DataFrame."""
 
     def __init__(
@@ -26,34 +26,13 @@ class ImageClassificationFromCSVDataset(Dataset):
         label_col: str = "label",
         transform: Optional[T.Compose] = None,
     ):
-        if isinstance(csv_file, Path):
-            try:
-                self.label_csv = pd.read_csv(csv_file)
-            except FileNotFoundError:
-                logger.error("Dataset CSV file not found: %s", csv_file)
-                raise
-            except pd.errors.EmptyDataError:
-                logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
-            except pd.errors.ParserError as e:
-                logger.error("Failed to parse dataset CSV file: %s", e)
-                raise
-            except Exception as e:
-                logger.error("Unexpected error reading dataset CSV file: %s", e)
-                raise
-        elif isinstance(csv_file, pd.DataFrame):
-            self.label_csv = csv_file.reset_index(drop=True)
-        else:
-            raise AutoMLValidationError("csv_file must be a path or DataFrame")
-
+        super().__init__(csv_file)
         self.root_dir = Path(root_dir)
         self.img_col = img_col
         self.label_col = label_col
-        # By default, do not apply torchvision transforms so that a Hugging Face
-        # AutoImageProcessor can handle preprocessing in a DataLoader collate_fn.
         self.transform = transform
 
-        label_series = self.label_csv[self.label_col]
+        label_series = self.df[self.label_col]
         self._use_label_subdir: bool = not pd.api.types.is_numeric_dtype(label_series)
 
         if self._use_label_subdir:
@@ -64,27 +43,18 @@ class ImageClassificationFromCSVDataset(Dataset):
             self.idx_to_class = {
                 idx: cls_name for cls_name, idx in self.class_to_idx.items()
             }
-            self.label_csv[self.label_col] = self.label_csv[self.label_col].map(
-                self.class_to_idx
-            )
+            self.df[self.label_col] = self.df[self.label_col].map(self.class_to_idx)
         else:
             raw_vals = sorted(label_series.dropna().unique().tolist())
             self.classes = raw_vals
             self.class_to_idx = {v: i for i, v in enumerate(raw_vals)}
             self.idx_to_class = {i: v for v, i in self.class_to_idx.items()}
-            self.label_csv[self.label_col] = self.label_csv[self.label_col].map(
-                self.class_to_idx
-            )
-
-    def __len__(self):
-        """Return number of samples."""
-        return len(self.label_csv)
+            self.df[self.label_col] = self.df[self.label_col].map(self.class_to_idx)
 
     def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.item()
+        idx = self._normalize_idx(idx)
 
-        row = self.label_csv.iloc[idx]
+        row = self.df.iloc[idx]
         label_idx = int(row[self.label_col])
 
         filename = str(row[self.img_col]).strip().replace("\\", "/")
@@ -129,7 +99,7 @@ class ImageClassificationFromCSVDataset(Dataset):
         return img, torch.tensor(label_idx, dtype=torch.long)
 
 
-class TextClassificationFromCSVDataset(Dataset):
+class TextClassificationFromCSVDataset(BaseCSVDataset):
     """Torch dataset that reads text and labels from a CSV/DataFrame.
 
     Expected columns: ``text`` (str) and ``label`` (str or int).
@@ -143,26 +113,7 @@ class TextClassificationFromCSVDataset(Dataset):
         text_col: str = "text",
         label_col: str = "label",
     ):
-        if isinstance(csv_file, Path):
-            try:
-                self.df = pd.read_csv(csv_file)
-            except FileNotFoundError:
-                logger.error("Dataset CSV file not found: %s", csv_file)
-                raise
-            except pd.errors.EmptyDataError:
-                logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
-            except pd.errors.ParserError as e:
-                logger.error("Failed to parse dataset CSV file: %s", e)
-                raise
-            except Exception as e:
-                logger.error("Unexpected error reading dataset CSV file: %s", e)
-                raise
-        elif isinstance(csv_file, pd.DataFrame):
-            self.df = csv_file.reset_index(drop=True)
-        else:
-            raise AutoMLValidationError("csv_file must be a path or DataFrame")
-
+        super().__init__(csv_file)
         self.text_col = text_col
         self.label_col = label_col
 
@@ -175,17 +126,13 @@ class TextClassificationFromCSVDataset(Dataset):
             self.classes = sorted(self.df[self.label_col].unique().tolist())
             self.class_to_idx = {c: c for c in self.classes}
 
-    def __len__(self) -> int:
-        return len(self.df)
-
     def __getitem__(self, idx: int) -> tuple[str, int]:
-        if torch.is_tensor(idx):
-            idx = idx.item()
+        idx = self._normalize_idx(idx)
         row = self.df.iloc[idx]
         return str(row[self.text_col]), int(row[self.label_col])
 
 
-class QuestionAnsweringFromCSVDataset(Dataset):
+class QuestionAnsweringFromCSVDataset(BaseCSVDataset):
     """Dataset for extractive QA tasks.
 
     Expected CSV columns: ``question``, ``context``, ``answer_start`` (int),
@@ -200,37 +147,14 @@ class QuestionAnsweringFromCSVDataset(Dataset):
         answer_start_col: str = "answer_start",
         answer_text_col: str = "answer_text",
     ):
-        if isinstance(csv_file, Path):
-            try:
-                self.df = pd.read_csv(csv_file)
-            except FileNotFoundError:
-                logger.error("Dataset CSV file not found: %s", csv_file)
-                raise
-            except pd.errors.EmptyDataError:
-                logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
-            except pd.errors.ParserError as e:
-                logger.error("Failed to parse dataset CSV file: %s", e)
-                raise
-            except Exception as e:
-                logger.error("Unexpected error reading dataset CSV file: %s", e)
-                raise
-        elif isinstance(csv_file, pd.DataFrame):
-            self.df = csv_file.reset_index(drop=True)
-        else:
-            raise AutoMLValidationError("csv_file must be a path or DataFrame")
-
+        super().__init__(csv_file)
         self.question_col = question_col
         self.context_col = context_col
         self.answer_start_col = answer_start_col
         self.answer_text_col = answer_text_col
 
-    def __len__(self) -> int:
-        return len(self.df)
-
     def __getitem__(self, idx: int) -> dict:
-        if torch.is_tensor(idx):
-            idx = idx.item()
+        idx = self._normalize_idx(idx)
         row = self.df.iloc[idx]
         return {
             "question": str(row[self.question_col]),
@@ -240,7 +164,7 @@ class QuestionAnsweringFromCSVDataset(Dataset):
         }
 
 
-class Seq2SeqFromCSVDataset(Dataset):
+class Seq2SeqFromCSVDataset(BaseCSVDataset):
     """Dataset for sequence-to-sequence tasks.
 
     Expected CSV columns: ``input_text`` and ``target_text``.
@@ -252,40 +176,17 @@ class Seq2SeqFromCSVDataset(Dataset):
         input_col: str = "input_text",
         target_col: str = "target_text",
     ):
-        if isinstance(csv_file, Path):
-            try:
-                self.df = pd.read_csv(csv_file)
-            except FileNotFoundError:
-                logger.error("Dataset CSV file not found: %s", csv_file)
-                raise
-            except pd.errors.EmptyDataError:
-                logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
-            except pd.errors.ParserError as e:
-                logger.error("Failed to parse dataset CSV file: %s", e)
-                raise
-            except Exception as e:
-                logger.error("Unexpected error reading dataset CSV file: %s", e)
-                raise
-        elif isinstance(csv_file, pd.DataFrame):
-            self.df = csv_file.reset_index(drop=True)
-        else:
-            raise AutoMLValidationError("csv_file must be a path or DataFrame")
-
+        super().__init__(csv_file)
         self.input_col = input_col
         self.target_col = target_col
 
-    def __len__(self) -> int:
-        return len(self.df)
-
     def __getitem__(self, idx: int) -> tuple[str, str]:
-        if torch.is_tensor(idx):
-            idx = idx.item()
+        idx = self._normalize_idx(idx)
         row = self.df.iloc[idx]
         return str(row[self.input_col]), str(row[self.target_col])
 
 
-class CausalLMFromCSVDataset(Dataset):
+class CausalLMFromCSVDataset(BaseCSVDataset):
     """Dataset for causal language modelling tasks.
 
     Expected CSV column: ``text``.  The datamodule tokenises and shifts
@@ -297,38 +198,15 @@ class CausalLMFromCSVDataset(Dataset):
         csv_file: Union[Path, pd.DataFrame],
         text_col: str = "text",
     ):
-        if isinstance(csv_file, Path):
-            try:
-                self.df = pd.read_csv(csv_file)
-            except FileNotFoundError:
-                logger.error("Dataset CSV file not found: %s", csv_file)
-                raise
-            except pd.errors.EmptyDataError:
-                logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
-            except pd.errors.ParserError as e:
-                logger.error("Failed to parse dataset CSV file: %s", e)
-                raise
-            except Exception as e:
-                logger.error("Unexpected error reading dataset CSV file: %s", e)
-                raise
-        elif isinstance(csv_file, pd.DataFrame):
-            self.df = csv_file.reset_index(drop=True)
-        else:
-            raise AutoMLValidationError("csv_file must be a path or DataFrame")
-
+        super().__init__(csv_file)
         self.text_col = text_col
 
-    def __len__(self) -> int:
-        return len(self.df)
-
     def __getitem__(self, idx: int) -> str:
-        if torch.is_tensor(idx):
-            idx = idx.item()
+        idx = self._normalize_idx(idx)
         return str(self.df.iloc[idx][self.text_col])
 
 
-class MultimodalClassificationDataset(Dataset):
+class MultimodalClassificationDataset(BaseCSVDataset):
     """Torch dataset for multimodal image classification with auxiliary tabular features.
 
     In addition to image + label (like ``ImageClassificationFromCSVDataset``),
@@ -347,56 +225,31 @@ class MultimodalClassificationDataset(Dataset):
         auxiliary_columns: list[str] | None = None,
         transform: Optional[T.Compose] = None,
     ):
-        if isinstance(csv_file, Path):
-            try:
-                self.label_csv = pd.read_csv(csv_file)
-            except FileNotFoundError:
-                logger.error("Dataset CSV file not found: %s", csv_file)
-                raise
-            except pd.errors.EmptyDataError:
-                logger.error("Dataset CSV file is empty: %s", csv_file)
-                raise AutoMLDataError(f"Dataset CSV file is empty: {csv_file}")
-            except pd.errors.ParserError as e:
-                logger.error("Failed to parse dataset CSV file: %s", e)
-                raise
-            except Exception as e:
-                logger.error("Unexpected error reading dataset CSV file: %s", e)
-                raise
-        elif isinstance(csv_file, pd.DataFrame):
-            self.label_csv = csv_file.reset_index(drop=True)
-        else:
-            raise AutoMLValidationError("csv_file must be a path or DataFrame")
-
+        super().__init__(csv_file)
         self.root_dir = root_dir
         self.img_col = img_col
         self.label_col = label_col
         self.auxiliary_columns = auxiliary_columns or []
         self.transform = transform
 
-        if self.label_csv[self.label_col].dtype not in [int, float]:
-            self.classes = sorted(self.label_csv[self.label_col].unique().tolist())
+        if self.df[self.label_col].dtype not in [int, float]:
+            self.classes = sorted(self.df[self.label_col].unique().tolist())
             self.class_to_idx = {
                 cls_name: idx for idx, cls_name in enumerate(self.classes)
             }
             self.idx_to_class = {
                 idx: cls_name for cls_name, idx in self.class_to_idx.items()
             }
-            self.label_csv[self.label_col] = self.label_csv[self.label_col].map(
-                self.class_to_idx
-            )
+            self.df[self.label_col] = self.df[self.label_col].map(self.class_to_idx)
         else:
-            self.classes = sorted(self.label_csv[self.label_col].unique().tolist())
+            self.classes = sorted(self.df[self.label_col].unique().tolist())
             self.class_to_idx = {cls: cls for cls in self.classes}
             self.idx_to_class = {cls: cls for cls in self.classes}
 
-    def __len__(self):
-        return len(self.label_csv)
-
     def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.item()
+        idx = self._normalize_idx(idx)
 
-        row = self.label_csv.iloc[idx]
+        row = self.df.iloc[idx]
         label_idx = int(row[self.label_col])
         label_name = str(self.idx_to_class[label_idx])
 

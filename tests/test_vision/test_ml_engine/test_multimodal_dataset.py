@@ -68,7 +68,9 @@ def test_init_without_auxiliary_columns():
 
 
 def test_init_invalid_csv_file_type():
-    with pytest.raises(AutoMLValidationError, match="path or DataFrame"):
+    with pytest.raises(
+        AutoMLValidationError, match="csv_file must be a Path or DataFrame"
+    ):
         MultimodalClassificationDataset(csv_file=42, root_dir=Path("/x"))
 
 
