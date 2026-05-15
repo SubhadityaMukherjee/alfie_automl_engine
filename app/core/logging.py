@@ -2,7 +2,66 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
+import structlog
+from structlog.stdlib import ProcessorFormatter
+
 _TEN_MB = 10 * 1024 * 1024
+
+
+def _add_service_name(logger, method_name, event_dict):
+    """Structlog processor that injects the configured service name."""
+    service = event_dict.get("_service_name", "")
+    if service:
+        event_dict["service"] = service
+    event_dict.pop("_service_name", None)
+    return event_dict
+
+
+def configure_structlog() -> None:
+    """Configure structlog processors for both structlog and stdlib loggers.
+
+    Must be called once at startup (idempotent).
+    """
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.UnicodeDecoder(),
+        _add_service_name,
+    ]
+
+    structlog.configure(
+        processors=[
+            *shared_processors,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=True,
+    )
+
+    # Bridge stdlib logging into structlog
+    formatter = ProcessorFormatter(
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            (
+                structlog.dev.ConsoleRenderer()
+                if _is_dev_mode()
+                else structlog.processors.JSONRenderer()
+            ),
+        ],
+        foreign_pre_chain=shared_processors,
+    )
+
+    # Replace stdlib root handler(s) with structlog-formatted one
+    root = logging.getLogger()
+    root.handlers.clear()
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    root.addHandler(handler)
 
 
 def configure_service_logging(service_name: str) -> None:
@@ -16,17 +75,15 @@ def configure_service_logging(service_name: str) -> None:
     Attaches the handler to the root logger so all module loggers inherit it.
     Safe to call multiple times; duplicate handlers are not added.
     """
+    # Ensure structlog is configured
+    configure_structlog()
+
     log_dir = os.getenv("ALFIE_LOG_DIR", os.path.join(os.getcwd(), "logs"))
     log_level_name = os.getenv("ALFIE_LOG_LEVEL", "INFO").upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
 
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, f"{service_name}.log")
-
-    formatter = logging.Formatter(
-        fmt="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        datefmt="%Y-%m-%d %H:%M:%S",
-    )
 
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
@@ -40,6 +97,24 @@ def configure_service_logging(service_name: str) -> None:
     if log_file in existing_files:
         return
 
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.UnicodeDecoder(),
+        _add_service_name,
+    ]
+
+    file_formatter = ProcessorFormatter(
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.JSONRenderer(),
+        ],
+        foreign_pre_chain=shared_processors,
+    )
+
     file_handler = RotatingFileHandler(
         log_file,
         maxBytes=_TEN_MB,
@@ -47,5 +122,24 @@ def configure_service_logging(service_name: str) -> None:
         encoding="utf-8",
     )
     file_handler.setLevel(log_level)
-    file_handler.setFormatter(formatter)
+    file_handler.setFormatter(file_formatter)
     root_logger.addHandler(file_handler)
+
+    # Inject service name into all log entries via contextvars
+    structlog.contextvars.clear_contextvars()
+    structlog.contextvars.bind_contextvars(_service_name=service_name)
+
+
+def _is_dev_mode() -> bool:
+    """Check if running in development mode (non-JSON console output)."""
+    return os.getenv("ALFIE_LOG_FORMAT", "json").lower() == "console"
+
+
+def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
+    """Return a structlog-bound logger.
+
+    Existing code using ``logging.getLogger(__name__)`` will also work
+    through the stdlib bridge, but new code can call this directly for
+    structured key-value logging.
+    """
+    return structlog.get_logger(name)
