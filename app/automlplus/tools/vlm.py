@@ -21,7 +21,6 @@ from app.core.chat_handler import ChatHandler
 from app.core.exceptions import (
     AutoMLChatError,
     AutoMLImageError,
-    AutoMLRuntimeError,
     AutoMLValidationError,
 )
 from app.core.utils import render_template
@@ -52,8 +51,8 @@ class ImagePromptRunner:
                     jinja_environment, "image_to_website_prompt.txt"
                 )
                 messages.append({"role": "system", "content": system_prompt})
-            except Exception as e:
-                raise e
+            except Exception:
+                raise
         messages.append({"role": "user", "content": prompt, "images": [image_b64]})
         return messages
 
@@ -83,9 +82,9 @@ class ImagePromptRunner:
             )
 
             return ChatHandler.chat_sync_messages(messages=messages, model=model_name)
-        except Exception as e:
+        except Exception:
             logger.exception("ImagePromptRunner failed")
-            raise e
+            raise
 
     @staticmethod
     def run_stream(

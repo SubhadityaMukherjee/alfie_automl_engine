@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from dotenv import find_dotenv, load_dotenv
 from fastapi import FastAPI
 
+from app.core.health import router as health_router
 from app.core.logging import configure_service_logging
 from app.vision_automl.router import router
 
@@ -21,4 +22,5 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(health_router)
 app.include_router(router)

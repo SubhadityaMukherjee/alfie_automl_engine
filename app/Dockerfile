@@ -1,24 +1,39 @@
-FROM python:3.12-slim-trixie
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl ca-certificates git build-essential \
-    libgl1 libglib2.0-0 tesseract-ocr \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=ghcr.io/astral-sh/uv:0.8.22 /uv /uvx /bin/
-
-ENV PATH="/root/.local/bin/:$PATH"
-COPY app/ ./app
-COPY sample_data ./sample_data
+# 1. Setup user and working directory
+RUN groupadd --system --gid 999 nonroot \
+ && useradd --system --gid 999 --uid 999 --create-home nonroot
 
 WORKDIR /app
-COPY pyproject.toml uv.lock ./
+# Ensure the nonroot user owns the workdir before we start
+RUN chown nonroot:nonroot /app
 
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv
-RUN uv sync --frozen
+# 2. Set environment variables
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_TOOL_BIN_DIR=/usr/local/bin \
+    PATH="/app/.venv/bin:$PATH"
 
+# 3. Switch to nonroot user NOW
+USER nonroot
 
-EXPOSE 8000 8001 8002
+# 4. Copy lockfiles with correct ownership
+COPY --chown=nonroot:nonroot pyproject.toml uv.lock ./
 
+# 5. Install dependencies
+# (uv will now create the .venv as the nonroot user)
+RUN --mount=type=cache,target=/home/nonroot/.cache/uv,uid=999 \
+    uv sync --locked --no-install-project --no-dev
+
+# 6. Copy application code with correct ownership
+COPY --chown=nonroot:nonroot app/ app/
+
+# 7. Final sync
+RUN --mount=type=cache,target=/home/nonroot/.cache/uv,uid=999 \
+    uv sync --locked --no-dev
+
+ENV HEALTHCHECK_PORT=8000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${HEALTHCHECK_PORT}/health || exit 1
+
+ENTRYPOINT []
