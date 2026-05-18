@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.schemas.ml_tasks import (
+    SUPPORTED_VISION_TASK_TYPES,
     AudioClassificationTask,
     CausalLMTask,
     ImageClassificationTask,
@@ -17,7 +18,6 @@ from app.core.schemas.ml_tasks import (
     QuestionAnsweringTask,
     Seq2SeqLMTask,
     SequenceClassificationTask,
-    SUPPORTED_VISION_TASK_TYPES,
     VideoClassificationTask,
 )
 

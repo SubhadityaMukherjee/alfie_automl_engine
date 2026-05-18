@@ -7,7 +7,6 @@ from app.vision_automl.services import (
     validate_multimodal_inputs,
 )
 
-
 # ---------------------------------------------------------------------------
 # _discover_auxiliary_columns
 # ---------------------------------------------------------------------------

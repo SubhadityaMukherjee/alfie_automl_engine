@@ -10,7 +10,7 @@ import pandas as pd
 import pytest
 import requests
 
-from app.core.exceptions import AutoMLDataError, AutoDWDownloadError
+from app.core.exceptions import AutoDWDownloadError, AutoMLDataError
 from app.core.service_helpers import build_metadata_url as _build_metadata_url
 from app.vision_automl.services import (
     _find_csv_file,

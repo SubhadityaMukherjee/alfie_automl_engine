@@ -1,14 +1,9 @@
-import os
-import tempfile
 from pathlib import Path
 
 import pandas as pd
 import pytest
 
-from app.tabular_automl.services import (
-    load_table,
-    validate_tabular_inputs,
-)
+from app.tabular_automl.services import load_table, validate_tabular_inputs
 
 
 @pytest.fixture
