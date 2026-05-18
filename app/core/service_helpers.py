@@ -250,9 +250,7 @@ def build_upload_payload(
     if not task_type or not isinstance(task_type, str):
         raise AutoMLValidationError("task_type must be a non-empty string")
 
-    model_id = (
-        f"{model_id_prefix}_{dataset_id}_{int(datetime.datetime.utcnow().timestamp())}"
-    )
+    model_id = f"{model_id_prefix}_{dataset_id}_{int(datetime.datetime.now(datetime.timezone.utc).timestamp())}"
 
     try:
         leaderboard_str = json.dumps(leaderboard_json)
