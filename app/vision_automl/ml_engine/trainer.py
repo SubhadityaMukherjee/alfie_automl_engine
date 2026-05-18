@@ -17,13 +17,7 @@ from app.vision_automl.ml_engine.configs import load_task_config
 # ClassificationData / ClassificationModel directly.
 from app.vision_automl.ml_engine.model import ImageClassificationModel  # noqa: F401
 
-# Configure module-level logger
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-if not logger.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("[%(levelname)s] %(asctime)s - %(message)s"))
-    logger.addHandler(handler)
 
 # Keys whose tensors should be treated as target/label dtype
 _TARGET_KEYS: frozenset[str] = frozenset({"labels", "start_positions", "end_positions"})

@@ -13,6 +13,12 @@ from fastapi.responses import JSONResponse
 
 from app.core.exceptions import AutoDWDownloadError, AutoMLValidationError
 from app.core.schemas.ml_tasks import SUPPORTED_VISION_TASK_TYPES
+from app.core.schemas.responses import (
+    ErrorResponse,
+    InstructionsResponse,
+    MultimodalTrainingSuccessResponse,
+    VisionTrainingSuccessResponse,
+)
 from app.vision_automl.services import (
     build_upload_payload,
     convert_leaderboard_safely,
@@ -34,6 +40,10 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/automl_vision", tags=["vision"])
 
+_COMMON_RESPONSES = {
+    500: {"description": "Internal server error", "model": ErrorResponse},
+}
+
 
 @contextmanager
 def dataset_workspace(prefix: str):
@@ -44,7 +54,11 @@ def dataset_workspace(prefix: str):
         shutil.rmtree(path, ignore_errors=True)
 
 
-@router.post("/deployment_instructions/")
+@router.post(
+    "/deployment_instructions/",
+    response_model=InstructionsResponse,
+    responses=_COMMON_RESPONSES,
+)
 async def show_deployment_instructions() -> JSONResponse:
     """Show deployment instructions from a template"""
     try:
@@ -58,7 +72,11 @@ async def show_deployment_instructions() -> JSONResponse:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@router.post("/accepted_format/")
+@router.post(
+    "/accepted_format/",
+    response_model=InstructionsResponse,
+    responses=_COMMON_RESPONSES,
+)
 async def show_accepted_format_instructions() -> JSONResponse:
     """Show accepted format instructions from a template"""
     try:
@@ -72,7 +90,15 @@ async def show_accepted_format_instructions() -> JSONResponse:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@router.post("/best_model/")
+@router.post(
+    "/best_model/",
+    response_model=VisionTrainingSuccessResponse,
+    responses={
+        400: {"description": "Validation error", "model": ErrorResponse},
+        500: {"description": "Internal server error", "model": ErrorResponse},
+        502: {"description": "AutoDW communication failure", "model": ErrorResponse},
+    },
+)
 async def find_best_model_for_vision(
     request: Request,
     user_id: Annotated[str, Form(..., description="User id from AutoDW")],
@@ -218,7 +244,15 @@ async def find_best_model_for_vision(
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@router.post("/multimodal_best_model/")
+@router.post(
+    "/multimodal_best_model/",
+    response_model=MultimodalTrainingSuccessResponse,
+    responses={
+        400: {"description": "Validation error", "model": ErrorResponse},
+        500: {"description": "Internal server error", "model": ErrorResponse},
+        502: {"description": "AutoDW communication failure", "model": ErrorResponse},
+    },
+)
 async def find_best_model_for_multimodal_vision(
     request: Request,
     user_id: Annotated[str, Form(..., description="User id from AutoDW")],
