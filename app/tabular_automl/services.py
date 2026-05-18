@@ -50,7 +50,7 @@ def load_table(file_path: Path) -> pd.DataFrame:
         if suffix in [".tsv"]:
             logging.debug("tsv file loaded")
             return pd.read_csv(file_path, sep="\t")
-        if suffix in [".xls", ".xlsx", ".xlsm", ".xlsb"]:
+        if suffix in [".xlsx"]:
             logging.debug("excel file loaded")
             return pd.read_excel(file_path)
         if suffix in [".parquet", ".pq"]:
