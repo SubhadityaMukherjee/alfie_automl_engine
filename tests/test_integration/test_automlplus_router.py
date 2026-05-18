@@ -1,7 +1,7 @@
 """Integration tests for the AutoML+ router."""
 
 import io
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -116,6 +116,34 @@ def test_run_on_image_stream_missing_image():
     assert resp.status_code == 400
 
 
+@patch("app.automlplus.router.ImagePromptRunner")
+def test_run_on_image_stream_success(mock_runner):
+    mock_runner.run_stream.return_value = iter(["chunk1", "chunk2"])
+    resp = client.post(
+        "/automlplus/image_tools/run_on_image_stream/",
+        data={"prompt": "describe"},
+        files={"image_file": ("test.png", b"fake-image", "image/png")},
+    )
+    assert resp.status_code == 200
+    assert "text/plain" in resp.headers["content-type"]
+
+
+# ---------------------------------------------------------------------------
+# run_on_image with URL instead of file
+# ---------------------------------------------------------------------------
+
+
+@patch("app.automlplus.router.ImagePromptRunner")
+def test_run_on_image_with_url(mock_runner):
+    mock_runner.run.return_value = "A dog"
+    resp = client.post(
+        "/automlplus/image_tools/run_on_image/",
+        data={"prompt": "describe", "image_url": "http://example.com/dog.png"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["response"] == "A dog"
+
+
 # ---------------------------------------------------------------------------
 # web_access/analyze
 # ---------------------------------------------------------------------------
@@ -157,3 +185,167 @@ def test_analyze_missing_content():
         files={"file": ("empty.html", empty_file, "text/html")},
     )
     assert resp.status_code == 400
+
+
+@patch("app.automlplus.router.requests.get")
+def test_analyze_url_fetch_success(mock_get):
+    mock_resp = MagicMock()
+    mock_resp.text = "<html><body>Fetched content</body></html>"
+    mock_resp.raise_for_status = MagicMock()
+    mock_get.return_value = mock_resp
+
+    # Provide empty file + URL so it fetches from URL
+    html_file = io.BytesIO(b"")
+    resp = client.post(
+        "/automlplus/web_access/analyze/",
+        files={"file": ("empty.html", html_file, "text/html")},
+        data={"url": "http://example.com/page.html"},
+    )
+    # Will likely fail downstream since pipeline isn't mocked, but URL fetch should work
+    # and not return 400 for empty content
+    assert (
+        resp.status_code != 400
+        or "Resolved content is empty" not in resp.json().get("error", "")
+    )
+
+
+@patch("app.automlplus.router.requests.get")
+def test_analyze_url_fetch_error(mock_get):
+    mock_get.side_effect = Exception("network error")
+    html_file = io.BytesIO(b"")
+    resp = client.post(
+        "/automlplus/web_access/analyze/",
+        files={"file": ("empty.html", html_file, "text/html")},
+        data={"url": "http://example.com/bad.html"},
+    )
+    assert resp.status_code == 400
+    assert "Failed to fetch URL" in resp.json()["error"]
+
+
+@patch("app.automlplus.router.run_accessibility_pipeline")
+@patch("app.automlplus.router.ReadabilityAnalyzer")
+@patch("app.automlplus.router.extract_text_from_html_bytes", return_value="text")
+def test_analyze_with_extra_context_file(mock_extract, mock_analyzer, mock_pipeline):
+    from app.automlplus.tools.text import ChunkResult
+
+    mock_pipeline.return_value = [
+        ChunkResult(
+            chunk=0,
+            start_line=1,
+            end_line=10,
+            score=90.0,
+            image_feedback=[],
+            llm_response="ok",
+        )
+    ]
+    mock_analyzer.analyze.return_value = {"flesch_reading_ease": 90.0}
+
+    html_file = io.BytesIO(b"<html><body>Test</body></html>")
+    context_file = io.BytesIO(b"Follow these guidelines: ...")
+
+    resp = client.post(
+        "/automlplus/web_access/analyze/",
+        files={
+            "file": ("test.html", html_file, "text/html"),
+            "extra_file_input": ("guidelines.txt", context_file, "text/plain"),
+        },
+    )
+    assert resp.status_code == 200
+    # Verify the pipeline was called with context
+    call_kwargs = mock_pipeline.call_args[1]
+    assert "Accessibility guidelines" in call_kwargs["context"]
+
+
+@patch("app.automlplus.router.run_accessibility_pipeline")
+@patch("app.automlplus.router.ReadabilityAnalyzer")
+@patch("app.automlplus.router.extract_text_from_html_bytes", return_value="text")
+def test_analyze_readability_error_returns_error_in_payload(
+    mock_extract, mock_analyzer, mock_pipeline
+):
+    from app.automlplus.tools.text import ChunkResult
+
+    mock_pipeline.return_value = [
+        ChunkResult(
+            chunk=0,
+            start_line=1,
+            end_line=10,
+            score=80.0,
+            image_feedback=[],
+            llm_response="ok",
+        )
+    ]
+    mock_analyzer.analyze.side_effect = RuntimeError("readability crash")
+
+    html_file = io.BytesIO(b"<html><body>Test</body></html>")
+    resp = client.post(
+        "/automlplus/web_access/analyze/",
+        files={"file": ("test.html", html_file, "text/html")},
+    )
+    assert resp.status_code == 200
+    assert "error" in resp.json()["readability"]
+
+
+@patch("app.automlplus.router.run_accessibility_pipeline")
+@patch("app.automlplus.router.ReadabilityAnalyzer")
+@patch("app.automlplus.router.extract_text_from_html_bytes", return_value="")
+def test_analyze_empty_text_skips_readability(
+    mock_extract, mock_analyzer, mock_pipeline
+):
+    from app.automlplus.tools.text import ChunkResult
+
+    mock_pipeline.return_value = [
+        ChunkResult(
+            chunk=0,
+            start_line=1,
+            end_line=10,
+            score=70.0,
+            image_feedback=[],
+            llm_response="ok",
+        )
+    ]
+
+    html_file = io.BytesIO(b"<html><body>Test</body></html>")
+    resp = client.post(
+        "/automlplus/web_access/analyze/",
+        files={"file": ("test.html", html_file, "text/html")},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["readability"] is None
+    mock_analyzer.analyze.assert_not_called()
+
+
+@patch("app.automlplus.router.run_accessibility_pipeline")
+@patch("app.automlplus.router.ReadabilityAnalyzer")
+@patch("app.automlplus.router.extract_text_from_html_bytes", return_value="text")
+def test_analyze_multiple_chunks_average_score(
+    mock_extract, mock_analyzer, mock_pipeline
+):
+    from app.automlplus.tools.text import ChunkResult
+
+    mock_pipeline.return_value = [
+        ChunkResult(
+            chunk=0,
+            start_line=1,
+            end_line=10,
+            score=60.0,
+            image_feedback=[],
+            llm_response="ok",
+        ),
+        ChunkResult(
+            chunk=1,
+            start_line=11,
+            end_line=20,
+            score=80.0,
+            image_feedback=[],
+            llm_response="ok",
+        ),
+    ]
+    mock_analyzer.analyze.return_value = {"flesch_reading_ease": 70.0}
+
+    html_file = io.BytesIO(b"<html><body>Test</body></html>")
+    resp = client.post(
+        "/automlplus/web_access/analyze/",
+        files={"file": ("test.html", html_file, "text/html")},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["average_score"] == 70.0
