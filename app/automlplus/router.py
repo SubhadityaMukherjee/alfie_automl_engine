@@ -20,6 +20,13 @@ from app.automlplus.website_accessibility.pipeline import (
     resolve_coroutines,
     run_accessibility_pipeline,
 )
+from app.core.schemas.responses import (
+    AltTextCheckResponse,
+    ErrorResponse,
+    ImagePromptResponse,
+    InstructionsResponse,
+    WebAccessibilityResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,8 +36,16 @@ _jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
+_COMMON_RESPONSES: dict[int | str, dict[str, Any]] = {
+    500: {"description": "Internal server error", "model": ErrorResponse},
+}
 
-@router.post("/accepted_format/")
+
+@router.post(
+    "/accepted_format/",
+    response_model=InstructionsResponse,
+    responses=_COMMON_RESPONSES,
+)
 async def show_accepted_format_instructions() -> JSONResponse:
     """Show accepted format instructions from a template"""
     try:
@@ -44,7 +59,11 @@ async def show_accepted_format_instructions() -> JSONResponse:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@router.post("/image_tools/image_to_website/")
+@router.post(
+    "/image_tools/image_to_website/",
+    response_model=ErrorResponse,
+    responses={501: {"description": "Not implemented"}},
+)
 async def image_to_website(
     image_file: UploadFile | None = File(default=None),
 ) -> JSONResponse:
@@ -52,7 +71,11 @@ async def image_to_website(
     return JSONResponse(content={"error": "Not implemented"}, status_code=501)
 
 
-@router.post("/web_access/check-alt-text/")
+@router.post(
+    "/web_access/check-alt-text/",
+    response_model=AltTextCheckResponse,
+    responses=_COMMON_RESPONSES,
+)
 async def check_alt_text(
     image_url: str = Form(...),
     alt_text: str = Form(...),
@@ -76,7 +99,14 @@ async def check_alt_text(
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@router.post("/image_tools/run_on_image/")
+@router.post(
+    "/image_tools/run_on_image/",
+    response_model=ImagePromptResponse,
+    responses={
+        400: {"description": "Missing image input", "model": ErrorResponse},
+        500: {"description": "Internal server error", "model": ErrorResponse},
+    },
+)
 async def run_on_image(
     prompt: str = Form(...),
     model: str | None = Form(default=None),
@@ -117,6 +147,10 @@ async def run_on_image(
 @router.post(
     "/image_tools/run_on_image_stream/",
     response_model=None,
+    responses={
+        400: {"description": "Missing image input", "model": ErrorResponse},
+        500: {"description": "Internal server error", "model": ErrorResponse},
+    },
 )
 async def run_on_image_stream(
     prompt: Annotated[str, Form(..., description="Prompt to apply on the image")] = "",
@@ -170,7 +204,14 @@ async def run_on_image_stream(
         return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
-@router.post("/web_access/analyze/")
+@router.post(
+    "/web_access/analyze/",
+    response_model=WebAccessibilityResponse,
+    responses={
+        400: {"description": "Invalid input", "model": ErrorResponse},
+        500: {"description": "Internal server error", "model": ErrorResponse},
+    },
+)
 async def analyze_web_accessibility_and_readability(
     file: Annotated[UploadFile, File(..., description="HTML file")],
     url: Annotated[str | None, Form(..., description="URL of website")] = None,

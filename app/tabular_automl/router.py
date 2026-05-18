@@ -11,6 +11,11 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 
 from app.core.exceptions import AutoMLRuntimeError, AutoMLValidationError
+from app.core.schemas.responses import (
+    ErrorResponse,
+    InstructionsResponse,
+    TrainingSuccessResponse,
+)
 from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 from app.tabular_automl.services import (
     SUPPORTED_FILE_TYPES,
@@ -31,8 +36,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/automl_tabular", tags=["tabular"])
 
+_COMMON_RESPONSES = {
+    500: {"description": "Internal server error", "model": ErrorResponse},
+}
 
-@router.post("/deployment_instructions/")
+
+@router.post(
+    "/deployment_instructions/",
+    response_model=InstructionsResponse,
+    responses=_COMMON_RESPONSES,
+)
 async def show_deployment_instructions() -> JSONResponse:
     """Show deployment instructions from a template"""
     try:
@@ -46,7 +59,11 @@ async def show_deployment_instructions() -> JSONResponse:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@router.post("/accepted_format/")
+@router.post(
+    "/accepted_format/",
+    response_model=InstructionsResponse,
+    responses=_COMMON_RESPONSES,
+)
 async def show_accepted_format_instructions() -> JSONResponse:
     """Show accepted format instructions from a template"""
     try:
@@ -60,7 +77,15 @@ async def show_accepted_format_instructions() -> JSONResponse:
         return JSONResponse(status_code=500, content={"error": str(e)})
 
 
-@router.post("/best_model/")
+@router.post(
+    "/best_model/",
+    response_model=TrainingSuccessResponse,
+    responses={
+        400: {"description": "Validation error", "model": ErrorResponse},
+        500: {"description": "Internal server error", "model": ErrorResponse},
+        502: {"description": "AutoDW communication failure", "model": ErrorResponse},
+    },
+)
 async def find_best_model_for_mvp(
     request: Request,
     user_id: Annotated[str, Form(..., description="User id from AutoDW")],
