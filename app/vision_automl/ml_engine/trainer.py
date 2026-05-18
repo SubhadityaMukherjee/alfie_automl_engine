@@ -73,29 +73,29 @@ class FabricTrainer:
         self,
         datamodule: Any,
         model_class: type[nn.Module],
-        model_kwargs: dict[str, Any] = {},
+        model_kwargs: dict[str, Any] | None = None,
         optimizer_class: type[optim.Optimizer] = optim.AdamW,
-        optimizer_kwargs: dict[str, Any] = {},
+        optimizer_kwargs: dict[str, Any] | None = None,
         loss_fn: nn.Module = nn.CrossEntropyLoss(),
         lr: float = 0.001,
         epochs: int = 1,
         time_limit: float | None = None,
         device: str = "auto",
-        callbacks: list[Any] = [],
+        callbacks: list[Any] | None = None,
         input_dtype: torch.dtype = torch.float32,
         target_dtype: torch.dtype = torch.long,
         model_computes_loss: bool = False,
     ) -> None:
         self.datamodule: Any = datamodule
         self.model_class: type[nn.Module] = model_class
-        self.model_kwargs: dict[str, Any] = model_kwargs
+        self.model_kwargs: dict[str, Any] = model_kwargs or {}
         self.optimizer_class: type[optim.Optimizer] = optimizer_class
         self.optimizer_kwargs: dict[str, Any] = optimizer_kwargs or {"lr": lr}
         self.loss_fn: nn.Module = loss_fn
         self.epochs: int = epochs
         self.time_limit: float | None = time_limit
         self.device: str = device
-        self.callbacks: list[Any] = callbacks
+        self.callbacks: list[Any] = callbacks or []
         self.input_dtype: torch.dtype = input_dtype
         self.target_dtype: torch.dtype = target_dtype
         self.model_computes_loss: bool = model_computes_loss
@@ -179,7 +179,7 @@ class FabricTrainer:
         batch_count: int = len(self.train_loader)
 
         for batch in tqdm(
-            self.train_loader, desc=f"Epoch {epoch+1} Training", leave=False
+            self.train_loader, desc=f"Epoch {epoch + 1} Training", leave=False
         ):
             if self._check_time_limit(start_time):
                 return running_loss / max(1, batch_count)
@@ -192,7 +192,7 @@ class FabricTrainer:
             running_loss += loss.item()
 
         avg_loss: float = running_loss / batch_count
-        logger.info(f"Epoch {epoch+1} Training Loss: {avg_loss:.4f}")
+        logger.info(f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}")
         return avg_loss
 
     def validate(self, start_time: float) -> tuple[float, float]:
@@ -317,8 +317,7 @@ def run_optuna_search(
 
     if task_type not in OBJECTIVE_REGISTRY:
         raise AutoMLConfigError(
-            f"Unknown task type '{task_type}'. "
-            f"Supported: {sorted(OBJECTIVE_REGISTRY)}"
+            f"Unknown task type '{task_type}'. Supported: {sorted(OBJECTIVE_REGISTRY)}"
         )
 
     config = load_task_config(task_type)
