@@ -16,8 +16,13 @@ from fastapi.concurrency import run_in_threadpool
 from huggingface_hub import HfApi
 
 from app.core.exceptions import AutoMLDataError, AutoMLSerializationError
-from app.core.service_helpers import build_upload_payload as _core_build_upload_payload
-from app.core.service_helpers import download_dataset as _core_download_dataset
+from app.core.service_helpers import (  # noqa: F401 – re-exported for router
+    build_upload_payload as _core_build_upload_payload,
+    download_dataset as _core_download_dataset,
+    fetch_dataset_metadata,
+    resolve_download_url,
+    upload_model,
+)
 from app.core.utils import jinja_environment, render_template
 from app.vision_automl.ml_engine.trainer import run_optuna_search
 
