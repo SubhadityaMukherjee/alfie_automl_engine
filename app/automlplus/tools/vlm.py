@@ -18,11 +18,7 @@ from jinja2 import Environment
 
 from app.automlplus.utils import ImageConverter
 from app.core.chat_handler import ChatHandler
-from app.core.exceptions import (
-    AutoMLChatError,
-    AutoMLImageError,
-    AutoMLValidationError,
-)
+from app.core.exceptions import AutoMLChatError, AutoMLImageError, AutoMLValidationError
 from app.core.utils import render_template
 
 load_dotenv(find_dotenv())

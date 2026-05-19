@@ -54,5 +54,4 @@ class BaseCSVDataset(Dataset, ABC):
         return idx
 
     @abstractmethod
-    def __getitem__(self, idx: int):
-        ...
+    def __getitem__(self, idx: int): ...
