@@ -5,13 +5,9 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.core.exceptions import AutoMLConfigError
-from app.vision_automl.ml_engine.configs import SUPPORTED_TASK_TYPES
-from app.vision_automl.ml_engine.trainer import (
-    EarlyStopping,
-    run_optuna_search,
-)
 from app.core.schemas.optuna_objectives import OBJECTIVE_REGISTRY
-
+from app.vision_automl.ml_engine.configs import SUPPORTED_TASK_TYPES
+from app.vision_automl.ml_engine.trainer import EarlyStopping, run_optuna_search
 
 # ---------------------------------------------------------------------------
 # EarlyStopping — pure logic, no model/HF downloads needed

@@ -114,7 +114,6 @@ async def find_best_model_for_mvp(
         Form(description="Dataset split to use for training (e.g., 'train')."),
     ] = None,
 ) -> JSONResponse:
-
     if not user_id or not isinstance(user_id, str) or not user_id.strip():
         return JSONResponse(
             status_code=400, content={"error": "user_id must be a non-empty string"}

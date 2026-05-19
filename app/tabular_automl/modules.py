@@ -23,9 +23,9 @@ DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE: float = float(
 
 DEFAULT_TIME_LIMIT: int = int(os.getenv("DEFAULT_TIME_LIMIT", 100))
 
-assert (
-    0 < DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE < 1
-), f"DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE must be in (0, 1), got {DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE}"
+assert 0 < DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE < 1, (
+    f"DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE must be in (0, 1), got {DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE}"
+)
 
 
 class AutoMLTrainer:
@@ -58,6 +58,9 @@ class AutoMLTrainer:
         target_column: str,
         time_limit: int,
     ) -> tuple[pd.DataFrame, TabularPredictor]:
+        if not isinstance(train_df, pd.DataFrame):
+            raise AutoMLDataError("train_df is not a DataFrame")
+
         if train_df is None or train_df.empty:
             raise AutoMLDataError("train_df cannot be None or empty")
 
@@ -124,7 +127,6 @@ class AutoMLTrainer:
     def train_test_split(
         self, test_df: pd.DataFrame | None, train_df: pd.DataFrame | None = None
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
-
         if train_df is None:
             raise AutoMLDataError("train_df cannot be None")
 

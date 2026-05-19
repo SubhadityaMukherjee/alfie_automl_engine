@@ -2,10 +2,7 @@
 
 import pytest
 
-from app.vision_automl.ml_engine.configs import (
-    SUPPORTED_TASK_TYPES,
-    load_task_config,
-)
+from app.vision_automl.ml_engine.configs import SUPPORTED_TASK_TYPES, load_task_config
 
 ALL_TASK_TYPES = [
     "image_classification",
