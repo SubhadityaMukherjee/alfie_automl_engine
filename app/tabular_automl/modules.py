@@ -57,6 +57,8 @@ class AutoMLTrainer:
         test_df: pd.DataFrame | None,
         target_column: str,
         time_limit: int,
+        num_cpus: str | int = "auto",
+        num_gpus: str | int = "auto",
     ) -> tuple[pd.DataFrame, TabularPredictor]:
         if not isinstance(train_df, pd.DataFrame):
             raise AutoMLDataError("train_df is not a DataFrame")
@@ -100,7 +102,12 @@ class AutoMLTrainer:
         try:
             predictor = self.PredictorClass(
                 label=target_column, path=str(self.save_model_path)
-            ).fit(train_data=train_dataset, time_limit=time_limit)
+            ).fit(
+                train_data=train_dataset,
+                time_limit=time_limit,
+                num_gpus=num_gpus,
+                num_cpus=num_cpus,
+            )
         except Exception as e:
             logger.exception("AutoGluon training failed")
             raise AutoMLTrainingError(f"Model training failed: {e}") from e
