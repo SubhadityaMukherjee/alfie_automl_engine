@@ -80,7 +80,8 @@ class FabricTrainer:
         lr: float = 0.001,
         epochs: int = 1,
         time_limit: float | None = None,
-        device: str = "auto",
+        device: str | int = "auto",
+        num_threads: int | None = None,
         callbacks: list[Any] | None = None,
         input_dtype: torch.dtype = torch.float32,
         target_dtype: torch.dtype = torch.long,
@@ -94,11 +95,14 @@ class FabricTrainer:
         self.loss_fn: nn.Module = loss_fn
         self.epochs: int = epochs
         self.time_limit: float | None = time_limit
-        self.device: str = device
+        self.device: str | int = device
         self.callbacks: list[Any] = callbacks or []
         self.input_dtype: torch.dtype = input_dtype
         self.target_dtype: torch.dtype = target_dtype
         self.model_computes_loss: bool = model_computes_loss
+
+        if num_threads is not None:
+            torch.set_num_threads(num_threads)
 
         self.fabric: L.Fabric = L.Fabric(devices=self.device)
         self._setup_model_optimizer()
@@ -302,6 +306,8 @@ def run_optuna_search(
     timeout: int | None = None,
     model_size: str = "small",
     workdir: Path,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
     **extra_kwargs,
 ) -> dict:
     """Run an Optuna hyperparameter search for the given task type.
@@ -344,6 +350,8 @@ def run_optuna_search(
         "model_size": model_size,
         "timeout_per_trial": timeout_per_trial,
         "config": config,
+        "num_gpus": num_gpus,
+        "num_cpus": num_cpus,
         **extra_kwargs,
     }
 

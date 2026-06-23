@@ -143,6 +143,8 @@ def train_automl(
     target_column_name: str,
     task_type: str,
     time_budget: int,
+    num_cpus: int | str = "auto",
+    num_gpus: int | str = "auto",
 ):
     """Train an AutoML model and return (leaderboard, predictor)."""
 
@@ -176,6 +178,8 @@ def train_automl(
             test_df=None,
             target_column=target_column_name,
             time_limit=int(time_budget),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
         )
     except AutoMLValidationError as e:
         logger.error(f"Training validation error: {e}")

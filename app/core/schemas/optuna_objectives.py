@@ -54,6 +54,8 @@ def _optuna_objective_base(
     build_model_kwargs: Callable[[Any, str], dict[str, Any]],
     model_computes_loss: bool = False,
     loss_fn: nn.Module | None = None,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> float:
     models: list[str] = config[f"{model_size}_models"]
     model_id: CategoricalChoiceType = trial.suggest_categorical("model_id", models)
@@ -68,8 +70,13 @@ def _optuna_objective_base(
         log=True,
     )
 
+    resolved_cpus: int | None = num_cpus if isinstance(num_cpus, int) else None
+    dm_kwargs_full: dict[str, Any] = dict(dm_kwargs)
+    if resolved_cpus is not None:
+        dm_kwargs_full["num_workers"] = resolved_cpus
+
     datamodule = datamodule_class(
-        **dm_kwargs,
+        **dm_kwargs_full,
         batch_size=batch_size,
         hf_model_id=model_id,
     )
@@ -82,6 +89,8 @@ def _optuna_objective_base(
         "epochs": config["max_epochs"],
         "callbacks": [EarlyStopping(patience=config["early_stopping_patience"])],
         "model_computes_loss": model_computes_loss,
+        "device": num_gpus,
+        "num_threads": resolved_cpus,
     }
     if loss_fn is not None:
         trainer_kwargs["loss_fn"] = loss_fn
@@ -102,10 +111,14 @@ def optuna_objective_image_classification(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=ImageClassificationDataModule,
         dm_kwargs={
@@ -137,10 +150,14 @@ def optuna_objective_image_classification_multimodal(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=MultimodalClassificationDataModule,
         dm_kwargs={
@@ -173,10 +190,14 @@ def optuna_objective_image_segmentation(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=ImageSegmentationDataModule,
         dm_kwargs={
@@ -206,10 +227,14 @@ def optuna_objective_object_detection(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=ObjectDetectionDataModule,
         dm_kwargs={
@@ -236,10 +261,14 @@ def optuna_objective_video_classification(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=VideoClassificationDataModule,
         dm_kwargs={
@@ -270,10 +299,14 @@ def optuna_objective_keypoint_detection(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=KeypointDetectionDataModule,
         dm_kwargs={
@@ -298,10 +331,14 @@ def optuna_objective_audio_classification(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=AudioClassificationDataModule,
         dm_kwargs={
@@ -331,11 +368,15 @@ def optuna_objective_text_classification(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=SequenceClassificationDataModule,
         dm_kwargs={
@@ -362,11 +403,15 @@ def optuna_objective_question_answering(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=QuestionAnsweringDataModule,
         dm_kwargs={"csv_file": csv_path},
@@ -383,11 +428,15 @@ def optuna_objective_causal_lm(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=CausalLMDataModule,
         dm_kwargs={"csv_file": csv_path},
@@ -404,11 +453,15 @@ def optuna_objective_seq2seq_lm(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=Seq2SeqLMDataModule,
         dm_kwargs={"csv_file": csv_path},
@@ -425,11 +478,15 @@ def optuna_objective_masked_lm(
     model_size: str,
     timeout_per_trial: float | None,
     config: dict,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
+        num_gpus=num_gpus,
+        num_cpus=num_cpus,
         config=config,
         datamodule_class=MaskedLMDataModule,
         dm_kwargs={"csv_file": csv_path},

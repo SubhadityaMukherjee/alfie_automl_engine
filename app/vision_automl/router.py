@@ -129,6 +129,20 @@ async def find_best_model_for_vision(
         str | None,
         Form(description="Dataset split to use for training (e.g., 'train')."),
     ] = None,
+    num_cpus: Annotated[
+        int | str,
+        Form(
+            ...,
+            description="Number of CPUs to use for AutoML. Can be a number or 'auto' ",
+        ),
+    ] = "auto",
+    num_gpus: Annotated[
+        int | str,
+        Form(
+            ...,
+            description="Number of GPUs to use for AutoML. Can be a number or 'auto' ",
+        ),
+    ] = "auto",
 ) -> JSONResponse:
     """
     Fetch a vision dataset from AutoDW, run AutoML training, and upload the best model.
@@ -162,6 +176,31 @@ async def find_best_model_for_vision(
                 status_code=400,
                 content={"error": "Vision AutoML requires a ZIP dataset."},
             )
+        if isinstance(num_cpus, str):
+            if num_cpus != "auto":
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "num_cpus must be either a number or auto"},
+                )
+        else:
+            if num_cpus < 0:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "num_cpus must be greater than 1"},
+                )
+
+        if isinstance(num_gpus, str):
+            if num_gpus != "auto":
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "num_gpus must be either a number or auto"},
+                )
+        else:
+            if num_gpus < 0:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": "num_gpus must be greater than 1"},
+                )
 
         # 2. Download URL
         download_url = resolve_download_url(
@@ -195,14 +234,16 @@ async def find_best_model_for_vision(
 
             # 5. Train
             optuna_result = await train_automl(
-                csv_path,
-                images_dir,
-                filename_column,
-                label_column,
-                time_budget,
-                model_size,
+                csv_path=csv_path,
+                images_dir=images_dir,
+                filename_column=filename_column,
+                label_column=label_column,
+                time_budget=time_budget,
+                model_size=model_size,
                 workdir=workdir,
                 task_type=task_type,
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
             )
 
             # 6. Serialize

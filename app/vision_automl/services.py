@@ -442,6 +442,8 @@ async def train_automl(
     model_size: str,
     workdir: Path,
     task_type: str = "image_classification",
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> dict:
     """Run Optuna-based vision AutoML and return the result dict."""
     return await run_in_threadpool(
@@ -455,6 +457,8 @@ async def train_automl(
         timeout=time_budget,
         model_size=model_size,
         workdir=workdir,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
     )
 
 
@@ -467,6 +471,8 @@ async def train_automl_multimodal(
     time_budget: int,
     model_size: str,
     workdir: Path,
+    num_gpus: str | int = "auto",
+    num_cpus: str | int = "auto",
 ) -> dict:
     """Run Optuna-based multimodal vision AutoML and return the result dict."""
     return await run_in_threadpool(
@@ -481,6 +487,8 @@ async def train_automl_multimodal(
         timeout=time_budget,
         model_size=model_size,
         workdir=workdir,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
     )
 
 

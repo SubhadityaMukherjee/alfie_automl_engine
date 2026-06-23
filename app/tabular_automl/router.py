@@ -109,6 +109,20 @@ async def find_best_model_for_mvp(
         ),
     ] = "classification",
     time_budget: Annotated[int, Form(..., description="Time budget in seconds")] = 10,
+    num_cpus: Annotated[
+        int | str,
+        Form(
+            ...,
+            description="Number of CPUs to use for AutoML. Can be a number or 'auto' ",
+        ),
+    ] = "auto",
+    num_gpus: Annotated[
+        int | str,
+        Form(
+            ...,
+            description="Number of GPUs to use for AutoML. Can be a number or 'auto' ",
+        ),
+    ] = "auto",
     dataset_split: Annotated[
         str | None,
         Form(description="Dataset split to use for training (e.g., 'train')."),
@@ -123,6 +137,31 @@ async def find_best_model_for_mvp(
         return JSONResponse(
             status_code=400, content={"error": "dataset_id must be a non-empty string"}
         )
+    if isinstance(num_cpus, str):
+        if num_cpus != "auto":
+            return JSONResponse(
+                status_code=400,
+                content={"error": "num_cpus must be either a number or auto"},
+            )
+    else:
+        if num_cpus < 0:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "num_cpus must be greater than 1"},
+            )
+
+    if isinstance(num_gpus, str):
+        if num_gpus != "auto":
+            return JSONResponse(
+                status_code=400,
+                content={"error": "num_gpus must be either a number or auto"},
+            )
+    else:
+        if num_gpus < 0:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "num_gpus must be greater than 1"},
+            )
 
     if (
         not target_column_name
@@ -289,11 +328,13 @@ async def find_best_model_for_mvp(
             try:
                 save_model_path = tmp_path / "automl_model"
                 leaderboard, predictor = train_automl(
-                    dataset_path,
-                    save_model_path,
-                    target_column_name,
-                    task_type,
-                    time_budget,
+                    dataset_path=dataset_path,
+                    save_model_path=save_model_path,
+                    target_column_name=target_column_name,
+                    task_type=task_type,
+                    time_budget=time_budget,
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
                 )
             except AutoMLValidationError as e:
                 logger.error(f"Validation error during training: {e}")
