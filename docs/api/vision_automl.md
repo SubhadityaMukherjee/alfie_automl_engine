@@ -2,7 +2,6 @@
 
 ::: app.vision_automl.main
 
-::: app.vision_automl.models
 ::: app.vision_automl.router
 ::: app.vision_automl.services
 
