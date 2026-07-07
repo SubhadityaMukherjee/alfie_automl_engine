@@ -1,3 +1,5 @@
+import json
+import logging
 from pathlib import Path
 from typing import Any, Callable
 
@@ -38,9 +40,46 @@ from app.vision_automl.ml_engine.model import (
     VideoClassificationModel,
 )
 
+logger = logging.getLogger(__name__)
+
 # ---------------------------------------------------------------------------
 # Per-task Optuna objective functions
 # ---------------------------------------------------------------------------
+
+
+def _trial_dir(workdir: Path | None, trial: optuna.Trial) -> Path | None:
+    if workdir is None:
+        return None
+    return Path(workdir) / "optuna" / f"trial_{trial.number}"
+
+
+def _save_trial_feature_mapping(
+    trial_dir: Path, datamodule: Any, task_type: str, model: Any
+) -> None:
+    """Persist feature_mapping.json for one trial. Best-effort; never raises."""
+    try:
+        # Lazy import keeps core/schema decoupled from app services at module load.
+        from app.vision_automl.services import extract_feature_mapping
+
+        mapping = extract_feature_mapping(datamodule, task_type, model=model)
+        trial_dir.mkdir(parents=True, exist_ok=True)
+        with open(trial_dir / "feature_mapping.json", "w") as f:
+            json.dump(mapping, f, indent=2, sort_keys=True)
+        logger.debug("Wrote feature_mapping.json to %s", trial_dir)
+    except Exception as e:
+        logger.warning("Failed to save feature mapping for trial: %s", e)
+
+
+def _save_trial_model(trial_dir: Path, model: Any) -> None:
+    """Persist model.pt for one trial. Best-effort; never raises."""
+    try:
+        import torch
+
+        trial_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(model, trial_dir / "model.pt")
+        logger.debug("Wrote model.pt to %s", trial_dir)
+    except Exception as e:
+        logger.warning("Failed to save model for trial: %s", e)
 
 
 def _optuna_objective_base(
@@ -56,6 +95,8 @@ def _optuna_objective_base(
     loss_fn: nn.Module | None = None,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
 ) -> float:
     models: list[str] = config[f"{model_size}_models"]
     model_id: CategoricalChoiceType = trial.suggest_categorical("model_id", models)
@@ -96,8 +137,21 @@ def _optuna_objective_base(
         trainer_kwargs["loss_fn"] = loss_fn
 
     trainer = FabricTrainer(**trainer_kwargs)
+
+    # Feature mapping needs both datamodule (preprocessing state) and the model
+    # (for vision_embed_dim on multimodal). Save before fit so it's available
+    # even if the trial is later pruned.
+    trial_dir = _trial_dir(workdir, trial)
+    if trial_dir is not None and task_type is not None:
+        _save_trial_feature_mapping(trial_dir, datamodule, task_type, trainer.model)
+
     test_loss: float
     test_loss, _ = trainer.fit(trial=trial)
+
+    # Reached only on successful completion (TrialPruned raises mid-fit).
+    if trial_dir is not None:
+        _save_trial_model(trial_dir, trainer.model)
+
     return test_loss
 
 
@@ -113,6 +167,8 @@ def optuna_objective_image_classification(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
@@ -136,6 +192,8 @@ def optuna_objective_image_classification(
         },
         model_computes_loss=False,
         loss_fn=nn.CrossEntropyLoss(),
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -152,6 +210,8 @@ def optuna_objective_image_classification_multimodal(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
@@ -177,6 +237,8 @@ def optuna_objective_image_classification_multimodal(
         },
         model_computes_loss=False,
         loss_fn=nn.CrossEntropyLoss(),
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -192,6 +254,8 @@ def optuna_objective_image_segmentation(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
@@ -214,6 +278,8 @@ def optuna_objective_image_segmentation(
             "label2id": dm.label2id,
         },
         model_computes_loss=True,
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -229,6 +295,8 @@ def optuna_objective_object_detection(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
@@ -248,6 +316,8 @@ def optuna_objective_object_detection(
             "num_classes": dm.num_classes,
         },
         model_computes_loss=True,
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -263,6 +333,8 @@ def optuna_objective_video_classification(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
@@ -286,6 +358,8 @@ def optuna_objective_video_classification(
         },
         model_computes_loss=False,
         loss_fn=nn.CrossEntropyLoss(),
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -301,6 +375,8 @@ def optuna_objective_keypoint_detection(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
@@ -318,6 +394,8 @@ def optuna_objective_keypoint_detection(
         model_class=KeypointDetectionModel,
         build_model_kwargs=lambda dm, mid: {"model_id": mid},
         model_computes_loss=True,
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -333,6 +411,8 @@ def optuna_objective_audio_classification(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
 ) -> float:
     return _optuna_objective_base(
         trial=trial,
@@ -356,6 +436,8 @@ def optuna_objective_audio_classification(
         },
         model_computes_loss=False,
         loss_fn=nn.CrossEntropyLoss(),
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -370,6 +452,8 @@ def optuna_objective_text_classification(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
@@ -393,6 +477,8 @@ def optuna_objective_text_classification(
         },
         model_computes_loss=False,
         loss_fn=nn.CrossEntropyLoss(),
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -405,6 +491,8 @@ def optuna_objective_question_answering(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
@@ -418,6 +506,8 @@ def optuna_objective_question_answering(
         model_class=QuestionAnsweringModel,
         build_model_kwargs=lambda dm, mid: {"model_id": mid},
         model_computes_loss=True,
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -430,6 +520,8 @@ def optuna_objective_causal_lm(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
@@ -443,6 +535,8 @@ def optuna_objective_causal_lm(
         model_class=CausalLMModel,
         build_model_kwargs=lambda dm, mid: {"model_id": mid},
         model_computes_loss=True,
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -455,6 +549,8 @@ def optuna_objective_seq2seq_lm(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
@@ -468,6 +564,8 @@ def optuna_objective_seq2seq_lm(
         model_class=Seq2SeqLMModel,
         build_model_kwargs=lambda dm, mid: {"model_id": mid},
         model_computes_loss=True,
+        workdir=workdir,
+        task_type=task_type,
     )
 
 
@@ -480,6 +578,8 @@ def optuna_objective_masked_lm(
     config: dict,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
+    workdir: Path | None = None,
+    task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
     return _optuna_objective_base(
@@ -493,6 +593,8 @@ def optuna_objective_masked_lm(
         model_class=MaskedLMModel,
         build_model_kwargs=lambda dm, mid: {"model_id": mid},
         model_computes_loss=True,
+        workdir=workdir,
+        task_type=task_type,
     )
 
 

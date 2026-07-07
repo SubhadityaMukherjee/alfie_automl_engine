@@ -1,5 +1,6 @@
 import functools
 import logging
+import shutil
 import time
 from pathlib import Path
 from typing import Any
@@ -352,6 +353,8 @@ def run_optuna_search(
         "config": config,
         "num_gpus": num_gpus,
         "num_cpus": num_cpus,
+        "workdir": workdir,
+        "task_type": task_type,
         **extra_kwargs,
     }
 
@@ -368,9 +371,42 @@ def run_optuna_search(
             "Check your dataset, model IDs, and time budget."
         )
 
+    best_trial_dir = run_dir / f"trial_{study.best_trial.number}"
+    _copy_best_trial_artifacts(best_trial_dir, workdir)
+
     return {
         "best_value": study.best_value,
         "best_params": study.best_params,
         "n_trials": len(study.trials),
-        "model_dir": run_dir / f"trial_{study.best_trial.number}",
+        "model_dir": best_trial_dir,
     }
+
+
+def _copy_best_trial_artifacts(best_trial_dir: Path, workdir: Path) -> None:
+    """Copy the best trial's feature_mapping.json + model.pt into workdir/model/.
+
+    ``serialize_and_zip_model`` zips ``workdir/model/``, so anything we want in
+    the uploaded zip needs to land there. Missing sources are skipped silently
+    (per-trial saves are best-effort and may not have run).
+    """
+    model_dir = Path(workdir) / "model"
+    try:
+        model_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logger.warning("Failed to create model dir %s: %s", model_dir, e)
+        return
+
+    if not best_trial_dir.exists():
+        logger.warning("Best trial artifact dir does not exist: %s", best_trial_dir)
+        return
+
+    for fname in ("feature_mapping.json", "model.pt"):
+        src = best_trial_dir / fname
+        if not src.exists():
+            logger.debug("Best trial did not produce %s; skipping", fname)
+            continue
+        try:
+            shutil.copy2(src, model_dir / fname)
+            logger.debug("Copied %s -> %s", src, model_dir / fname)
+        except Exception as e:
+            logger.warning("Failed to copy %s into model dir: %s", src, e)
