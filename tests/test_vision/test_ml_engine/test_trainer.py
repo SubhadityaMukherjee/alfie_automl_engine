@@ -1,5 +1,6 @@
 """Tests for app/vision_automl/ml_engine/trainer.py — EarlyStopping (fast, no ML)."""
 
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -7,7 +8,11 @@ import pytest
 from app.core.exceptions import AutoMLConfigError
 from app.core.schemas.optuna_objectives import OBJECTIVE_REGISTRY
 from app.vision_automl.ml_engine.configs import SUPPORTED_TASK_TYPES
-from app.vision_automl.ml_engine.trainer import EarlyStopping, run_optuna_search
+from app.vision_automl.ml_engine.trainer import (
+    EarlyStopping,
+    _copy_best_trial_artifacts,
+    run_optuna_search,
+)
 
 # ---------------------------------------------------------------------------
 # EarlyStopping — pure logic, no model/HF downloads needed
@@ -142,3 +147,40 @@ def test_run_optuna_search_raises_for_unknown_task(tmp_path):
             images_dir=tmp_path / "images",
             workdir=tmp_path,
         )
+
+
+# ---------------------------------------------------------------------------
+# _copy_best_trial_artifacts
+# ---------------------------------------------------------------------------
+
+
+def test_copy_best_trial_artifacts_copies_existing_files(tmp_path: Path):
+    best = tmp_path / "optuna" / "trial_3"
+    best.mkdir(parents=True)
+    (best / "feature_mapping.json").write_text('{"task_type": "x"}')
+    (best / "model.pt").write_text("weights")
+
+    _copy_best_trial_artifacts(best, tmp_path)
+
+    model_dir = tmp_path / "model"
+    assert (model_dir / "feature_mapping.json").read_text() == '{"task_type": "x"}'
+    assert (model_dir / "model.pt").read_text() == "weights"
+
+
+def test_copy_best_trial_artifacts_skips_missing_sources(tmp_path: Path):
+    best = tmp_path / "optuna" / "trial_0"
+    best.mkdir(parents=True)
+    # Only feature_mapping.json exists; model.pt missing
+    (best / "feature_mapping.json").write_text("{}")
+
+    _copy_best_trial_artifacts(best, tmp_path)
+
+    model_dir = tmp_path / "model"
+    assert (model_dir / "feature_mapping.json").exists()
+    assert not (model_dir / "model.pt").exists()
+
+
+def test_copy_best_trial_artifacts_handles_missing_trial_dir(tmp_path: Path):
+    # Best-effort: should not raise even if the trial dir doesn't exist.
+    _copy_best_trial_artifacts(tmp_path / "optuna" / "trial_99", tmp_path)
+    assert (tmp_path / "model").exists()  # model dir still created
