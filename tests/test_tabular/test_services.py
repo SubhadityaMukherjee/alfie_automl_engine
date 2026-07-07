@@ -1,9 +1,11 @@
+import json
 import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
+from sklearn.feature_extraction.text import CountVectorizer
 
 from app.core.exceptions import (
     AutoMLDataError,
@@ -14,6 +16,7 @@ from app.core.exceptions import (
 from app.tabular_automl.services import (
     build_upload_payload,
     convert_leaderboard_safely,
+    extract_text_feature_mapping,
     load_table,
     serialize_and_zip_predictor,
     validate_tabular_inputs,
@@ -244,6 +247,85 @@ def test_serialize_and_zip_contains_pickle(tmp_path):
     zip_path = serialize_and_zip_predictor({"foo": "bar"}, model_dir, tmp_path)
     with zipfile.ZipFile(zip_path) as zf:
         assert "predictor.pkl" in zf.namelist()
+
+
+def test_serialize_and_zip_contains_text_feature_mapping(tmp_path):
+    model_dir = tmp_path / "model"
+    model_dir.mkdir()
+    zip_path = serialize_and_zip_predictor({"foo": "bar"}, model_dir, tmp_path)
+    with zipfile.ZipFile(zip_path) as zf:
+        assert "text_feature_mapping.json" in zf.namelist()
+        with zf.open("text_feature_mapping.json") as f:
+            data = json.load(f)
+        assert data == {"ngram_features": {}, "multimodal_text_model_dirs": []}
+
+
+# ---------------------------------------------------------------------------
+# extract_text_feature_mapping
+# ---------------------------------------------------------------------------
+
+
+class _FakeNgramGenerator:
+    """Stand-in matching AutoGluon's TextNgramFeatureGenerator surface."""
+
+    def __init__(self):
+        vec = CountVectorizer(ngram_range=(1, 1))
+        vec.fit(["alpha beta gamma", "beta gamma delta"])
+        self.vectorizer_features = ["__nlp__"]
+        self.vectorizers = [vec]
+
+
+def _build_fake_predictor_with_ngrams():
+    class TextNgramFeatureGenerator(_FakeNgramGenerator):
+        pass
+
+    class FakeBulk:
+        generators = [[TextNgramFeatureGenerator()]]
+
+    class FakeLearner:
+        feature_generator = FakeBulk()
+
+    class FakePredictor:
+        _learner = FakeLearner()
+
+    return FakePredictor()
+
+
+def test_extract_text_feature_mapping_empty(tmp_path):
+    out = extract_text_feature_mapping(object(), tmp_path)
+    assert out == {"ngram_features": {}, "multimodal_text_model_dirs": []}
+
+
+def test_extract_text_feature_mapping_picks_up_ngram_vocab(tmp_path):
+    predictor = _build_fake_predictor_with_ngrams()
+    out = extract_text_feature_mapping(predictor, tmp_path)
+    assert "__nlp__" in out["ngram_features"]
+    vocab = out["ngram_features"]["__nlp__"]["vocabulary"]
+    assert "alpha" in vocab
+    assert "delta" in vocab
+    assert out["ngram_features"]["__nlp__"]["feature_names"]
+    assert out["multimodal_text_model_dirs"] == []
+
+
+def test_extract_text_feature_mapping_picks_up_multimodal_dirs(tmp_path):
+    model_root = tmp_path / "TextDistilBERT"
+    model_root.mkdir(parents=True)
+    (model_root / "tokenizer.json").write_text("{}")
+    (model_root / "vocab.txt").write_text("a\nb\n")
+
+    out = extract_text_feature_mapping(object(), tmp_path)
+    assert out["ngram_features"] == {}
+    assert "TextDistilBERT" in out["multimodal_text_model_dirs"]
+
+
+def test_extract_text_feature_mapping_resilient_to_predictor_errors(tmp_path):
+    class BoomPredictor:
+        @property
+        def _learner(self):
+            raise RuntimeError("boom")
+
+    out = extract_text_feature_mapping(BoomPredictor(), tmp_path)
+    assert out == {"ngram_features": {}, "multimodal_text_model_dirs": []}
 
 
 @pytest.mark.parametrize(
