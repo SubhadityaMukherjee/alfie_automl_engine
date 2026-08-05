@@ -75,7 +75,7 @@ VISION_AUTOML_URL = f"http://{VISION_AUTOML_HOST}:{VISION_AUTOML_PORT}"
 AUTOML_VISION_BEST_MODEL_URL = f"{VISION_AUTOML_URL}/automl_vision/best_model/"
 
 # Log configuration at module load (so we see which host/port are used, e.g. host.docker.internal when in Docker)
-logger.info(f"Configuration:")
+logger.info("Configuration:")
 logger.info(f"  Data Warehouse API: {API_BASE} (host: {DW_HOST}, port: {DW_PORT})")
 logger.info(f"  AutoML Tabular: {AUTOML_TABULAR_BEST_MODEL_URL}")
 logger.info(f"  AutoML Vision: {AUTOML_VISION_BEST_MODEL_URL}")
@@ -489,7 +489,7 @@ async def process_automl_trigger(
         try:
             logger.info(f"Fetching dataset metadata from: {API_BASE}")
             metadata = fetch_dataset_metadata(user_id, dataset_id, dataset_version)
-            logger.info(f"Dataset metadata fetched successfully")
+            logger.info("Dataset metadata fetched successfully")
 
             # Check if dataset is a folder or single file, and if it has train/test/drift split
             is_folder = metadata.get("is_folder", False)
@@ -517,7 +517,7 @@ async def process_automl_trigger(
             logger.error(f"Timeout while fetching dataset from {API_BASE}")
             logger.error(f"   Error: {e}")
             logger.error(
-                f"   If running in Docker, ensure DW_HOST=data-warehouse-api is set"
+                "   If running in Docker, ensure DW_HOST=data-warehouse-api is set"
             )
             logger.error(
                 f"   If running locally, ensure the Data Warehouse API is running on {DW_HOST}:{DW_PORT}"
@@ -536,7 +536,7 @@ async def process_automl_trigger(
             logger.error(f"Failed to connect to Data Warehouse API at {API_BASE}")
             logger.error(f"   Error: {e}")
             logger.error(
-                f"   If running in Docker, ensure DW_HOST=data-warehouse-api is set"
+                "   If running in Docker, ensure DW_HOST=data-warehouse-api is set"
             )
             logger.error(
                 f"   If running locally, ensure the Data Warehouse API is running on {DW_HOST}:{DW_PORT}"
@@ -627,7 +627,7 @@ async def process_automl_trigger(
                     f"Could not reach AutoML service for health check: {health_e}"
                 )
                 logger.warning(
-                    f"   This might indicate the service is not running or not accessible"
+                    "   This might indicate the service is not running or not accessible"
                 )
 
             try:
@@ -652,10 +652,8 @@ async def process_automl_trigger(
                 logger.error(
                     f"   Ensure the tabular Docker service is running and accessible on {TABULAR_AUTOML_HOST}:{TABULAR_AUTOML_PORT}"
                 )
-                logger.error(f"   Check: docker ps | grep tabular")
-                logger.error(
-                    f"   Verify port mapping: docker port alfie_automl_tabular"
-                )
+                logger.error("   Check: docker ps | grep tabular")
+                logger.error("   Verify port mapping: docker port alfie_automl_tabular")
                 if producer and task_id:
                     await send_automl_failure_to_kafka(
                         producer,
@@ -684,7 +682,7 @@ async def process_automl_trigger(
                             err_msg = f"{e.response.status_code}: {e.response.text[:500] if e.response.text else 'no body'}"
                             logger.error(f"   Response body: {e.response.text[:500]}")
                     logger.error(
-                        f"   If running in Docker, ensure TABULAR_AUTOML_HOST=tabular is set"
+                        "   If running in Docker, ensure TABULAR_AUTOML_HOST=tabular is set"
                     )
                 if producer and task_id:
                     await send_automl_failure_to_kafka(
@@ -695,9 +693,9 @@ async def process_automl_trigger(
                 logger.error(
                     f"Request to AutoML service timed out after {request_timeout} seconds"
                 )
-                logger.error(f"   Training may have taken longer than expected")
+                logger.error("   Training may have taken longer than expected")
                 logger.error(
-                    f"   Consider increasing time_budget or checking service logs"
+                    "   Consider increasing time_budget or checking service logs"
                 )
                 if producer and task_id:
                     await send_automl_failure_to_kafka(

@@ -6,16 +6,30 @@ models, supporting both regular and streaming responses.
 
 import asyncio
 import logging
-import os
-from typing import List
+from typing import Any, List
 
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import SystemMessage, UserMessage
 from azure.core.credentials import AzureKeyCredential
 
+from app.core.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 _MAX_CONCURRENT = 4
+
+# Lazy, config-keyed singleton for the Azure chat client. ``_get_azure_client``
+# builds it once per (endpoint, api_key) pair and reuses it; call
+# ``reset_azure_client`` to drop the cache (config change / tests).
+_azure_client: ChatCompletionsClient | None = None
+_azure_client_config: tuple[str, str] | None = None
+
+
+def reset_azure_client() -> None:
+    """Drop the cached Azure chat client."""
+    global _azure_client, _azure_client_config
+    _azure_client = None
+    _azure_client_config = None
 
 
 class ChatHandler:
@@ -143,9 +157,9 @@ class ChatHandler:
         return ChatHandler._extract_azure_text_from_response(response)
 
     @staticmethod
-    def _to_azure_messages(msgs: List[dict]) -> List[object]:
+    def _to_azure_messages(msgs: List[dict]) -> List[Any]:
         """Convert internal message dicts to Azure AI Inference message objects."""
-        azure_messages: List[object] = []
+        azure_messages: List[Any] = []
 
         for m in msgs:
             role = (m.get("role") or "user").lower()
@@ -159,7 +173,7 @@ class ChatHandler:
                     azure_messages.append(UserMessage(content=text_content or ""))
                 continue
 
-            mixed_content: List[object] = []
+            mixed_content: List[Any] = []
             if text_content:
                 mixed_content.append({"type": "text", "text": text_content})
             for b64 in images:
@@ -178,22 +192,36 @@ class ChatHandler:
         return azure_messages
 
     @staticmethod
-    def _get_azure_client():
-        """Initialize Azure AI Foundry chat client."""
-        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT_LARGE_MODEL")
-        api_key = os.getenv("AZURE_OPENAI_KEY")
+    def _get_azure_client() -> ChatCompletionsClient:
+        """Return a cached Azure AI Foundry chat client.
+
+        The client is built once per (endpoint, api_key) pair and reused across
+        calls so we don't reconstruct the HTTP client on every request. Call
+        :func:`reset_azure_client` to drop the cache.
+        """
+        global _azure_client, _azure_client_config
+        settings = get_settings()
+        endpoint = settings.azure_openai_endpoint_large_model
+        api_key = settings.azure_openai_key
         if not endpoint or not api_key:
             raise RuntimeError(
-                "Missing AZURE_OPENAI_ENDPOINT_LARGE_MODEL or AZURE_OPENAI_KEY environment variables"
+                "Missing AZURE_OPENAI_ENDPOINT_LARGE_MODEL or AZURE_OPENAI_KEY "
+                "environment variables"
             )
-        logger.debug("Endpoint and API Key Exsists")
+        config = (endpoint, api_key)
+        if _azure_client is not None and _azure_client_config == config:
+            return _azure_client
+        logger.debug("Creating new Azure client for endpoint %s", endpoint)
         try:
-            return ChatCompletionsClient(
+            client = ChatCompletionsClient(
                 endpoint=endpoint, credential=AzureKeyCredential(api_key)
             )
         except Exception as e:
             logger.error("Failed to initialize Azure client: %s", e)
             raise RuntimeError(f"Failed to initialize Azure client: {e}") from e
+        _azure_client = client
+        _azure_client_config = config
+        return client
 
     @staticmethod
     async def _azure_chat(message, context, model):

@@ -246,7 +246,7 @@ a<!DOCTYPE html>
         <div class="content">
             <div class="sidebar">
                 <h2>Services</h2>
-                
+
                 <div class="select-all">
                     <input type="checkbox" id="selectAll">
                     <label for="selectAll">Select All</label>
@@ -282,7 +282,7 @@ a<!DOCTYPE html>
         function initializeCheckboxes() {
             const container = document.getElementById('servicesContainer');
             container.innerHTML = '';
-            
+
             services.forEach(service => {
                 const label = document.createElement('label');
                 label.className = 'checkbox-item';
@@ -396,7 +396,7 @@ a<!DOCTYPE html>
             try {
                 const response = await fetch('/api/stop', { method: 'POST' });
                 if (!response.ok) throw new Error('Failed to stop');
-                
+
                 if (pollInterval) clearInterval(pollInterval);
                 setStatus(false, 'Stopped');
             } catch (err) {

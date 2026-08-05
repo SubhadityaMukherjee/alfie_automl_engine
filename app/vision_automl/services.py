@@ -15,6 +15,7 @@ import pandas as pd
 from fastapi.concurrency import run_in_threadpool
 from huggingface_hub import HfApi
 
+from app.core.config import get_settings
 from app.core.exceptions import AutoMLDataError, AutoMLSerializationError
 from app.core.service_helpers import (  # noqa: F401 – re-exported for router
     build_upload_payload as _core_build_upload_payload,
@@ -158,9 +159,10 @@ def sort_models_by_size(
     logger.info("Sorting models by size tier: %s", size_tier)
     tier = str(size_tier).strip().lower()
 
-    SMALL_MAX: int = int(os.getenv("MODEL_SMALL_MAX_PARAM_SIZE", 50_000_000))
+    settings = get_settings()
+    SMALL_MAX: int = settings.model_small_max_param_size
     MEDIUM_MIN: int = SMALL_MAX + 1
-    MEDIUM_MAX: int = int(os.getenv("MODEL_MEDIUM_MAX_PARAM_SIZE", 200_000_000))
+    MEDIUM_MAX: int = settings.model_medium_max_param_size
     LARGE_MIN: int = MEDIUM_MAX + 1
 
     def in_tier(m: dict[str, Any]) -> bool:

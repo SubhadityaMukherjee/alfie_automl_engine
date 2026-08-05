@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import pandas as pd
 from pydantic import BaseModel
 
 SUPPORTED_TABULAR_TASK_TYPES = [

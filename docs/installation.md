@@ -49,5 +49,3 @@ uv sync
 # Install dev-only tools (use --dev group if you have groups defined)
 uv add --dev ruff
 ```
-
-

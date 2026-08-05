@@ -1,5 +1,4 @@
 import logging
-import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 
@@ -8,17 +7,17 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 
+from app.core.config import get_settings
 from app.core.exceptions import AutoMLDataError
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BATCH_SIZE: int = int(os.getenv("DEFAULT_BATCH_SIZE", 32))
-DEFAULT_NUM_WORKERS: int = int(os.getenv("DEFAULT_NUM_WORKERS", 0))
-DEFAULT_VAL_SPLIT: float = float(os.getenv("DEFAULT_VAL_SPLIT", 0.2))
-DEFAULT_TEST_SPLIT: float = float(os.getenv("DEFAULT_TEST_SPLIT", 0.1))
-DEFAULT_IMAGE_CLASSIFIER_HF_ID: str = os.getenv(
-    "DEFAULT_IMAGE_CLASSIFIER_HF_ID", "google/vit-base-patch16-224"
-)
+_settings = get_settings()
+DEFAULT_BATCH_SIZE: int = _settings.default_batch_size
+DEFAULT_NUM_WORKERS: int = _settings.default_num_workers
+DEFAULT_VAL_SPLIT: float = _settings.default_val_split
+DEFAULT_TEST_SPLIT: float = _settings.default_test_split
+DEFAULT_IMAGE_CLASSIFIER_HF_ID: str = _settings.default_image_classifier_hf_id
 
 
 class BaseDataModule(ABC):

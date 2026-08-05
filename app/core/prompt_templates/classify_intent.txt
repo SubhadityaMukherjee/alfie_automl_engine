@@ -3,4 +3,4 @@ Should this be handled as a general question (like 'what is AutoML?' or 'how do 
 
 Context : {{context}}
 
-Respond with exactly one word: The name of the pipeline and nothing more. 
+Respond with exactly one word: The name of the pipeline and nothing more.

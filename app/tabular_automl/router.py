@@ -1,15 +1,15 @@
 """Route definitions for the tabular AutoML service."""
 
 import logging
-import os
 import tempfile
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import requests
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 
+from app.core.config import get_settings
 from app.core.exceptions import AutoMLRuntimeError, AutoMLValidationError
 from app.core.schemas.responses import (
     ErrorResponse,
@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/automl_tabular", tags=["tabular"])
 
-_COMMON_RESPONSES = {
+_COMMON_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Internal server error", "model": ErrorResponse},
 }
 
@@ -245,7 +245,7 @@ async def find_best_model_for_mvp(
         502 – AutoDW communication failure.
         500 – unexpected runtime error.
     """
-    autodw_base = os.getenv("AUTODW_URL", "http://localhost:8000")
+    autodw_base = get_settings().autodw_url
     upload_url = f"{autodw_base}/ai-models/upload/single/{user_id}"
 
     try:
@@ -261,13 +261,13 @@ async def find_best_model_for_mvp(
                 autodw_base, user_id, dataset_id, dataset_version
             )
         except requests.RequestException as e:
-            logger.error(f"Failed to fetch dataset metadata: {e}")
+            logger.error("Failed to fetch dataset metadata: %s", e)
             return JSONResponse(
                 status_code=502,
                 content={"error": f"Failed to fetch dataset metadata from AutoDW: {e}"},
             )
         except Exception as e:
-            logger.error(f"Unexpected error fetching metadata: {e}")
+            logger.error("Unexpected error fetching metadata: %s", e)
             return JSONResponse(
                 status_code=500,
                 content={"error": f"Unexpected error fetching metadata: {e}"},
@@ -305,7 +305,7 @@ async def find_best_model_for_mvp(
                 dataset_split,
             )
         except Exception as e:
-            logger.error(f"Failed to resolve download URL: {e}")
+            logger.error("Failed to resolve download URL: %s", e)
             return JSONResponse(
                 status_code=500,
                 content={"error": f"Failed to resolve download URL: {e}"},
@@ -323,13 +323,13 @@ async def find_best_model_for_mvp(
             try:
                 download_dataset(download_url, dataset_path)
             except requests.RequestException as e:
-                logger.error(f"Failed to download dataset: {e}")
+                logger.error("Failed to download dataset: %s", e)
                 return JSONResponse(
                     status_code=502,
                     content={"error": f"Failed to download dataset from AutoDW: {e}"},
                 )
             except Exception as e:
-                logger.error(f"Unexpected error downloading dataset: {e}")
+                logger.error("Unexpected error downloading dataset: %s", e)
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Unexpected error downloading dataset: {e}"},
@@ -354,7 +354,7 @@ async def find_best_model_for_mvp(
                         status_code=400, content={"error": validation_error}
                     )
             except Exception as e:
-                logger.error(f"Unexpected error during validation: {e}")
+                logger.error("Unexpected error during validation: %s", e)
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Unexpected error during validation: {e}"},
@@ -373,18 +373,18 @@ async def find_best_model_for_mvp(
                     num_gpus=num_gpus,
                 )
             except AutoMLValidationError as e:
-                logger.error(f"Validation error during training: {e}")
+                logger.error("Validation error during training: %s", e)
                 return JSONResponse(
                     status_code=400,
                     content={"error": f"Training validation failed: {e}"},
                 )
             except AutoMLRuntimeError as e:
-                logger.error(f"Training runtime error: {e}")
+                logger.error("Training runtime error: %s", e)
                 return JSONResponse(
                     status_code=500, content={"error": f"Model training failed: {e}"}
                 )
             except Exception as e:
-                logger.error(f"Unexpected error during training: {e}")
+                logger.error("Unexpected error during training: %s", e)
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Unexpected error during training: {e}"},
@@ -405,7 +405,7 @@ async def find_best_model_for_mvp(
                     leaderboard
                 )
             except Exception as e:
-                logger.error(f"Failed to serialize and zip model: {e}")
+                logger.error("Failed to serialize and zip model: %s", e)
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Failed to serialize model: {e}"},
@@ -422,7 +422,7 @@ async def find_best_model_for_mvp(
                     dataset_id, dataset_version, metadata, task_type, leaderboard_json
                 )
             except Exception as e:
-                logger.error(f"Failed to build upload payload: {e}")
+                logger.error("Failed to build upload payload: %s", e)
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Failed to build upload payload: {e}"},
@@ -434,7 +434,7 @@ async def find_best_model_for_mvp(
                 )
 
                 if upload_resp.status_code >= 400:
-                    logger.error(f"Model upload failed: {upload_resp.text}")
+                    logger.error("Model upload failed: %s", upload_resp.text)
                     return JSONResponse(
                         status_code=upload_resp.status_code,
                         content={
@@ -442,13 +442,13 @@ async def find_best_model_for_mvp(
                         },
                     )
             except requests.RequestException as e:
-                logger.error(f"Network error uploading model: {e}")
+                logger.error("Network error uploading model: %s", e)
                 return JSONResponse(
                     status_code=502,
                     content={"error": f"Failed to upload model to AutoDW: {e}"},
                 )
             except Exception as e:
-                logger.error(f"Unexpected error uploading model: {e}")
+                logger.error("Unexpected error uploading model: %s", e)
                 return JSONResponse(
                     status_code=500,
                     content={"error": f"Unexpected error uploading model: {e}"},
