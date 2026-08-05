@@ -58,7 +58,7 @@ def _save_trial_feature_mapping(
 ) -> None:
     """Persist feature_mapping.json for one trial. Best-effort; never raises."""
     try:
-        # Lazy import keeps core/schema decoupled from app services at module load.
+        # Lazy import keeps the HPO objectives decoupled from app services at module load.
         from app.vision_automl.services import extract_feature_mapping
 
         mapping = extract_feature_mapping(datamodule, task_type, model=model)

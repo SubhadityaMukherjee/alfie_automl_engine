@@ -32,7 +32,10 @@ COPY --chown=nonroot:nonroot app/ app/
 RUN --mount=type=cache,target=/home/nonroot/.cache/uv,uid=999 \
     uv sync --locked --no-dev
 
-ENV HEALTHCHECK_PORT=8000
+# Healthcheck port: overridable at build time (ARG) and at runtime (env),
+# so each service can target the port it actually listens on.
+ARG HEALTHCHECK_PORT=8000
+ENV HEALTHCHECK_PORT=${HEALTHCHECK_PORT}
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:${HEALTHCHECK_PORT}/health || exit 1
 

@@ -103,6 +103,36 @@ def test_best_model_invalid_dataset_split():
     assert "dataset_split" in resp.json()["error"]
 
 
+def test_best_model_num_cpus_zero_rejected():
+    """0 is not a valid CPU count — must be a positive integer."""
+    params = {**_VALID_PARAMS, "num_cpus": 0}
+    resp = client.post("/automl_tabular/best_model/", data=params)
+    assert resp.status_code == 400
+    assert "num_cpus" in resp.json()["error"]
+
+
+def test_best_model_num_cpus_negative_rejected():
+    params = {**_VALID_PARAMS, "num_cpus": -1}
+    resp = client.post("/automl_tabular/best_model/", data=params)
+    assert resp.status_code == 400
+    assert "num_cpus" in resp.json()["error"]
+
+
+def test_best_model_num_gpus_zero_rejected():
+    """0 is not a valid GPU count — must be a positive integer."""
+    params = {**_VALID_PARAMS, "num_gpus": 0}
+    resp = client.post("/automl_tabular/best_model/", data=params)
+    assert resp.status_code == 400
+    assert "num_gpus" in resp.json()["error"]
+
+
+def test_best_model_num_gpus_negative_rejected():
+    params = {**_VALID_PARAMS, "num_gpus": -2}
+    resp = client.post("/automl_tabular/best_model/", data=params)
+    assert resp.status_code == 400
+    assert "num_gpus" in resp.json()["error"]
+
+
 # ---------------------------------------------------------------------------
 # best_model — metadata fetching errors
 # ---------------------------------------------------------------------------

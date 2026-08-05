@@ -8,6 +8,8 @@ services:
     ports:
       - "${AUTOML_PLUS_PORT}:${AUTOML_PLUS_PORT}"
     env_file: ".env"
+    environment:
+      - "HEALTHCHECK_PORT=${AUTOML_PLUS_PORT}"
     volumes:
       - automlplus_data:/data
     restart: always
@@ -23,6 +25,7 @@ services:
       - tabular_data:/data
     environment:
       - "AUTODW_URL=${AUTODW_URL-http://host.docker.internal:8000}"
+      - "HEALTHCHECK_PORT=${TABULAR_AUTOML_PORT}"
     extra_hosts:
       - "host.docker.internal=host-gateway"
     restart: always
@@ -41,6 +44,7 @@ services:
       - vision_data:/data
     environment:
       - "AUTODW_URL=${AUTODW_URL-http://host.docker.internal:8000}"
+      - "HEALTHCHECK_PORT=${VISION_AUTOML_PORT}"
     extra_hosts:
       - "host.docker.internal=host-gateway"
     restart: always

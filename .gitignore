@@ -6,6 +6,7 @@ processes.pid
 .DS_Store
 plans/
 CLAUDE.md
+.claude/
 .webui_secret_key
 sample_data/
 AutogluonModels/

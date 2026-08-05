@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.core.exceptions import AutoMLConfigError
-from app.core.schemas.optuna_objectives import OBJECTIVE_REGISTRY
+from app.vision_automl.hpo.optuna_objectives import OBJECTIVE_REGISTRY
 from app.vision_automl.ml_engine.configs import SUPPORTED_TASK_TYPES
 from app.vision_automl.ml_engine.trainer import (
     EarlyStopping,
