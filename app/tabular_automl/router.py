@@ -128,6 +128,24 @@ async def find_best_model_for_mvp(
         Form(description="Dataset split to use for training (e.g., 'train')."),
     ] = None,
 ) -> JSONResponse:
+    """
+    Fetch a tabular dataset from AutoDW, run AutoML training, and upload the best model.
+
+    Steps:
+      1. Fetch dataset metadata from AutoDW.
+      2. Resolve the correct download URL (respecting splits if present).
+      3. Download the dataset file to a temporary directory.
+      4. Validate user-supplied parameters against the dataset.
+      5. Train an AutoML model within the given time budget.
+      6. Serialize and zip the best predictor.
+      7. Upload the model and leaderboard back to AutoDW.
+
+    Returns:
+        200 – success message and leaderboard summary.
+        400 – validation error (bad inputs or unsupported file type).
+        502 – AutoDW communication failure.
+        500 – unexpected runtime error.
+    """
     if not user_id or not isinstance(user_id, str) or not user_id.strip():
         return JSONResponse(
             status_code=400, content={"error": "user_id must be a non-empty string"}
@@ -144,10 +162,10 @@ async def find_best_model_for_mvp(
                 content={"error": "num_cpus must be either a number or auto"},
             )
     else:
-        if num_cpus < 0:
+        if num_cpus < 1:
             return JSONResponse(
                 status_code=400,
-                content={"error": "num_cpus must be greater than 1"},
+                content={"error": "num_cpus must be a positive integer (at least 1)"},
             )
 
     if isinstance(num_gpus, str):
@@ -157,10 +175,10 @@ async def find_best_model_for_mvp(
                 content={"error": "num_gpus must be either a number or auto"},
             )
     else:
-        if num_gpus < 0:
+        if num_gpus < 1:
             return JSONResponse(
                 status_code=400,
-                content={"error": "num_gpus must be greater than 1"},
+                content={"error": "num_gpus must be a positive integer (at least 1)"},
             )
 
     if (
@@ -191,6 +209,24 @@ async def find_best_model_for_mvp(
             status_code=400,
             content={"error": "dataset_split must be one of: 'train', 'test', 'drift'"},
         )
+    """
+    Fetch a tabular dataset from AutoDW, run AutoML training, and upload the best model.
+
+    Steps:
+      1. Fetch dataset metadata from AutoDW.
+      2. Resolve the correct download URL (respecting splits if present).
+      3. Download the dataset file to a temporary directory.
+      4. Validate user-supplied parameters against the dataset.
+      5. Train an AutoML model within the given time budget.
+      6. Serialize and zip the best predictor.
+      7. Upload the model and leaderboard back to AutoDW.
+
+    Returns:
+        200 – success message and leaderboard summary.
+        400 – validation error (bad inputs or unsupported file type).
+        502 – AutoDW communication failure.
+        500 – unexpected runtime error.
+    """
     """
     Fetch a tabular dataset from AutoDW, run AutoML training, and upload the best model.
 
