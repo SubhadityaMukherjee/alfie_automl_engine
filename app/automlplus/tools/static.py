@@ -16,7 +16,7 @@ import logging
 from math import isfinite
 from typing import Any, Dict, List, Tuple
 
-import textstat  # type: ignore
+import textstat
 
 from app.core.exceptions import AutoMLValidationError
 

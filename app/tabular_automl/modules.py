@@ -1,11 +1,11 @@
 import logging
-import os
 from pathlib import Path
 
 import pandas as pd
 from autogluon.tabular import TabularDataset, TabularPredictor
 from dotenv import find_dotenv, load_dotenv
 
+from app.core.config import get_settings
 from app.core.exceptions import (
     AutoMLConfigError,
     AutoMLDataError,
@@ -17,11 +17,12 @@ logger = logging.getLogger(__name__)
 
 load_dotenv(find_dotenv())
 
-DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE: float = float(
-    os.getenv("DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE", 0.8)
+_settings = get_settings()
+DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE: float = (
+    _settings.default_tabular_train_test_split_size
 )
 
-DEFAULT_TIME_LIMIT: int = int(os.getenv("DEFAULT_TIME_LIMIT", 100))
+DEFAULT_TIME_LIMIT: int = _settings.default_time_limit
 
 if not 0 < DEFAULT_TABULAR_TRAIN_TEST_SPLIT_SIZE < 1:
     raise AutoMLConfigError(

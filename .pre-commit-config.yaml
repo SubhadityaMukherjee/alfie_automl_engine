@@ -11,3 +11,13 @@ repos:
       - id: ruff
         args: [--fix]
       - id: ruff-format
+  # mypy runs through the project's uv venv (`uv run mypy`) so it sees all
+  # installed deps; the [tool.mypy] config in pyproject.toml applies.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (app)
+        entry: uv run mypy app/
+        language: system
+        types: [python]
+        pass_filenames: false

@@ -38,6 +38,7 @@ dependencies = [
   "json5>=0.12,<1",
   "flask>=3.1,<4",
   "structlog>=24.1,<25",
+  "pydantic-settings>=2.0,<3",
 ]
 
 [dependency-groups]
@@ -58,3 +59,28 @@ dev = [
   "types-requests>=2.33.0.20260518",
   "pytest-cov>=7.1.0",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+# E4/E7/E9 = pycodestyle subset, F = pyflakes (the default set, now explicit).
+select = ["E4", "E7", "E9", "F"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[tool.pyright]
+include = ["app", "tests"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.12"

@@ -99,7 +99,7 @@ def _optuna_objective_base(
     task_type: str | None = None,
 ) -> float:
     models: list[str] = config[f"{model_size}_models"]
-    model_id: CategoricalChoiceType = trial.suggest_categorical("model_id", models)
+    model_id: str = str(trial.suggest_categorical("model_id", models))
     lr: float = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
     batch_size: CategoricalChoiceType = trial.suggest_categorical(
         "batch_size", config["batch_sizes"]

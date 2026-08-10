@@ -405,7 +405,10 @@ class ImageSegmentationDataModule(ImageClassificationDataModule):
         return {
             "pixel_values": encoding.pixel_values,
             "labels": torch.stack(
-                [l if isinstance(l, torch.Tensor) else torch.tensor(l) for l in labels]
+                [
+                    label if isinstance(label, torch.Tensor) else torch.tensor(label)
+                    for label in labels
+                ]
             ),
         }
 
@@ -465,7 +468,7 @@ class ObjectDetectionDataModule(BaseDataModule):
             all_labels: set[int] = set()
             for row in df[self.class_labels_col]:
                 all_labels.update(_json.loads(row))
-        except json.JSONDecodeError as e:
+        except _json.JSONDecodeError as e:
             logger.error("Failed to parse JSON in class_labels column: %s", e)
             raise
         except KeyError as e:
@@ -564,6 +567,7 @@ class VideoClassificationDataModule(BaseDataModule):
         root_dir: Path,
         video_col: str = "video_path",
         label_col: str = "label",
+        class_labels_col: str = "class_labels",
         num_frames: int = 8,
         batch_size: int = DEFAULT_BATCH_SIZE,
         num_workers: int = DEFAULT_NUM_WORKERS,
@@ -575,6 +579,7 @@ class VideoClassificationDataModule(BaseDataModule):
         self.root_dir = Path(root_dir)
         self.video_col = video_col
         self.label_col = label_col
+        self.class_labels_col = class_labels_col
         self.num_frames = num_frames
         self.processor: AutoImageProcessor | None = None
         self.train_df: pd.DataFrame | None = None
@@ -759,7 +764,10 @@ class KeypointDetectionDataModule(ImageClassificationDataModule):
         return {
             "pixel_values": encoding.pixel_values,
             "labels": torch.stack(
-                [l if isinstance(l, torch.Tensor) else torch.tensor(l) for l in labels]
+                [
+                    label if isinstance(label, torch.Tensor) else torch.tensor(label)
+                    for label in labels
+                ]
             ),
         }
 
@@ -1412,7 +1420,7 @@ class MaskedLMDataModule(BaseDataModule):
             logger.error("Failed to create data collator: %s", e)
             raise
 
-    def _tokenize(self, batch: list[str]) -> dict[str, torch.Tensor]:
+    def _tokenize(self, batch: list[str]) -> Any:
         if self.tokenizer is None:
             raise AutoMLRuntimeError("Tokenizer not initialized.")
         return self.tokenizer(
@@ -1425,6 +1433,8 @@ class MaskedLMDataModule(BaseDataModule):
 
     def _collate_fn(self, batch: list[str]) -> dict[str, torch.Tensor]:
         encoding = self._tokenize(batch)
+        if self.data_collator is None:
+            raise AutoMLRuntimeError("Data collator not initialized.")
         # data_collator applies random masking and returns input_ids + labels
         collated = self.data_collator(
             [{"input_ids": ids} for ids in encoding.input_ids]

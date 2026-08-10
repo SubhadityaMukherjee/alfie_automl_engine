@@ -4,11 +4,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.core.chat_handler import _MAX_CONCURRENT, ChatHandler
+from app.core.chat_handler import _MAX_CONCURRENT, ChatHandler, reset_azure_client
+from app.core.config import Settings
 
 # ---------------------------------------------------------------------------
 # Semaphore
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _reset_azure_client_cache():
+    """Drop the cached Azure client before every test so they are isolated."""
+    reset_azure_client()
+    yield
+    reset_azure_client()
 
 
 def test_semaphore_limit():
@@ -22,7 +31,12 @@ def test_semaphore_limit():
 
 
 def test_get_azure_client_missing_env_raises():
-    with patch.dict("os.environ", {}, clear=True):
+    # Explicit ``None`` overrides the .env-supplied credentials so the handler
+    # sees no credentials and raises.
+    empty_settings = Settings(
+        azure_openai_endpoint_large_model=None, azure_openai_key=None
+    )
+    with patch("app.core.chat_handler.get_settings", return_value=empty_settings):
         with pytest.raises(
             RuntimeError, match="Missing AZURE_OPENAI_ENDPOINT_LARGE_MODEL"
         ):

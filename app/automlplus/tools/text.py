@@ -15,13 +15,13 @@ Current tools:
 
 import asyncio
 import logging
-import os
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from app.automlplus.tools.vlm import AltTextChecker
 from app.core.chat_handler import ChatHandler
+from app.core.config import get_settings
 from app.core.utils import render_template
 
 logger = logging.getLogger(__name__)
@@ -77,11 +77,11 @@ async def _process_single_chunk(
                 end_line=end,
             )
 
-            backend = os.getenv("MODEL_BACKEND", "azure").lower()
-            model_env = os.getenv("WEB_ACCESSIBILITY_CHAT_MODEL")
+            settings = get_settings()
+            backend = settings.model_backend.lower()
             model = (
-                model_env.strip() if model_env and model_env.strip() else "gpt-4o-mini"
-            )
+                settings.web_accessibility_chat_model or ""
+            ).strip() or "gpt-4o-mini"
             response_raw = await ChatHandler.chat(
                 prompt,
                 context=context,

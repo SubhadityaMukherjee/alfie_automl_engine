@@ -14,10 +14,11 @@ from app.core.exceptions import (
     AutoMLImageError,
     AutoMLValidationError,
 )
+from app.core.config import get_settings
 from app.core.utils import render_template
 
 logger = logging.getLogger(__name__)
-_jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
+_jinja_path = get_settings().jinja_path
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
@@ -56,7 +57,7 @@ class ImageConverter:
                     raise AutoMLValidationError(
                         f"URL does not point to an image: {image_path_or_url} (Content-Type: {content_type})"
                     )
-                image = Image.open(BytesIO(resp.content))
+                image: Image.Image = Image.open(BytesIO(resp.content))
             else:
                 if not os.path.isfile(image_path_or_url):
                     raise AutoMLValidationError(f"No such file: {image_path_or_url}")

@@ -1,7 +1,6 @@
 """Route definitions for the AutoML+ service."""
 
 import logging
-import os
 from typing import Annotated, Any
 
 import requests
@@ -20,6 +19,7 @@ from app.automlplus.website_accessibility.pipeline import (
     resolve_coroutines,
     run_accessibility_pipeline,
 )
+from app.core.config import get_settings
 from app.core.schemas.responses import (
     AltTextCheckResponse,
     ErrorResponse,
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/automlplus", tags=["automlplus"])
 
-_jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
+_jinja_path = get_settings().jinja_path
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
@@ -81,7 +81,7 @@ async def check_alt_text(
     alt_text: str = Form(...),
 ) -> JSONResponse:
     """Evaluate provided alt text against the referenced image using an LLM."""
-    logger.info(f"Checking alt text for image URL: {image_url}")
+    logger.info("Checking alt text for image URL: %s", image_url)
     try:
         result: str = AltTextChecker.check(jinja_environment, image_url, alt_text)
         logger.info("Alt-text evaluation completed successfully")
@@ -224,14 +224,15 @@ async def analyze_web_accessibility_and_readability(
 
     content: str | None = None
     source_name: str = "uploaded.html"
-    timeout: int = int(os.getenv("WEB_ACCESSIBILITY_URL_RETRY_TIMEOUT", 10))
+    settings = get_settings()
+    timeout: int = settings.web_accessibility_url_retry_timeout
 
     # --- Load HTML content ---
     if file:
         try:
             content = (await file.read()).decode("utf-8", errors="replace")
             source_name = file.filename or source_name
-            logger.debug(f"HTML file '{source_name}' successfully loaded")
+            logger.debug("HTML file '%s' successfully loaded", source_name)
         finally:
             try:
                 await file.close()
@@ -240,14 +241,14 @@ async def analyze_web_accessibility_and_readability(
 
     if url:
         try:
-            logger.debug(f"Fetching HTML from URL: {url}")
+            logger.debug("Fetching HTML from URL: %s", url)
             resp = requests.get(url, timeout=timeout)
             resp.raise_for_status()
             content = resp.text
             source_name = url
             logger.debug("HTML successfully fetched from URL")
         except Exception as e:
-            logger.error(f"Failed to fetch HTML from URL: {e}")
+            logger.error("Failed to fetch HTML from URL: %s", e)
             return JSONResponse(
                 content={"error": f"Failed to fetch URL: {e}"}, status_code=400
             )
@@ -276,8 +277,8 @@ async def analyze_web_accessibility_and_readability(
                 logger.warning("Failed to close extra context file", exc_info=True)
 
     # --- Run accessibility pipeline ---
-    chunk_size: int = int(os.getenv("CHUNK_SIZE_FOR_ACCESSIBILITY", 3000))
-    concurrency_num: int = int(os.getenv("CONCURRENCY_NUM_FOR_ACCESSIBILITY", 4))
+    chunk_size: int = settings.chunk_size_for_accessibility
+    concurrency_num: int = settings.concurrency_num_for_accessibility
     logger.debug(
         f"Running accessibility pipeline with chunk size {chunk_size}, concurrency {concurrency_num}"
     )
@@ -301,7 +302,7 @@ async def analyze_web_accessibility_and_readability(
         if isinstance(r.get("score"), (int, float))
     ]
     average_score: float | None = (sum(scores) / len(scores)) if scores else None
-    logger.debug(f"Computed average accessibility score: {average_score}")
+    logger.debug("Computed average accessibility score: %s", average_score)
 
     # --- Readability analysis ---
     readability_scores: dict[str, Any] | None = None
@@ -311,7 +312,7 @@ async def analyze_web_accessibility_and_readability(
             readability_scores = ReadabilityAnalyzer.analyze(text)
             logger.debug("Readability analysis completed successfully")
     except Exception as e:
-        logger.warning(f"Error during readability analysis: {e}")
+        logger.warning("Error during readability analysis: %s", e)
         readability_scores = {"error": str(e)}
 
     payload = {
