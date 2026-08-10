@@ -11,6 +11,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 
+from app.core.concurrency import offload
 from app.core.exceptions import AutoDWDownloadError, AutoMLValidationError
 from app.core.schemas.ml_tasks import SUPPORTED_VISION_TASK_TYPES
 from app.core.schemas.responses import (
@@ -167,8 +168,8 @@ async def find_best_model_for_vision(
 
     try:
         # 1. Metadata
-        metadata = fetch_dataset_metadata(
-            autodw_base, user_id, dataset_id, dataset_version
+        metadata = await offload(
+            fetch_dataset_metadata, autodw_base, user_id, dataset_id, dataset_version
         )
 
         if metadata.get("file_type") != "zip":
@@ -209,10 +210,15 @@ async def find_best_model_for_vision(
 
         with dataset_workspace(f"automl_{dataset_id}") as workdir:
             # 3. Download & extract
-            zip_path = download_dataset(
-                download_url, workdir, metadata.get("original_filename", "dataset.zip")
+            zip_path = await offload(
+                download_dataset,
+                download_url,
+                workdir,
+                metadata.get("original_filename", "dataset.zip"),
             )
-            csv_path, images_dir = extract_and_locate_dataset(zip_path, workdir)
+            csv_path, images_dir = await offload(
+                extract_and_locate_dataset, zip_path, workdir
+            )
 
             # 4. Validate
             if task_type not in SUPPORTED_VISION_TASK_TYPES:
@@ -224,8 +230,13 @@ async def find_best_model_for_vision(
                     },
                 )
 
-            validation_error = validate_vision_inputs(
-                csv_path, images_dir, filename_column, label_column, task_type
+            validation_error = await offload(
+                validate_vision_inputs,
+                csv_path,
+                images_dir,
+                filename_column,
+                label_column,
+                task_type,
             )
             if validation_error:
                 return JSONResponse(
@@ -247,7 +258,7 @@ async def find_best_model_for_vision(
             )
 
             # 6. Serialize
-            zip_path = serialize_and_zip_model(workdir)
+            zip_path = await offload(serialize_and_zip_model, workdir)
             leaderboard_json, leaderboard_str = convert_leaderboard_safely(
                 optuna_result
             )
@@ -256,8 +267,12 @@ async def find_best_model_for_vision(
             _, payload = build_upload_payload(
                 dataset_id, dataset_version, metadata, task_type, leaderboard_json
             )
-            upload_resp = upload_model(
-                upload_url, zip_path, payload, request.headers.get("X-Task-ID")
+            upload_resp = await offload(
+                upload_model,
+                upload_url,
+                zip_path,
+                payload,
+                request.headers.get("X-Task-ID"),
             )
 
             if upload_resp.status_code >= 400:
@@ -354,8 +369,8 @@ async def find_best_model_for_multimodal_vision(
     upload_url = f"{autodw_base}/ai-models/upload/single/{user_id}"
 
     try:
-        metadata = fetch_dataset_metadata(
-            autodw_base, user_id, dataset_id, dataset_version
+        metadata = await offload(
+            fetch_dataset_metadata, autodw_base, user_id, dataset_id, dataset_version
         )
 
         if metadata.get("file_type") != "zip":
@@ -369,10 +384,15 @@ async def find_best_model_for_multimodal_vision(
         )
 
         with dataset_workspace(f"multimodal_{dataset_id}") as workdir:
-            zip_path = download_dataset(
-                download_url, workdir, metadata.get("original_filename", "dataset.zip")
+            zip_path = await offload(
+                download_dataset,
+                download_url,
+                workdir,
+                metadata.get("original_filename", "dataset.zip"),
             )
-            csv_path, images_dir = extract_and_locate_dataset(zip_path, workdir)
+            csv_path, images_dir = await offload(
+                extract_and_locate_dataset, zip_path, workdir
+            )
 
             exclude_cols = (
                 [c.strip() for c in exclude_columns.split(",") if c.strip()]
@@ -380,8 +400,13 @@ async def find_best_model_for_multimodal_vision(
                 else None
             )
 
-            validation_error, auxiliary_columns = validate_multimodal_inputs(
-                csv_path, images_dir, filename_column, label_column, exclude_cols
+            validation_error, auxiliary_columns = await offload(
+                validate_multimodal_inputs,
+                csv_path,
+                images_dir,
+                filename_column,
+                label_column,
+                exclude_cols,
             )
             if validation_error:
                 return JSONResponse(
@@ -399,7 +424,7 @@ async def find_best_model_for_multimodal_vision(
                 workdir=workdir,
             )
 
-            zip_path = serialize_and_zip_model(workdir)
+            zip_path = await offload(serialize_and_zip_model, workdir)
             leaderboard_json, leaderboard_str = convert_leaderboard_safely(
                 optuna_result
             )
@@ -408,8 +433,12 @@ async def find_best_model_for_multimodal_vision(
             _, payload = build_upload_payload(
                 dataset_id, dataset_version, metadata, task_type, leaderboard_json
             )
-            upload_resp = upload_model(
-                upload_url, zip_path, payload, request.headers.get("X-Task-ID")
+            upload_resp = await offload(
+                upload_model,
+                upload_url,
+                zip_path,
+                payload,
+                request.headers.get("X-Task-ID"),
             )
 
             if upload_resp.status_code >= 400:

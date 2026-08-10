@@ -9,6 +9,7 @@ import requests
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 
+from app.core.concurrency import offload
 from app.core.config import get_settings
 from app.core.exceptions import AutoMLRuntimeError, AutoMLValidationError
 from app.core.schemas.responses import (
@@ -257,8 +258,12 @@ async def find_best_model_for_mvp(
 
         # 1. Metadata
         try:
-            metadata = fetch_dataset_metadata(
-                autodw_base, user_id, dataset_id, dataset_version
+            metadata = await offload(
+                fetch_dataset_metadata,
+                autodw_base,
+                user_id,
+                dataset_id,
+                dataset_version,
             )
         except requests.RequestException as e:
             logger.error("Failed to fetch dataset metadata: %s", e)
@@ -321,7 +326,7 @@ async def find_best_model_for_mvp(
 
             # 3. Download
             try:
-                download_dataset(download_url, dataset_path)
+                await offload(download_dataset, download_url, dataset_path)
             except requests.RequestException as e:
                 logger.error("Failed to download dataset: %s", e)
                 return JSONResponse(
@@ -343,7 +348,8 @@ async def find_best_model_for_mvp(
 
             # 4. Validate
             try:
-                validation_error = validate_tabular_inputs(
+                validation_error = await offload(
+                    validate_tabular_inputs,
                     train_path=dataset_path,
                     target_column_name=target_column_name,
                     time_stamp_column_name=time_stamp_column_name,
@@ -363,7 +369,8 @@ async def find_best_model_for_mvp(
             # 5. Train
             try:
                 save_model_path = tmp_path / "automl_model"
-                leaderboard, predictor = train_automl(
+                leaderboard, predictor = await offload(
+                    train_automl,
                     dataset_path=dataset_path,
                     save_model_path=save_model_path,
                     target_column_name=target_column_name,
@@ -398,8 +405,8 @@ async def find_best_model_for_mvp(
 
             # 6. Serialize
             try:
-                zip_path = serialize_and_zip_predictor(
-                    predictor, save_model_path, tmp_path
+                zip_path = await offload(
+                    serialize_and_zip_predictor, predictor, save_model_path, tmp_path
                 )
                 leaderboard_json, leaderboard_str = convert_leaderboard_safely(
                     leaderboard
@@ -429,8 +436,12 @@ async def find_best_model_for_mvp(
                 )
 
             try:
-                upload_resp = upload_model(
-                    upload_url, zip_path, payload, request.headers.get("X-Task-ID")
+                upload_resp = await offload(
+                    upload_model,
+                    upload_url,
+                    zip_path,
+                    payload,
+                    request.headers.get("X-Task-ID"),
                 )
 
                 if upload_resp.status_code >= 400:
