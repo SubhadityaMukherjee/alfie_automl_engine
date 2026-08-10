@@ -1,18 +1,21 @@
-"""Route definitions for the vision AutoML service."""
+"""Route definitions for the vision AutoML service.
+
+Both training endpoints are deliberately thin: they bind HTTP form parameters,
+hand them to :func:`run_vision_pipeline` / :func:`run_multimodal_pipeline` in the
+orchestrator layer, and translate the domain exceptions they raise into HTTP
+responses via :func:`app.core.api_errors.automl_exception_to_response`. None of
+the fetch → resolve → download → extract → validate → train → serialize → upload
+orchestration lives here.
+"""
 
 import logging
-import os
-import shutil
-import tempfile
-from contextlib import contextmanager
-from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 
-from app.core.concurrency import offload
-from app.core.exceptions import AutoDWDownloadError, AutoMLValidationError
+from app.core.api_errors import automl_exception_to_response
+from app.core.exceptions import AutoMLError
 from app.core.schemas.ml_tasks import SUPPORTED_VISION_TASK_TYPES
 from app.core.schemas.responses import (
     ErrorResponse,
@@ -20,20 +23,14 @@ from app.core.schemas.responses import (
     MultimodalTrainingSuccessResponse,
     VisionTrainingSuccessResponse,
 )
+from app.vision_automl.orchestrator import (
+    MultimodalTrainingRequest,
+    VisionTrainingRequest,
+    run_multimodal_pipeline,
+    run_vision_pipeline,
+)
 from app.vision_automl.services import (
-    build_upload_payload,
-    convert_leaderboard_safely,
     deployment_instructions,
-    download_dataset,
-    extract_and_locate_dataset,
-    fetch_dataset_metadata,
-    resolve_download_url,
-    serialize_and_zip_model,
-    train_automl,
-    train_automl_multimodal,
-    upload_model,
-    validate_multimodal_inputs,
-    validate_vision_inputs,
     vision_data_instructions,
 )
 
@@ -44,15 +41,6 @@ router = APIRouter(prefix="/automl_vision", tags=["vision"])
 _COMMON_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Internal server error", "model": ErrorResponse},
 }
-
-
-@contextmanager
-def dataset_workspace(prefix: str):
-    path = Path(tempfile.mkdtemp(prefix=f"{prefix}_"))
-    try:
-        yield path
-    finally:
-        shutil.rmtree(path, ignore_errors=True)
 
 
 @router.post(
@@ -148,7 +136,7 @@ async def find_best_model_for_vision(
     """
     Fetch a vision dataset from AutoDW, run AutoML training, and upload the best model.
 
-    Steps:
+    Steps (performed in the orchestrator):
       1. Fetch dataset metadata from AutoDW.
       2. Resolve the correct download URL (respecting splits if present).
       3. Download the dataset ZIP to a temporary directory and extract it.
@@ -163,141 +151,31 @@ async def find_best_model_for_vision(
         502 – AutoDW communication failure.
         500 – unexpected runtime error.
     """
-    autodw_base = os.getenv("AUTODW_URL", "http://localhost:8000")
-    upload_url = f"{autodw_base}/ai-models/upload/single/{user_id}"
-
     try:
-        # 1. Metadata
-        metadata = await offload(
-            fetch_dataset_metadata, autodw_base, user_id, dataset_id, dataset_version
+        req = VisionTrainingRequest(
+            user_id=user_id,
+            dataset_id=dataset_id,
+            filename_column=filename_column,
+            label_column=label_column,
+            task_type=task_type,
+            time_budget=time_budget,
+            model_size=model_size,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            dataset_version=dataset_version,
+            dataset_split=dataset_split,
         )
-
-        if metadata.get("file_type") != "zip":
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Vision AutoML requires a ZIP dataset."},
-            )
-        if isinstance(num_cpus, str):
-            if num_cpus != "auto":
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": "num_cpus must be either a number or auto"},
-                )
-        else:
-            if num_cpus < 0:
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": "num_cpus must be greater than 1"},
-                )
-
-        if isinstance(num_gpus, str):
-            if num_gpus != "auto":
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": "num_gpus must be either a number or auto"},
-                )
-        else:
-            if num_gpus < 0:
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": "num_gpus must be greater than 1"},
-                )
-
-        # 2. Download URL
-        download_url = resolve_download_url(
-            autodw_base, user_id, dataset_id, dataset_version, metadata, dataset_split
+        result = await run_vision_pipeline(
+            req, task_id=request.headers.get("X-Task-ID")
         )
-
-        with dataset_workspace(f"automl_{dataset_id}") as workdir:
-            # 3. Download & extract
-            zip_path = await offload(
-                download_dataset,
-                download_url,
-                workdir,
-                metadata.get("original_filename", "dataset.zip"),
-            )
-            csv_path, images_dir = await offload(
-                extract_and_locate_dataset, zip_path, workdir
-            )
-
-            # 4. Validate
-            if task_type not in SUPPORTED_VISION_TASK_TYPES:
-                return JSONResponse(
-                    status_code=400,
-                    content={
-                        "error": f"Unsupported task_type '{task_type}'. "
-                        f"Supported: {sorted(SUPPORTED_VISION_TASK_TYPES)}"
-                    },
-                )
-
-            validation_error = await offload(
-                validate_vision_inputs,
-                csv_path,
-                images_dir,
-                filename_column,
-                label_column,
-                task_type,
-            )
-            if validation_error:
-                return JSONResponse(
-                    status_code=400, content={"error": validation_error}
-                )
-
-            # 5. Train
-            optuna_result = await train_automl(
-                csv_path=csv_path,
-                images_dir=images_dir,
-                filename_column=filename_column,
-                label_column=label_column,
-                time_budget=time_budget,
-                model_size=model_size,
-                workdir=workdir,
-                task_type=task_type,
-                num_cpus=num_cpus,
-                num_gpus=num_gpus,
-            )
-
-            # 6. Serialize
-            zip_path = await offload(serialize_and_zip_model, workdir)
-            leaderboard_json, leaderboard_str = convert_leaderboard_safely(
-                optuna_result
-            )
-
-            # 7. Upload
-            _, payload = build_upload_payload(
-                dataset_id, dataset_version, metadata, task_type, leaderboard_json
-            )
-            upload_resp = await offload(
-                upload_model,
-                upload_url,
-                zip_path,
-                payload,
-                request.headers.get("X-Task-ID"),
-            )
-
-            if upload_resp.status_code >= 400:
-                logger.error("Model upload failed: %s", upload_resp.text)
-                return JSONResponse(
-                    status_code=upload_resp.status_code,
-                    content={"error": f"Failed to upload model: {upload_resp.text}"},
-                )
-
-        logger.info("Vision AutoML training completed and model uploaded successfully.")
         return JSONResponse(
             status_code=200,
-            content={
-                "message": "Vision AutoML training completed successfully and model uploaded to AutoDW",
-                "leaderboard": leaderboard_str,
-            },
+            content={"message": result.message, "leaderboard": result.leaderboard},
         )
-
-    except AutoMLValidationError as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
-    except AutoDWDownloadError as e:
-        return JSONResponse(status_code=502, content={"error": f"AutoDW error: {e}"})
     except Exception as e:
-        logger.exception("Unexpected error during vision AutoML")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        if not isinstance(e, AutoMLError):
+            logger.exception("Unexpected error during vision AutoML")
+        return automl_exception_to_response(e)
 
 
 @router.post(
@@ -350,7 +228,7 @@ async def find_best_model_for_multimodal_vision(
     ``exclude_columns`` are used as tabular features.  Numeric columns
     are standard-scaled and categorical columns are ordinal-encoded.
 
-    Steps:
+    Steps (performed in the orchestrator):
       1. Fetch dataset metadata from AutoDW.
       2. Resolve the correct download URL (respecting splits if present).
       3. Download the dataset ZIP to a temporary directory and extract it.
@@ -365,105 +243,30 @@ async def find_best_model_for_multimodal_vision(
         502 – AutoDW communication failure.
         500 – unexpected runtime error.
     """
-    autodw_base = os.getenv("AUTODW_URL", "http://localhost:8000")
-    upload_url = f"{autodw_base}/ai-models/upload/single/{user_id}"
-
     try:
-        metadata = await offload(
-            fetch_dataset_metadata, autodw_base, user_id, dataset_id, dataset_version
+        req = MultimodalTrainingRequest(
+            user_id=user_id,
+            dataset_id=dataset_id,
+            filename_column=filename_column,
+            label_column=label_column,
+            time_budget=time_budget,
+            model_size=model_size,
+            dataset_version=dataset_version,
+            exclude_columns=exclude_columns,
+            dataset_split=dataset_split,
         )
-
-        if metadata.get("file_type") != "zip":
-            return JSONResponse(
-                status_code=400,
-                content={"error": "Vision AutoML requires a ZIP dataset."},
-            )
-
-        download_url = resolve_download_url(
-            autodw_base, user_id, dataset_id, dataset_version, metadata, dataset_split
-        )
-
-        with dataset_workspace(f"multimodal_{dataset_id}") as workdir:
-            zip_path = await offload(
-                download_dataset,
-                download_url,
-                workdir,
-                metadata.get("original_filename", "dataset.zip"),
-            )
-            csv_path, images_dir = await offload(
-                extract_and_locate_dataset, zip_path, workdir
-            )
-
-            exclude_cols = (
-                [c.strip() for c in exclude_columns.split(",") if c.strip()]
-                if exclude_columns
-                else None
-            )
-
-            validation_error, auxiliary_columns = await offload(
-                validate_multimodal_inputs,
-                csv_path,
-                images_dir,
-                filename_column,
-                label_column,
-                exclude_cols,
-            )
-            if validation_error:
-                return JSONResponse(
-                    status_code=400, content={"error": validation_error}
-                )
-
-            optuna_result = await train_automl_multimodal(
-                csv_path,
-                images_dir,
-                filename_column,
-                label_column,
-                auxiliary_columns,
-                time_budget,
-                model_size,
-                workdir=workdir,
-            )
-
-            zip_path = await offload(serialize_and_zip_model, workdir)
-            leaderboard_json, leaderboard_str = convert_leaderboard_safely(
-                optuna_result
-            )
-
-            task_type = "image_classification_multimodal"
-            _, payload = build_upload_payload(
-                dataset_id, dataset_version, metadata, task_type, leaderboard_json
-            )
-            upload_resp = await offload(
-                upload_model,
-                upload_url,
-                zip_path,
-                payload,
-                request.headers.get("X-Task-ID"),
-            )
-
-            if upload_resp.status_code >= 400:
-                logger.error("Model upload failed: %s", upload_resp.text)
-                return JSONResponse(
-                    status_code=upload_resp.status_code,
-                    content={"error": f"Failed to upload model: {upload_resp.text}"},
-                )
-
-        logger.info(
-            "Multimodal vision AutoML training completed and model uploaded successfully."
+        result = await run_multimodal_pipeline(
+            req, task_id=request.headers.get("X-Task-ID")
         )
         return JSONResponse(
             status_code=200,
             content={
-                "message": "Multimodal vision AutoML training completed successfully and model uploaded to AutoDW",
-                "leaderboard": leaderboard_str,
-                "auxiliary_columns": auxiliary_columns,
+                "message": result.message,
+                "leaderboard": result.leaderboard,
+                "auxiliary_columns": result.auxiliary_columns,
             },
         )
-
-    except AutoMLValidationError as e:
-        return JSONResponse(status_code=400, content={"error": str(e)})
-    except AutoDWDownloadError as e:
-        return JSONResponse(status_code=502, content={"error": f"AutoDW error: {e}"})
     except Exception as e:
-        logger.exception("Unexpected error during multimodal vision AutoML")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        if not isinstance(e, AutoMLError):
+            logger.exception("Unexpected error during multimodal vision AutoML")
+        return automl_exception_to_response(e)

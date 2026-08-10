@@ -69,14 +69,14 @@ def test_accepted_format(mock_fn):
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.router.fetch_dataset_metadata")
+@patch("app.vision_automl.orchestrator.fetch_dataset_metadata")
 def test_best_model_metadata_error_returns_500(mock_fetch):
     mock_fetch.side_effect = RuntimeError("metadata crash")
     resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 500
 
 
-@patch("app.vision_automl.router.fetch_dataset_metadata")
+@patch("app.vision_automl.orchestrator.fetch_dataset_metadata")
 def test_best_model_non_zip_returns_400(mock_fetch):
     mock_fetch.return_value = _make_metadata(file_type="csv")
     resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
@@ -89,19 +89,31 @@ def test_best_model_non_zip_returns_400(mock_fetch):
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_best_model_download_error(mock_fetch, mock_resolve, mock_download):
     mock_download.side_effect = RuntimeError("download failed")
     resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 500
 
 
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_best_model_extract_error(
     mock_fetch, mock_resolve, mock_download, mock_extract
 ):
@@ -118,11 +130,17 @@ def test_best_model_extract_error(
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.router.validate_vision_inputs")
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.validate_vision_inputs")
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_best_model_validation_error(
     mock_fetch, mock_resolve, mock_download, mock_extract, mock_validate
 ):
@@ -137,11 +155,17 @@ def test_best_model_validation_error(
     assert "Missing" in resp.json()["error"]
 
 
-@patch("app.vision_automl.router.validate_vision_inputs", return_value=None)
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.validate_vision_inputs", return_value=None)
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_best_model_unsupported_task_type(
     mock_fetch, mock_resolve, mock_download, mock_extract, mock_validate
 ):
@@ -161,12 +185,18 @@ def test_best_model_unsupported_task_type(
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.router.train_automl")
-@patch("app.vision_automl.router.validate_vision_inputs", return_value=None)
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.train_automl")
+@patch("app.vision_automl.orchestrator.validate_vision_inputs", return_value=None)
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_best_model_training_validation_error(
     mock_fetch, mock_resolve, mock_download, mock_extract, mock_validate, mock_train
 ):
@@ -182,12 +212,18 @@ def test_best_model_training_validation_error(
     assert resp.status_code == 400
 
 
-@patch("app.vision_automl.router.train_automl")
-@patch("app.vision_automl.router.validate_vision_inputs", return_value=None)
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.train_automl")
+@patch("app.vision_automl.orchestrator.validate_vision_inputs", return_value=None)
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_best_model_training_runtime_error(
     mock_fetch, mock_resolve, mock_download, mock_extract, mock_validate, mock_train
 ):
@@ -208,22 +244,28 @@ def test_best_model_training_runtime_error(
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.router.upload_model")
+@patch("app.vision_automl.orchestrator.upload_model")
 @patch(
-    "app.vision_automl.router.build_upload_payload",
+    "app.vision_automl.orchestrator.build_upload_payload",
     return_value=("model_id", {"key": "val"}),
 )
 @patch(
-    "app.vision_automl.router.convert_leaderboard_safely",
+    "app.vision_automl.orchestrator.convert_leaderboard_safely",
     return_value=({"score": 0.9}, "lb_str"),
 )
-@patch("app.vision_automl.router.serialize_and_zip_model")
-@patch("app.vision_automl.router.train_automl", return_value=MagicMock())
-@patch("app.vision_automl.router.validate_vision_inputs", return_value=None)
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.serialize_and_zip_model")
+@patch("app.vision_automl.orchestrator.train_automl", return_value=MagicMock())
+@patch("app.vision_automl.orchestrator.validate_vision_inputs", return_value=None)
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_best_model_upload_failure(
     mock_fetch,
     mock_resolve,
@@ -260,22 +302,28 @@ def test_best_model_upload_failure(
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.router.upload_model")
+@patch("app.vision_automl.orchestrator.upload_model")
 @patch(
-    "app.vision_automl.router.build_upload_payload",
+    "app.vision_automl.orchestrator.build_upload_payload",
     return_value=("model_id", {"key": "val"}),
 )
 @patch(
-    "app.vision_automl.router.convert_leaderboard_safely",
+    "app.vision_automl.orchestrator.convert_leaderboard_safely",
     return_value=({"score": 0.95}, "lb_str"),
 )
-@patch("app.vision_automl.router.serialize_and_zip_model")
-@patch("app.vision_automl.router.train_automl", return_value=MagicMock())
-@patch("app.vision_automl.router.validate_vision_inputs", return_value=None)
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.serialize_and_zip_model")
+@patch("app.vision_automl.orchestrator.train_automl", return_value=MagicMock())
+@patch("app.vision_automl.orchestrator.validate_vision_inputs", return_value=None)
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_best_model_success(
     mock_fetch,
     mock_resolve,
@@ -312,11 +360,17 @@ def test_best_model_success(
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.router.validate_multimodal_inputs")
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.validate_multimodal_inputs")
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_multimodal_validation_error(
     mock_fetch, mock_resolve, mock_download, mock_extract, mock_validate
 ):
@@ -331,11 +385,17 @@ def test_multimodal_validation_error(
     assert "auxiliary" in resp.json()["error"].lower()
 
 
-@patch("app.vision_automl.router.validate_multimodal_inputs")
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.validate_multimodal_inputs")
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_multimodal_non_zip_returns_400(
     mock_fetch, mock_resolve, mock_download, mock_extract, mock_validate
 ):
@@ -350,25 +410,33 @@ def test_multimodal_non_zip_returns_400(
 # ---------------------------------------------------------------------------
 
 
-@patch("app.vision_automl.router.upload_model")
+@patch("app.vision_automl.orchestrator.upload_model")
 @patch(
-    "app.vision_automl.router.build_upload_payload",
+    "app.vision_automl.orchestrator.build_upload_payload",
     return_value=("model_id", {"key": "val"}),
 )
 @patch(
-    "app.vision_automl.router.convert_leaderboard_safely",
+    "app.vision_automl.orchestrator.convert_leaderboard_safely",
     return_value=({"score": 0.88}, "lb_str"),
 )
-@patch("app.vision_automl.router.serialize_and_zip_model")
-@patch("app.vision_automl.router.train_automl_multimodal", return_value=MagicMock())
+@patch("app.vision_automl.orchestrator.serialize_and_zip_model")
 @patch(
-    "app.vision_automl.router.validate_multimodal_inputs",
+    "app.vision_automl.orchestrator.train_automl_multimodal", return_value=MagicMock()
+)
+@patch(
+    "app.vision_automl.orchestrator.validate_multimodal_inputs",
     return_value=(None, ["feature1", "feature2"]),
 )
-@patch("app.vision_automl.router.extract_and_locate_dataset")
-@patch("app.vision_automl.router.download_dataset")
-@patch("app.vision_automl.router.resolve_download_url", return_value="http://download")
-@patch("app.vision_automl.router.fetch_dataset_metadata", return_value=_make_metadata())
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value=_make_metadata(),
+)
 def test_multimodal_success(
     mock_fetch,
     mock_resolve,

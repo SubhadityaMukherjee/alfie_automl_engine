@@ -123,10 +123,10 @@ def validate_tabular_inputs(
     return None
 
 
-def convert_leaderboard_safely(leaderboard):
+def convert_leaderboard_safely(leaderboard) -> tuple[list | dict, str]:
     if isinstance(leaderboard, pd.DataFrame):
         leaderboard_json = leaderboard.to_dict(orient="records")
-        leaderboard_str = leaderboard.to_markdown()
+        leaderboard_str = str(leaderboard.to_markdown())
     else:
         leaderboard_json = {"result": str(leaderboard)}
         leaderboard_str = str(leaderboard)
