@@ -19,6 +19,7 @@ from app.automlplus.website_accessibility.pipeline import (
     resolve_coroutines,
     run_accessibility_pipeline,
 )
+from app.core.concurrency import offload
 from app.core.config import get_settings
 from app.core.schemas.responses import (
     AltTextCheckResponse,
@@ -83,7 +84,9 @@ async def check_alt_text(
     """Evaluate provided alt text against the referenced image using an LLM."""
     logger.info("Checking alt text for image URL: %s", image_url)
     try:
-        result: str = AltTextChecker.check(jinja_environment, image_url, alt_text)
+        result: str = await offload(
+            AltTextChecker.check, jinja_environment, image_url, alt_text
+        )
         logger.info("Alt-text evaluation completed successfully")
 
         safe_result = json_safe(
@@ -128,7 +131,8 @@ async def run_on_image(
             await image_file.close()
             logger.debug("Image file successfully read and closed")
 
-        result = ImagePromptRunner.run(
+        result = await offload(
+            ImagePromptRunner.run,
             image_bytes=image_bytes,
             image_path_or_url=image_url,
             prompt=prompt,
@@ -242,7 +246,7 @@ async def analyze_web_accessibility_and_readability(
     if url:
         try:
             logger.debug("Fetching HTML from URL: %s", url)
-            resp = requests.get(url, timeout=timeout)
+            resp = await offload(requests.get, url, timeout=timeout)
             resp.raise_for_status()
             content = resp.text
             source_name = url

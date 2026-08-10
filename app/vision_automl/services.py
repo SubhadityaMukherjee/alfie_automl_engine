@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-from fastapi.concurrency import run_in_threadpool
 from huggingface_hub import HfApi
 
+from app.core.concurrency import offload
 from app.core.config import get_settings
 from app.core.exceptions import AutoMLDataError, AutoMLSerializationError
 from app.core.service_helpers import (  # noqa: F401 – re-exported for router
@@ -448,7 +448,7 @@ async def train_automl(
     num_cpus: str | int = "auto",
 ) -> dict:
     """Run Optuna-based vision AutoML and return the result dict."""
-    return await run_in_threadpool(
+    return await offload(
         run_optuna_search,
         task_type=task_type,
         csv_path=csv_path,
@@ -477,7 +477,7 @@ async def train_automl_multimodal(
     num_cpus: str | int = "auto",
 ) -> dict:
     """Run Optuna-based multimodal vision AutoML and return the result dict."""
-    return await run_in_threadpool(
+    return await offload(
         run_optuna_search,
         task_type="image_classification_multimodal",
         csv_path=csv_path,
