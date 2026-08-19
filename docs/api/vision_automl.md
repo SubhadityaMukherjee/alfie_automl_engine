@@ -4,6 +4,7 @@
 
 ::: app.vision_automl.router
 ::: app.vision_automl.services
+::: app.vision_automl.orchestrator
 
 ## ML engine
 
@@ -16,3 +17,7 @@
 ::: app.vision_automl.ml_engine.model
 
 ::: app.vision_automl.ml_engine.trainer
+
+## HPO
+
+::: app.vision_automl.hpo.optuna_objectives

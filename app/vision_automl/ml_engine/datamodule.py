@@ -1,3 +1,11 @@
+"""Datamodules for every task type supported by the vision ML engine.
+
+Each datamodule reads a CSV (plus a media root directory where relevant),
+splits it into train/val/test, builds task-specific datasets and DataLoaders,
+and exposes the fitted preprocessors (image processor, tokenizer, scaler,
+encoder) so feature mappings can be extracted after training.
+"""
+
 from pathlib import Path
 from typing import Any, Callable
 
@@ -75,6 +83,7 @@ class ImageClassificationDataModule(BaseDataModule):
         )
 
     def setup(self) -> None:
+        """Split the CSV, build the image datasets, and load the image processor."""
         df = self._read_csv(self.csv_file)
         train_df, val_df, test_df = self._split_df(
             df, self.val_split, self.test_split, self.seed, stratify_col=self.label_col
@@ -116,6 +125,7 @@ class ImageClassificationDataModule(BaseDataModule):
         logger.info("Loaded processor from: %s", self.hf_model_id)
 
     def _collate_fn(self, batch: list[tuple[Any, Any]]) -> dict[str, torch.Tensor]:
+        """Pixel-ize a batch of PIL images and stack the labels into a tensor."""
         images, labels = zip(*batch)
         if self.processor is None:
             raise AutoMLRuntimeError("Processor not initialized. Call setup() first.")
@@ -1459,6 +1469,7 @@ class MaskedLMDataModule(BaseDataModule):
 # Registry
 # ---------------------------------------------------------------------------
 
+# Maps task type slug -> datamodule class for lookups by task type.
 DATAMODULE_REGISTRY: dict[str, type] = {
     "image_classification": ImageClassificationDataModule,
     "image_segmentation": ImageSegmentationDataModule,

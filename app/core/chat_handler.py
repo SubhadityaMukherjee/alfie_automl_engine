@@ -39,6 +39,13 @@ class ChatHandler:
     async def chat(
         message, context="", backend="azure", model="gpt-4o-mini", stream=False
     ):
+        """Send a chat request, limiting how many run at once.
+
+        Wraps every call in a shared semaphore so at most four requests hit the
+        backend concurrently. Returns the response text directly, or (when
+        ``stream`` is set) an async generator that yields text chunks as they
+        arrive.
+        """
         async with ChatHandler._semaphore:
             if stream:
 
@@ -54,8 +61,8 @@ class ChatHandler:
 
     @staticmethod
     async def dispatch(message, context, backend, model):
+        """Route a non-streaming chat request to the correct backend."""
         logger.debug(f"Dispatch Chat to backend {backend} with {message}, {context}")
-        """Route chat requests to the correct backend."""
         if backend.lower() == "azure":
             return await ChatHandler._azure_chat(message, context, model)
         else:
@@ -63,6 +70,7 @@ class ChatHandler:
 
     @staticmethod
     async def dispatch_stream(message, context, backend, model):
+        """Route a streaming chat request to the correct backend, yielding chunks."""
         logger.debug(
             f"Dispatch Chat Stream to backend {backend} with {message}, {context}"
         )
@@ -109,6 +117,12 @@ class ChatHandler:
 
     @staticmethod
     def _azure_chat_messages_stream_sync(messages: List[dict], model: str):
+        """Synchronously stream structured messages through Azure.
+
+        Iterates over the stream events, pulling text out of each delta while
+        tolerating the different shapes the SDK returns (strings, dicts, or
+        content-part lists), and closes the stream when done.
+        """
         client = ChatHandler._get_azure_client()
         azure_msgs = ChatHandler._to_azure_messages(messages)
         logger.debug("Azure client stream in chunks")
@@ -197,7 +211,7 @@ class ChatHandler:
 
         The client is built once per (endpoint, api_key) pair and reused across
         calls so we don't reconstruct the HTTP client on every request. Call
-        :func:`reset_azure_client` to drop the cache.
+        ``reset_azure_client`` to drop the cache.
         """
         global _azure_client, _azure_client_config
         settings = get_settings()

@@ -8,4 +8,6 @@
 
 ::: app.tabular_automl.services
 
+::: app.tabular_automl.orchestrator
+
 ::: app.tabular_automl.router

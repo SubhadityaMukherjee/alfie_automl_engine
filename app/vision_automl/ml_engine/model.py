@@ -1,3 +1,10 @@
+"""Model wrappers for every task type supported by the vision ML engine.
+
+Each class loads a Hugging Face checkpoint for its task with a replaced
+classification head (sizes ignored so heads can be re-initialized) and exposes
+a plain ``forward`` that the FabricTrainer can call.
+"""
+
 import logging
 
 import torch

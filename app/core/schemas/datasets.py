@@ -24,6 +24,11 @@ class BaseCSVDataset(Dataset, ABC):
 
     @staticmethod
     def _load_csv(csv_file: Union[Path, pd.DataFrame]) -> pd.DataFrame:
+        """Load a CSV from disk or pass through an existing DataFrame.
+
+        A Path is read with pandas (with typed errors for missing/empty/parsed
+        files); a DataFrame is index-reset and used as-is.
+        """
         if isinstance(csv_file, Path):
             try:
                 return pd.read_csv(csv_file)
@@ -45,10 +50,12 @@ class BaseCSVDataset(Dataset, ABC):
             raise AutoMLValidationError("csv_file must be a Path or DataFrame")
 
     def __len__(self) -> int:
+        """Return the number of rows in the underlying DataFrame."""
         return len(self.df)
 
     @staticmethod
     def _normalize_idx(idx: int) -> int:
+        """Convert a tensor index to a plain Python int."""
         if torch.is_tensor(idx):
             idx = idx.item()
         return idx

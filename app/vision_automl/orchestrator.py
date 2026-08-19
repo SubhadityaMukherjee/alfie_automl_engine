@@ -1,10 +1,9 @@
 """Orchestration of the vision AutoML training pipelines.
 
 The router layer is intentionally thin: it binds HTTP form parameters, builds a
-request dataclass, delegates to :func:`run_vision_pipeline` or
-:func:`run_multimodal_pipeline`, and translates the domain exceptions raised
-here into HTTP status codes via
-:func:`app.core.api_errors.automl_exception_to_response`.
+request dataclass, delegates to ``run_vision_pipeline`` or
+``run_multimodal_pipeline``, and translates the domain exceptions raised
+here into HTTP status codes via ``app.core.api_errors.automl_exception_to_response``.
 
 Both pipelines share the same shape — fetch → resolve → download → extract →
 validate → train → serialize → upload — and lean on the service layer to raise
@@ -116,6 +115,7 @@ class MultimodalTrainingResult:
 
 
 def _require_zip(metadata: dict) -> None:
+    """Reject datasets whose AutoDW metadata does not describe a ZIP file."""
     if metadata.get("file_type") != "zip":
         raise AutoMLValidationError("Vision AutoML requires a ZIP dataset.")
 
@@ -136,6 +136,7 @@ def _validate_resource_counts(num_cpus: int | str, num_gpus: int | str) -> None:
 
 
 def _autodw_base() -> str:
+    """Return the AutoDW base URL from the environment (localhost fallback)."""
     return os.getenv("AUTODW_URL", "http://localhost:8000")
 
 
@@ -144,8 +145,8 @@ async def run_vision_pipeline(
 ) -> VisionTrainingResult:
     """Run the vision AutoML pipeline and upload the best model.
 
-    Raises a typed :class:`~app.core.exceptions.AutoMLError` subclass on any
-    failure; the router maps these to HTTP status codes.
+    Raises a typed ``AutoMLError`` subclass on any failure; the router maps
+    these to HTTP status codes.
     """
     autodw_base = _autodw_base()
     upload_url = f"{autodw_base}/ai-models/upload/single/{req.user_id}"
@@ -250,8 +251,8 @@ async def run_multimodal_pipeline(
 ) -> MultimodalTrainingResult:
     """Run the multimodal vision AutoML pipeline and upload the best model.
 
-    Raises a typed :class:`~app.core.exceptions.AutoMLError` subclass on any
-    failure; the router maps these to HTTP status codes.
+    Raises a typed ``AutoMLError`` subclass on any failure; the router maps
+    these to HTTP status codes.
     """
     autodw_base = _autodw_base()
     upload_url = f"{autodw_base}/ai-models/upload/single/{req.user_id}"

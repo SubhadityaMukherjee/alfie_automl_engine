@@ -220,6 +220,7 @@ def extract_and_locate_dataset(zip_path: Path, workdir: Path) -> tuple[Path, Pat
 
 
 def _find_valid_dataset_root(extract_dir: Path) -> Path:
+    """Pick the dataset's top-level folder, skipping junk like __MACOSX/."""
     real_dirs = [
         child
         for child in extract_dir.iterdir()
@@ -233,6 +234,7 @@ def _find_valid_dataset_root(extract_dir: Path) -> Path:
 
 
 def _find_csv_file(dataset_root: Path) -> Path:
+    """Locate labels.csv (or metadata.csv) anywhere under the dataset root."""
     csv_candidates = [
         p
         for p in dataset_root.rglob("*")
@@ -244,6 +246,11 @@ def _find_csv_file(dataset_root: Path) -> Path:
 
 
 def _find_or_resolve_images_dir(dataset_root: Path, csv_path: Path) -> Path:
+    """Find the images directory in the ZIP, or default to one beside the CSV.
+
+    Falls back to ``<csv parent>/images`` when no ``images`` folder exists in
+    the archive, then unwraps nested packaging before checking it exists.
+    """
     images_candidates = [
         p for p in dataset_root.rglob("*") if p.is_dir() and p.name == "images"
     ]
@@ -500,6 +507,7 @@ async def train_automl_multimodal(
 
 
 def deployment_instructions() -> str:
+    """Return the vision deployment instructions rendered from a template."""
     if jinja_environment is not None:
         return render_template(jinja_environment, "vision_deployment_instructions.md")
     else:
@@ -592,6 +600,7 @@ def extract_feature_mapping(datamodule: Any, task_type: str, model: Any = None) 
 
 
 def _extract_label_map(datamodule: Any) -> dict:
+    """Return the id<->label maps of a datamodule with string keys for JSON."""
     id2label = getattr(datamodule, "id2label", None) or {}
     label2id = getattr(datamodule, "label2id", None) or {}
     if not id2label and not label2id:
@@ -604,6 +613,7 @@ def _extract_label_map(datamodule: Any) -> dict:
 
 
 def _extract_tokenizer_vocab(datamodule: Any) -> dict:
+    """Return the tokenizer vocabulary and source model id for text tasks."""
     tokenizer = getattr(datamodule, "tokenizer", None)
     if tokenizer is None:
         logger.warning(
@@ -622,6 +632,12 @@ def _extract_tokenizer_vocab(datamodule: Any) -> dict:
 
 
 def _extract_auxiliary_features(datamodule: Any, model: Any) -> dict:
+    """Capture fitted preprocessing state for multimodal auxiliary features.
+
+    Records the column splits, scaler/encoder parameters, and (when the model
+    exposes it) the vision embedding dimension, so consumers can rebuild the
+    exact feature pipeline at inference time.
+    """
     out: dict = {
         "auxiliary_columns": list(getattr(datamodule, "auxiliary_columns", []) or []),
         "numeric_columns": list(getattr(datamodule, "numeric_cols", []) or []),
@@ -639,6 +655,7 @@ def _extract_auxiliary_features(datamodule: Any, model: Any) -> dict:
 
 
 def _extract_scaler_state(scaler: Any) -> dict:
+    """Serialize the fitted StandardScaler's learned statistics."""
     if scaler is None:
         return {}
     out: dict = {"n_features_in": int(getattr(scaler, "n_features_in_", 0) or 0)}
@@ -654,6 +671,7 @@ def _extract_scaler_state(scaler: Any) -> dict:
 
 
 def _extract_encoder_state(encoder: Any) -> dict:
+    """Serialize the fitted OrdinalEncoder's learned categories."""
     if encoder is None:
         return {}
     categories = getattr(encoder, "categories_", None) or []

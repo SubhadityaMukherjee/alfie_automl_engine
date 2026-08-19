@@ -3,7 +3,7 @@
 The FastAPI routers in this project are kept intentionally thin: they bind
 HTTP form parameters, delegate the multi-step pipeline work to an orchestrator
 in the ``services``/``orchestrator`` layer, and map the typed exceptions raised
-there to HTTP status codes via :func:`automl_exception_to_response`.
+there to HTTP status codes via ``automl_exception_to_response``.
 
 Keeping this mapping in one place means every AutoML endpoint translates
 failures the same way and the status-code policy has a single source of truth.
@@ -26,15 +26,14 @@ def automl_exception_to_response(exc: Exception) -> JSONResponse:
 
     Mapping policy:
 
-    * :class:`~app.core.exceptions.AutoMLValidationError` (and its subclasses,
-      e.g. bad inputs, unsupported file/task type) → ``400``.
-    * :class:`~app.core.exceptions.AutoDWUploadError` → the upstream status code
-      carried on the exception (``502`` by default). Checked before the download
-      branch because both share the :class:`AutoMLError` hierarchy.
-    * :class:`~app.core.exceptions.AutoDWDownloadError` → ``502``.
-    * Any other :class:`~app.core.exceptions.AutoMLError` (runtime failures) →
-      ``500``.
-    * Any unrelated :class:`Exception` → ``500``.
+    * AutoMLValidationError (and its subclasses, e.g. bad inputs, unsupported
+      file/task type) → ``400``.
+    * AutoDWUploadError → the upstream status code carried on the exception
+      (``502`` by default). Checked before the download branch because both
+      share the AutoMLError hierarchy.
+    * AutoDWDownloadError → ``502``.
+    * Any other AutoMLError (runtime failures) → ``500``.
+    * Any unrelated Exception → ``500``.
 
     The exception's ``str()`` is preserved verbatim as the ``error`` field so
     callers and tests can rely on stable, context-rich error text.

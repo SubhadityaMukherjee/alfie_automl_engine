@@ -55,6 +55,9 @@ You can set environment variables via the `.env` file in the project root.
 
 ![System components](images/flow.png)
 
+For a walkthrough of the services, how they are layered, and the repository
+layout, see [architecture](architecture.md).
+
 ### Loading the trained model for inference
 
 - Follow the instructions [here](loading_model.md)

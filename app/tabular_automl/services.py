@@ -1,3 +1,10 @@
+"""Service layer for tabular AutoML workflows.
+
+Wraps the AutoGluon trainer with validation, leaderboard conversion, artifact
+packaging, and the instruction templates, and re-exports the shared AutoDW
+helpers so the orchestrator has one import surface.
+"""
+
 import json
 import logging
 import os
@@ -124,6 +131,11 @@ def validate_tabular_inputs(
 
 
 def convert_leaderboard_safely(leaderboard) -> tuple[list | dict, str]:
+    """Turn a leaderboard into a JSON-ready structure plus a markdown string.
+
+    DataFrames become a list of row dicts and a markdown table; anything else
+    falls back to its plain string form.
+    """
     if isinstance(leaderboard, pd.DataFrame):
         leaderboard_json = leaderboard.to_dict(orient="records")
         leaderboard_str = str(leaderboard.to_markdown())

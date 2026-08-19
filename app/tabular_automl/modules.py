@@ -1,3 +1,5 @@
+"""AutoGluon training wrapper for tabular data."""
+
 import logging
 from pathlib import Path
 
@@ -63,6 +65,13 @@ class AutoMLTrainer:
         num_cpus: str | int = "auto",
         num_gpus: str | int = "auto",
     ) -> tuple[pd.DataFrame, TabularPredictor]:
+        """Train an AutoGluon model on the given DataFrames.
+
+        Validates the target column and time limit, splits train/test if no
+        test set was supplied, fits the predictor within the time limit, then
+        tries to clone the predictor for deployment (falling back to the
+        original on failure) and produces the leaderboard on the test set.
+        """
         if not isinstance(train_df, pd.DataFrame):
             raise AutoMLDataError("train_df is not a DataFrame")
 
@@ -137,6 +146,12 @@ class AutoMLTrainer:
     def train_test_split(
         self, test_df: pd.DataFrame | None, train_df: pd.DataFrame | None = None
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Return the train/test pair to train on.
+
+        When no test DataFrame is given, a fraction of the training data is
+        sampled out to serve as the test set; otherwise both frames are used
+        unchanged.
+        """
         if train_df is None:
             raise AutoMLDataError("train_df cannot be None")
 

@@ -1,3 +1,5 @@
+"""Shared schema primitives: base datasets/datamodules used by all services."""
+
 from .datamodule import (
     DEFAULT_BATCH_SIZE,
     DEFAULT_IMAGE_CLASSIFIER_HF_ID,

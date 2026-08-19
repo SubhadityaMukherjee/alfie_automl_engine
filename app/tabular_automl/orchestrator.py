@@ -1,25 +1,24 @@
 """Orchestration of the tabular AutoML training pipeline.
 
 The router layer is intentionally thin: it binds HTTP form parameters, builds a
-:class:`TabularTrainingRequest`, delegates to :func:`run_training_pipeline`, and
+``TabularTrainingRequest``, delegates to ``run_training_pipeline``, and
 translates the domain exceptions raised here into HTTP status codes via
-:func:`app.core.api_errors.automl_exception_to_response`.
+``app.core.api_errors.automl_exception_to_response``.
 
 All of the multi-step business logic — fetch → resolve → download → validate →
 train → serialize → upload — lives in this module so it can be tested and reused
 independently of FastAPI.
 
-Every failure path raises a typed :class:`~app.core.exceptions.AutoMLError`
-subclass whose message carries the same context the previous inline handlers
-produced, so callers and tests can rely on stable error text:
+Every failure path raises a typed ``AutoMLError`` subclass whose message carries
+the same context the previous inline handlers produced, so callers and tests can
+rely on stable error text:
 
-* :class:`~app.core.exceptions.AutoMLValidationError` (→ 400) for bad caller
-  inputs and unsupported dataset/task types.
-* :class:`~app.core.exceptions.AutoDWDownloadError` (→ 502) for AutoDW
-  communication failures during metadata fetch or dataset download.
-* :class:`~app.core.exceptions.AutoDWUploadError` (→ upstream status) for upload
-  failures.
-* :class:`~app.core.exceptions.AutoMLRuntimeError` (→ 500) for everything else.
+* AutoMLValidationError (→ 400) for bad caller inputs and unsupported
+  dataset/task types.
+* AutoDWDownloadError (→ 502) for AutoDW communication failures during metadata
+  fetch or dataset download.
+* AutoDWUploadError (→ upstream status) for upload failures.
+* AutoMLRuntimeError (→ 500) for everything else.
 """
 
 from __future__ import annotations
@@ -85,7 +84,7 @@ class TrainingResult:
 def _validate_request(req: TabularTrainingRequest) -> None:
     """Reject obviously bad caller inputs.
 
-    Raises :class:`AutoMLValidationError` (→ HTTP 400) with the same messages the
+    Raises AutoMLValidationError (→ HTTP 400) with the same messages the
     previous inline guards produced.
     """
     if not req.user_id or not isinstance(req.user_id, str) or not req.user_id.strip():
@@ -160,8 +159,8 @@ async def run_training_pipeline(
 ) -> TrainingResult:
     """Run the full tabular AutoML pipeline and upload the best model.
 
-    Raises a typed :class:`~app.core.exceptions.AutoMLError` subclass on any
-    failure; the router maps these to HTTP status codes.
+    Raises a typed ``AutoMLError`` subclass on any failure; the router maps
+    these to HTTP status codes.
     """
     _validate_request(req)
 

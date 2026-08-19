@@ -21,6 +21,13 @@ DEFAULT_IMAGE_CLASSIFIER_HF_ID: str = _settings.default_image_classifier_hf_id
 
 
 class BaseDataModule(ABC):
+    """Common scaffolding for CSV-backed datamodules.
+
+    Reads the CSV, splits it into train/val/test (optionally stratified), and
+    exposes the split-specific DataLoaders plus label<->id mappings. Subclasses
+    provide the actual dataset construction and collate logic.
+    """
+
     def __init__(
         self,
         csv_file: Path,
@@ -49,22 +56,28 @@ class BaseDataModule(ABC):
         self.setup()
 
     @abstractmethod
-    def setup(self) -> None: ...
+    def setup(self) -> None:
+        """Build the train/val/test datasets. Called automatically on init."""
 
     @abstractmethod
-    def _collate_fn(self, batch) -> dict[str, torch.Tensor]: ...
+    def _collate_fn(self, batch) -> dict[str, torch.Tensor]:
+        """Turn a list of samples into a batch of tensors."""
 
     @abstractmethod
-    def train_dataloader(self) -> DataLoader: ...
+    def train_dataloader(self) -> DataLoader:
+        """Return the DataLoader over the training split."""
 
     @abstractmethod
-    def val_dataloader(self) -> DataLoader: ...
+    def val_dataloader(self) -> DataLoader:
+        """Return the DataLoader over the validation split."""
 
     @abstractmethod
-    def test_dataloader(self) -> DataLoader: ...
+    def test_dataloader(self) -> DataLoader:
+        """Return the DataLoader over the test split."""
 
     @staticmethod
     def _read_csv(csv_file: Path) -> pd.DataFrame:
+        """Load a CSV into a DataFrame, mapping common parse failures to typed errors."""
         try:
             logger.info("Reading dataset from %s", csv_file)
             df: pd.DataFrame = pd.read_csv(csv_file)
@@ -90,6 +103,12 @@ class BaseDataModule(ABC):
         seed: int,
         stratify_col: str | None = None,
     ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        """Split a DataFrame into train/val/test parts.
+
+        Cuts off the combined val+test fraction first, then splits that chunk
+        again so each split gets its requested share. Stratifies on the given
+        column when one is supplied.
+        """
         stratify_train = df[stratify_col] if stratify_col is not None else None
         try:
             train_df, temp_df = train_test_split(
@@ -127,6 +146,7 @@ class BaseDataModule(ABC):
         return train_df, val_df, test_df
 
     def _make_loader(self, dataset, shuffle: bool) -> DataLoader:
+        """Build a DataLoader wired to this module's batch size and collate fn."""
         return DataLoader(
             dataset,
             batch_size=self.batch_size,
@@ -136,6 +156,7 @@ class BaseDataModule(ABC):
         )
 
     def _build_label_maps(self, classes: list[str]) -> None:
+        """Fill num_classes and the id<->label lookup dicts from a class list."""
         self.num_classes = len(classes)
         self.id2label = {i: c for i, c in enumerate(classes)}
         self.label2id = {c: i for i, c in enumerate(classes)}

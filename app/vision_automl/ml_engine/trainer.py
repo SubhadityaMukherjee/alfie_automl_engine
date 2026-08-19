@@ -1,3 +1,5 @@
+"""Training loop and Optuna search for the vision ML engine."""
+
 import functools
 import logging
 import shutil
@@ -266,6 +268,13 @@ class FabricTrainer:
         return avg_loss, accuracy
 
     def fit(self, trial: optuna.Trial | None = None) -> tuple[float, float]:
+        """Run the full train/validate loop, then evaluate on the test set.
+
+        Each epoch reports validation loss back to the Optuna trial (so bad
+        trials get pruned early), gives callbacks a chance to stop training,
+        and checks the wall-clock time limit. Returns the test loss and
+        accuracy of the final model.
+        """
         logger.info("Starting training loop.")
         start_time: float = time.time()
 

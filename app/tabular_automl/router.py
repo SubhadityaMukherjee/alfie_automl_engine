@@ -1,9 +1,9 @@
 """Route definitions for the tabular AutoML service.
 
 The ``best_model`` endpoint is deliberately thin: it binds HTTP form parameters,
-hands them to :func:`run_training_pipeline` in the orchestrator layer, and
+hands them to ``run_training_pipeline`` in the orchestrator layer, and
 translates the domain exceptions it raises into HTTP responses via
-:func:`app.core.api_errors.automl_exception_to_response`. None of the fetch →
+``app.core.api_errors.automl_exception_to_response``. None of the fetch →
 resolve → download → validate → train → serialize → upload orchestration lives
 here.
 """

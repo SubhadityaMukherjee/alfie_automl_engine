@@ -1,9 +1,9 @@
 """Route definitions for the vision AutoML service.
 
 Both training endpoints are deliberately thin: they bind HTTP form parameters,
-hand them to :func:`run_vision_pipeline` / :func:`run_multimodal_pipeline` in the
+hand them to ``run_vision_pipeline`` / ``run_multimodal_pipeline`` in the
 orchestrator layer, and translate the domain exceptions they raise into HTTP
-responses via :func:`app.core.api_errors.automl_exception_to_response`. None of
+responses via ``app.core.api_errors.automl_exception_to_response``. None of
 the fetch → resolve → download → extract → validate → train → serialize → upload
 orchestration lives here.
 """

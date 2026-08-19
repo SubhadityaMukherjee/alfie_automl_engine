@@ -1,3 +1,11 @@
+"""Per-task Optuna objective functions for the vision ML engine.
+
+Each objective trains one candidate model for a trial (sampling model id,
+learning rate, batch size, and weight decay from the task config) and returns
+its test loss. ``OBJECTIVE_REGISTRY`` maps task type slugs to their objective
+so ``run_optuna_search`` can dispatch dynamically.
+"""
+
 import json
 import logging
 from pathlib import Path
@@ -48,6 +56,7 @@ logger = logging.getLogger(__name__)
 
 
 def _trial_dir(workdir: Path | None, trial: optuna.Trial) -> Path | None:
+    """Return this trial's artifact directory under workdir/optuna, if any."""
     if workdir is None:
         return None
     return Path(workdir) / "optuna" / f"trial_{trial.number}"
@@ -98,6 +107,14 @@ def _optuna_objective_base(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
+    """Shared trial body used by every per-task objective.
+
+    Suggests hyperparameters (model id, learning rate, batch size, weight
+    decay) from the task config, builds the given datamodule/model pair, saves
+    the trial's feature mapping before training (so it survives pruning), and
+    saves the model after a successful fit. Returns the test loss Optuna
+    minimizes.
+    """
     models: list[str] = config[f"{model_size}_models"]
     model_id: str = str(trial.suggest_categorical("model_id", models))
     lr: float = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -170,6 +187,7 @@ def optuna_objective_image_classification(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
+    """Optuna objective for image classification; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -213,6 +231,7 @@ def optuna_objective_image_classification_multimodal(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
+    """Optuna objective for multimodal image classification; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -257,6 +276,7 @@ def optuna_objective_image_segmentation(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
+    """Optuna objective for image segmentation; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -298,6 +318,7 @@ def optuna_objective_object_detection(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
+    """Optuna objective for object detection; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -336,6 +357,7 @@ def optuna_objective_video_classification(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
+    """Optuna objective for video classification; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -378,6 +400,7 @@ def optuna_objective_keypoint_detection(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
+    """Optuna objective for keypoint detection; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -414,6 +437,7 @@ def optuna_objective_audio_classification(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
+    """Optuna objective for audio classification; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -456,6 +480,7 @@ def optuna_objective_text_classification(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
+    """Optuna objective for text classification; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -495,6 +520,7 @@ def optuna_objective_question_answering(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
+    """Optuna objective for extractive question answering; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -524,6 +550,7 @@ def optuna_objective_causal_lm(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
+    """Optuna objective for causal language modelling; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -553,6 +580,7 @@ def optuna_objective_seq2seq_lm(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
+    """Optuna objective for seq2seq language modelling; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -582,6 +610,7 @@ def optuna_objective_masked_lm(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
+    """Optuna objective for masked language modelling; returns the test loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -602,6 +631,7 @@ def optuna_objective_masked_lm(
 # Registries
 # ---------------------------------------------------------------------------
 
+# Maps task type slug -> objective function; used by run_optuna_search.
 OBJECTIVE_REGISTRY: dict[str, Callable] = {
     "image_classification": optuna_objective_image_classification,
     "image_classification_multimodal": optuna_objective_image_classification_multimodal,
