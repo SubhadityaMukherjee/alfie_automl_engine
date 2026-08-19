@@ -33,7 +33,7 @@ from app.tabular_automl.services import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/automl_tabular", tags=["tabular"])
+router = APIRouter(tags=["tabular"])
 
 _COMMON_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Internal server error", "model": ErrorResponse},

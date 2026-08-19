@@ -1,7 +1,5 @@
 # Tabular AutoML
 
-::: app.tabular_automl.main
-
 ::: app.tabular_automl.models
 
 ::: app.tabular_automl.modules

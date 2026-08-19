@@ -31,7 +31,7 @@ from app.core.schemas.responses import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/automlplus", tags=["automlplus"])
+router = APIRouter(tags=["automl_plus"])
 
 _jinja_path = get_settings().jinja_path
 

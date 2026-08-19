@@ -1,8 +1,9 @@
 # Architecture
 
-The ALFIE AutoML Engine is a collection of three independent FastAPI services
-plus a shared core library, all living under `app/`. The training services talk
-to [AutoDW](autodw.md) to fetch datasets and upload trained models.
+The ALFIE AutoML Engine is a single FastAPI service that mounts three service
+modules plus a shared core library under one unified `/automl` router, all
+living under `app/`. The training services talk to [AutoDW](autodw.md) to fetch
+datasets and upload trained models.
 
 ![System components](images/flow.png)
 
@@ -18,11 +19,11 @@ flowchart TB
             CHAT["ChatHandler (Azure AI)"]
         end
 
-        subgraph Tabular["app/tabular_automl · /automl_tabular"]
+        subgraph Tabular["app/tabular_automl · /automl/tabular"]
             TG["AutoGluon<br>classification · regression · time series"]
         end
 
-        subgraph Vision["app/vision_automl · /automl_vision"]
+        subgraph Vision["app/vision_automl · /automl/vision"]
             direction TB
             HPO["Optuna HPO"]
             FABRIC["Lightning Fabric trainer"]
@@ -31,7 +32,7 @@ flowchart TB
             FABRIC --> HFM
         end
 
-        subgraph Plus["app/automlplus · /automlplus"]
+        subgraph Plus["app/automlplus · /automl/automl_plus"]
             direction LR
             ACC["web accessibility + readability"]
             VLMT["VLM tools<br>alt text · image prompts · image-to-website"]
@@ -51,16 +52,19 @@ flowchart TB
     Plus -- "LLM/VLM calls" --> CHAT
 ```
 
-## Services
+## Unified API
 
-Each service is its own FastAPI app with its own router prefix, run separately
+`app/main.py` builds a single FastAPI app and `app/api.py` mounts every
+service router under one `/automl` prefix (e.g.
+`POST /automl/automl_plus/accepted_format/`). Health endpoints (`/health`,
+`/ready`) stay at the root. The app runs as one service on a single port
 (see [running the services](running_the_services.md)).
 
 | Service | Module | Prefix | What it does |
 | --- | --- | --- | --- |
-| Tabular AutoML | `app/tabular_automl` | `/automl_tabular` | Trains AutoGluon models on CSV/TSV/Parquet data (classification, regression, time series). |
-| Vision AutoML | `app/vision_automl` | `/automl_vision` | Optuna hyperparameter search + Lightning Fabric training over Hugging Face models (image, video, audio, and text tasks, plus multimodal image+tabular). |
-| AutoML+ | `app/automlplus` | `/automlplus` | LLM/VLM tools: web accessibility analysis, alt-text checking, image prompts, readability metrics. No model training. |
+| Tabular AutoML | `app/tabular_automl` | `/automl/tabular` | Trains AutoGluon models on CSV/TSV/Parquet data (classification, regression, time series). |
+| Vision AutoML | `app/vision_automl` | `/automl/vision` | Optuna hyperparameter search + Lightning Fabric training over Hugging Face models (image, video, audio, and text tasks, plus multimodal image+tabular). |
+| AutoML+ | `app/automlplus` | `/automl/automl_plus` | LLM/VLM tools: web accessibility analysis, alt-text checking, image prompts, readability metrics. No model training. |
 
 ## Shared core (`app/core`)
 
@@ -77,13 +81,14 @@ Each service is its own FastAPI app with its own router prefix, run separately
 
 ## Layering inside a service
 
-Every service follows the same layering, so the HTTP layer stays thin:
+Every service module follows the same layering, so the HTTP layer stays thin:
 
 ```
-main.py          FastAPI app + lifespan (logging setup)
-   └─ router.py           bind HTTP form params, delegate, map exceptions to responses
-        └─ orchestrator.py   the multi-step pipeline, raises typed exceptions
-             └─ services.py     validation, training wrappers, packaging, templates
+app/main.py         FastAPI app + lifespan (logging setup)
+   └─ app/api.py            unified router: mounts each service under /automl/<service>
+        └─ router.py           bind HTTP form params, delegate, map exceptions to responses
+             └─ orchestrator.py   the multi-step pipeline, raises typed exceptions
+                  └─ services.py     validation, training wrappers, packaging, templates
 ```
 
 The training pipelines in both `tabular_automl` and `vision_automl` share the
@@ -121,6 +126,8 @@ when loading a trained model (see [loading the model](loading_model.md)).
 ```
 alfie_automl_engine/
 ├── app/
+│   ├── main.py                # combined FastAPI app (single service)
+│   ├── api.py                 # unified router mounting every service under /automl
 │   ├── core/                  # shared library (config, logging, errors, AutoDW helpers, schemas)
 │   │   ├── schemas/           # pydantic models + base dataset/datamodule classes
 │   │   └── prompt_templates/  # Jinja2 prompt and instruction templates
@@ -136,7 +143,7 @@ alfie_automl_engine/
 ├── tests/                     # pytest suite
 ├── sample_data/               # datasets fetched by download_sample_data.py
 ├── plans/                     # planning notes
-├── docker-compose.yml         # one container per service
+├── docker-compose.yml         # single API container
 ├── Dockerfile
 ├── mkdocs.yml
 └── pyproject.toml

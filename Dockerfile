@@ -18,8 +18,8 @@ COPY pyproject.toml uv.lock ./
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
 RUN uv sync --frozen
 
-EXPOSE 8000 8001 8002
+EXPOSE 8001
 
-ENV HEALTHCHECK_PORT=8000
+ENV HEALTHCHECK_PORT=8001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:${HEALTHCHECK_PORT}/health || exit 1

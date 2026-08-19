@@ -20,7 +20,7 @@ class InstructionsResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# AutoML+  (/automlplus)
+# AutoML+  (/automl/automl_plus)
 # ---------------------------------------------------------------------------
 
 
@@ -42,7 +42,7 @@ class WebAccessibilityResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Tabular AutoML  (/automl_tabular)
+# Tabular AutoML  (/automl/tabular)
 # ---------------------------------------------------------------------------
 
 
@@ -52,7 +52,7 @@ class TrainingSuccessResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Vision AutoML  (/automl_vision)
+# Vision AutoML  (/automl/vision)
 # ---------------------------------------------------------------------------
 
 

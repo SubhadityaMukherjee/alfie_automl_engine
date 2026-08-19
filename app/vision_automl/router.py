@@ -36,7 +36,7 @@ from app.vision_automl.services import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/automl_vision", tags=["vision"])
+router = APIRouter(tags=["vision"])
 
 _COMMON_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Internal server error", "model": ErrorResponse},

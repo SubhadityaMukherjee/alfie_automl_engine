@@ -16,47 +16,29 @@ load_dotenv(find_dotenv())
 
 PID_FILE = "processes.pid"
 
+ENGINE_PORT = int(os.getenv("AUTOML_ENGINE_PORT", "8001"))
+BASE_URL = f"http://localhost:{ENGINE_PORT}"
 
 SERVICES = {
-    "webfromfile": {
-        "port": 8003,
-        "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT', 8003)})",
-    },
-    "webfromurl": {
-        "port": 8003,
-        "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT', 8003)})",
-    },
-    "im2web": {
-        "port": 8003,
-        "uvicorn_target": "app.automlplus.main:app",
-        "base_url": f"http://localhost:{os.getenv('AUTOML_PLUS_PORT', 8003)})",
-    },
-    "tabular": {
-        "port": 8001,
-        "uvicorn_target": "app.tabular_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT', 8001)})",
-    },
-    "tabularmvp": {
-        "port": 8001,
-        "uvicorn_target": "app.tabular_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('TABULAR_AUTOML_PORT', 8001)})",
-    },
-    "visionmvp": {
-        "port": 8002,
-        "uvicorn_target": "app.vision_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT', 8002)})",
-    },
-    "multimodal": {
-        "port": 8002,
-        "uvicorn_target": "app.vision_automl.main:app",
-        "base_url": f"http://localhost:{os.getenv('VISION_AUTOML_PORT', 8002)})",
+    "engine": {
+        "port": ENGINE_PORT,
+        "uvicorn_target": "app.main:app",
+        "base_url": BASE_URL,
     },
 }
 
+# Test scenarios selecting which curl checks to run against the engine.
+SCENARIOS = [
+    "webfromfile",
+    "webfromurl",
+    "im2web",
+    "tabular",
+    "tabularmvp",
+    "visionmvp",
+    "multimodal",
+]
+
 DEFAULT_READY_TIMEOUT_S = 240.0
-GENERAL_READY_TIMEOUT_S = 420.0
 
 
 def run(
@@ -165,36 +147,6 @@ def wait_for_port(port: int, timeout_seconds: float = 10.0) -> bool:
     return False
 
 
-def wait_for_general_ready(timeout_seconds: float = GENERAL_READY_TIMEOUT_S) -> bool:
-    # Wait for /health to report ready=true
-    deadline = time.time() + timeout_seconds
-    url = "http://localhost:8004/health"
-    while time.time() < deadline:
-        try:
-            cp = run(
-                [
-                    "curl",
-                    "-sS",
-                    "--max-time",
-                    "3",
-                    url,
-                ],
-                capture_output=True,
-                check=False,
-            )
-            if cp.returncode == 0 and cp.stdout:
-                try:
-                    data = json.loads(cp.stdout)
-                    if isinstance(data, dict) and bool(data.get("ready")):
-                        return True
-                except json.JSONDecodeError:
-                    pass
-        except Exception:
-            pass
-        time.sleep(1.0)
-    return False
-
-
 def test_web() -> None:
     print("=== Testing Website Accessibility ===")
     cmd = [
@@ -202,7 +154,7 @@ def test_web() -> None:
         "-sN",
         "-X",
         "POST",
-        "http://localhost:8003/automlplus/web_access/analyze/",
+        f"{BASE_URL}/automl/automl_plus/web_access/analyze/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -221,7 +173,7 @@ def test_image_to_website() -> None:
         "-sN",
         "-X",
         "POST",
-        "http://localhost:8003/automlplus/image_tools/run_on_image_stream/",
+        f"{BASE_URL}/automl/automl_plus/image_tools/run_on_image_stream/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -241,7 +193,7 @@ def test_web_url_guidelines() -> None:
         "-s",
         "-X",
         "POST",
-        "http://localhost:8003/automlplus/web_access/analyze/",
+        f"{BASE_URL}/automl/automl_plus/web_access/analyze/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -273,7 +225,7 @@ def test_tabular() -> None:
         "-s",
         "-X",
         "POST",
-        "http://localhost:8001/automl_tabular/best_model/",
+        f"{BASE_URL}/automl/tabular/best_model/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -289,25 +241,21 @@ def test_tabular() -> None:
     ]
     cp = run(cmd, capture_output=True, check=False)
     data = parse_json(cp.stdout or "")
-    print(data)
     if data:
         print(json.dumps(data, indent=2, ensure_ascii=False))
-        session_id = data.get("session_id")
-        if session_id:
-            print(f"Session stored in DB: {session_id}")
     else:
         print(cp.stdout)
     print()
 
 
 def test_visionmvp() -> None:
-    print("=== Testing AutoML Vision - get_user_input ===")
+    print("=== Testing AutoML Vision - best_model ===")
     cmd = [
         "curl",
         "-s",
         "-X",
         "POST",
-        "http://localhost:8002/automl_vision/best_model/",
+        f"{BASE_URL}/automl/vision/best_model/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -342,7 +290,7 @@ def test_multimodal() -> None:
         "-s",
         "-X",
         "POST",
-        "http://localhost:8002/automl_vision/multimodal_best_model/",
+        f"{BASE_URL}/automl/vision/multimodal_best_model/",
         "-H",
         "Content-Type: multipart/form-data",
         "-F",
@@ -369,41 +317,27 @@ def test_multimodal() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run and test ALFIE services (Python replacement for test_services.sh)"
+        description="Run and test the ALFIE AutoML engine service (Python replacement for test_services.sh)"
     )
     parser.add_argument(
         "target",
         nargs="?",
         default="all",
-        choices=[
-            "all",
-            "webfromfile",
-            "webfromurl",
-            "tabular",
-            "visionmvp",
-            "im2web",
-            "tabularmvp",
-            "multimodal",
-        ],
-        help="Which services to run and test",
+        choices=["all", *SCENARIOS],
+        help="Which test scenarios to run against the unified service",
     )
     args = parser.parse_args()
 
-    targets = [args.target] if args.target != "all" else list(SERVICES.keys())
+    scenarios = SCENARIOS if args.target == "all" else [args.target]
 
-    # Kill existing processes on expected ports
-    for name in targets:
-        kill_port(SERVICES[name]["port"])
+    # Kill any existing process on the engine port
+    kill_port(ENGINE_PORT)
 
-    # Start services
-    procs: Dict[str, subprocess.Popen] = {}
+    # Start the combined engine service
     pids: List[int] = []
     try:
-        for name in targets:
-            proc = start_service(name)
-            procs[name] = proc
-            pids.append(proc.pid)
-            time.sleep(2)
+        proc = start_service("engine")
+        pids.append(proc.pid)
 
         save_pids(pids)
 
@@ -416,34 +350,26 @@ def main() -> int:
         signal.signal(signal.SIGTERM, lambda sig, frm: sys.exit(0))
 
         # Wait for readiness
-        for name in targets:
-            port = SERVICES[name]["port"]
-            if name == "general":
-                if not wait_for_general_ready(timeout_seconds=GENERAL_READY_TIMEOUT_S):
-                    print(
-                        f"Warning: Service {name} on port {port} may not be ready (health not ready)."
-                    )
-                continue
-            if not wait_for_port(port, timeout_seconds=DEFAULT_READY_TIMEOUT_S):
-                print(f"Warning: Service {name} on port {port} may not be ready.")
+        if not wait_for_port(ENGINE_PORT, timeout_seconds=DEFAULT_READY_TIMEOUT_S):
+            print(f"Warning: engine on port {ENGINE_PORT} may not be ready.")
 
-        # Run tests mirroring the shell script
-        if "webfromfile" in targets:
+        # Run the requested test scenarios
+        if "webfromfile" in scenarios:
             test_web()
 
-        if "webfromurl" in targets:
+        if "webfromurl" in scenarios:
             test_web_url_guidelines()
 
-        if "im2web" in targets:
+        if "im2web" in scenarios:
             test_image_to_website()
 
-        if "tabular" in targets:
+        if "tabular" in scenarios or "tabularmvp" in scenarios:
             test_tabular()
 
-        if "visionmvp" in targets:
+        if "visionmvp" in scenarios:
             test_visionmvp()
 
-        if "multimodal" in targets:
+        if "multimodal" in scenarios:
             test_multimodal()
 
         print("=== All tests completed ===")

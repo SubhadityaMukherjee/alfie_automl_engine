@@ -1,7 +1,5 @@
 # Vision AutoML
 
-::: app.vision_automl.main
-
 ::: app.vision_automl.router
 ::: app.vision_automl.services
 ::: app.vision_automl.orchestrator

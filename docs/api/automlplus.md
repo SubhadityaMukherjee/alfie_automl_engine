@@ -2,7 +2,6 @@
 
 ## Modules
 
-::: app.automlplus.main
 ::: app.automlplus.router
 ::: app.automlplus.utils
 
