@@ -19,6 +19,7 @@ from app.core.exceptions import (
     AutoMLError,
     AutoMLValidationError,
 )
+from app.core.process_log import get_process_log
 
 
 def automl_exception_to_response(exc: Exception) -> JSONResponse:
@@ -36,14 +37,21 @@ def automl_exception_to_response(exc: Exception) -> JSONResponse:
     * Any unrelated Exception → ``500``.
 
     The exception's ``str()`` is preserved verbatim as the ``error`` field so
-    callers and tests can rely on stable, context-rich error text.
+    callers and tests can rely on stable, context-rich error text. The
+    per-request ``process_log`` (started by the routers) is attached so the
+    payload shows which steps succeeded before the failure.
     """
     if isinstance(exc, AutoMLValidationError):
-        return JSONResponse(status_code=400, content={"error": str(exc)})
-    if isinstance(exc, AutoDWUploadError):
-        return JSONResponse(status_code=exc.status_code, content={"error": str(exc)})
-    if isinstance(exc, AutoDWDownloadError):
-        return JSONResponse(status_code=502, content={"error": str(exc)})
-    if isinstance(exc, AutoMLError):
-        return JSONResponse(status_code=500, content={"error": str(exc)})
-    return JSONResponse(status_code=500, content={"error": str(exc)})
+        status_code = 400
+    elif isinstance(exc, AutoDWUploadError):
+        status_code = exc.status_code
+    elif isinstance(exc, AutoDWDownloadError):
+        status_code = 502
+    elif isinstance(exc, AutoMLError):
+        status_code = 500
+    else:
+        status_code = 500
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": str(exc), "process_log": get_process_log()},
+    )

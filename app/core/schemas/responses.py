@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 class ErrorResponse(BaseModel):
     error: str
+    process_log: list[dict[str, Any]] = []
 
 
 class InstructionsResponse(BaseModel):
@@ -28,10 +29,12 @@ class AltTextCheckResponse(BaseModel):
     src: str
     alt_text: str
     evaluation: str
+    process_log: list[dict[str, Any]] = []
 
 
 class ImagePromptResponse(BaseModel):
     response: str
+    process_log: list[dict[str, Any]] = []
 
 
 class WebAccessibilityResponse(BaseModel):
@@ -39,6 +42,7 @@ class WebAccessibilityResponse(BaseModel):
     average_score: float | None = None
     results: list[dict[str, Any]]
     readability: dict[str, Any] | None = None
+    process_log: list[dict[str, Any]] = []
 
 
 # ---------------------------------------------------------------------------
@@ -49,6 +53,7 @@ class WebAccessibilityResponse(BaseModel):
 class TrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
+    process_log: list[dict[str, Any]] = []
 
 
 # ---------------------------------------------------------------------------
@@ -59,9 +64,11 @@ class TrainingSuccessResponse(BaseModel):
 class VisionTrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
+    process_log: list[dict[str, Any]] = []
 
 
 class MultimodalTrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
     auxiliary_columns: list[str]
+    process_log: list[dict[str, Any]] = []

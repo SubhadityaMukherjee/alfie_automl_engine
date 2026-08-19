@@ -21,6 +21,7 @@ from app.automlplus.website_accessibility.pipeline import (
 )
 from app.core.concurrency import offload
 from app.core.config import get_settings
+from app.core.process_log import get_process_log, start_process_log, step
 from app.core.schemas.responses import (
     AltTextCheckResponse,
     ErrorResponse,
@@ -83,10 +84,12 @@ async def check_alt_text(
 ) -> JSONResponse:
     """Evaluate provided alt text against the referenced image using an LLM."""
     logger.info("Checking alt text for image URL: %s", image_url)
+    start_process_log()
     try:
-        result: str = await offload(
-            AltTextChecker.check, jinja_environment, image_url, alt_text
-        )
+        with step("evaluate_alt_text"):
+            result: str = await offload(
+                AltTextChecker.check, jinja_environment, image_url, alt_text
+            )
         logger.info("Alt-text evaluation completed successfully")
 
         safe_result = json_safe(
@@ -94,12 +97,16 @@ async def check_alt_text(
                 "src": image_url,
                 "alt_text": alt_text,
                 "evaluation": result,
+                "process_log": get_process_log(),
             }
         )
         return JSONResponse(content=safe_result)
     except Exception as e:
         logger.exception("Error during alt-text check: %s", e)
-        return JSONResponse(content={"error": str(e)}, status_code=500)
+        return JSONResponse(
+            content={"error": str(e), "process_log": get_process_log()},
+            status_code=500,
+        )
 
 
 @router.post(
@@ -118,11 +125,16 @@ async def run_on_image(
 ) -> JSONResponse:
     """Run a vision-language model on an image and return the text output."""
     logger.info("Running model on image with prompt: %s", prompt)
+    start_process_log()
 
     if image_file is None and not image_url:
         logger.error("Missing both image_file and image_url")
         return JSONResponse(
-            {"error": "Provide image_file or image_url"}, status_code=400
+            {
+                "error": "Provide image_file or image_url",
+                "process_log": get_process_log(),
+            },
+            status_code=400,
         )
 
     try:
@@ -131,21 +143,24 @@ async def run_on_image(
             await image_file.close()
             logger.debug("Image file successfully read and closed")
 
-        result = await offload(
-            ImagePromptRunner.run,
-            image_bytes=image_bytes,
-            image_path_or_url=image_url,
-            prompt=prompt,
-            model=model,
-            jinja_environment=jinja_environment,
-        )
+        with step("run_model_on_image"):
+            result = await offload(
+                ImagePromptRunner.run,
+                image_bytes=image_bytes,
+                image_path_or_url=image_url,
+                prompt=prompt,
+                model=model,
+                jinja_environment=jinja_environment,
+            )
 
-        safe_result = json_safe({"response": result})
+        safe_result = json_safe({"response": result, "process_log": get_process_log()})
         logger.info("Image prompt run completed successfully")
         return JSONResponse(content=safe_result)
     except Exception as e:
         logger.exception("Error during image prompt run: %s", e)
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse(
+            {"error": str(e), "process_log": get_process_log()}, status_code=500
+        )
 
 
 @router.post(
@@ -225,6 +240,7 @@ async def analyze_web_accessibility_and_readability(
 ) -> JSONResponse:
     """Run WCAG-inspired accessibility checks and optional readability analysis on HTML."""
     logger.info("Starting web accessibility and readability analysis")
+    start_process_log()
 
     content: str | None = None
     source_name: str = "uploaded.html"
@@ -234,9 +250,10 @@ async def analyze_web_accessibility_and_readability(
     # --- Load HTML content ---
     if file:
         try:
-            content = (await file.read()).decode("utf-8", errors="replace")
-            source_name = file.filename or source_name
-            logger.debug("HTML file '%s' successfully loaded", source_name)
+            with step("load_html"):
+                content = (await file.read()).decode("utf-8", errors="replace")
+                source_name = file.filename or source_name
+                logger.debug("HTML file '%s' successfully loaded", source_name)
         finally:
             try:
                 await file.close()
@@ -245,22 +262,31 @@ async def analyze_web_accessibility_and_readability(
 
     if url:
         try:
-            logger.debug("Fetching HTML from URL: %s", url)
-            resp = await offload(requests.get, url, timeout=timeout)
-            resp.raise_for_status()
-            content = resp.text
-            source_name = url
-            logger.debug("HTML successfully fetched from URL")
+            with step("fetch_url"):
+                logger.debug("Fetching HTML from URL: %s", url)
+                resp = await offload(requests.get, url, timeout=timeout)
+                resp.raise_for_status()
+                content = resp.text
+                source_name = url
+                logger.debug("HTML successfully fetched from URL")
         except Exception as e:
             logger.error("Failed to fetch HTML from URL: %s", e)
             return JSONResponse(
-                content={"error": f"Failed to fetch URL: {e}"}, status_code=400
+                content={
+                    "error": f"Failed to fetch URL: {e}",
+                    "process_log": get_process_log(),
+                },
+                status_code=400,
             )
 
     if not content or not str(content).strip():
         logger.error("Resolved HTML content is empty")
         return JSONResponse(
-            content={"error": "Resolved content is empty"}, status_code=400
+            content={
+                "error": "Resolved content is empty",
+                "process_log": get_process_log(),
+            },
+            status_code=400,
         )
 
     content_str: str = str(content)
@@ -269,11 +295,12 @@ async def analyze_web_accessibility_and_readability(
     context_str: str = ""
     if extra_file_input is not None:
         try:
-            logger.debug("Reading extra context file for accessibility analysis")
-            guidelines_bytes = await extra_file_input.read()
-            guidelines_text = guidelines_bytes.decode("utf-8", errors="replace")
-            context_str = f"Accessibility guidelines to follow (user-provided):\n\n{guidelines_text}"
-            logger.debug("Extra context file successfully loaded")
+            with step("load_context"):
+                logger.debug("Reading extra context file for accessibility analysis")
+                guidelines_bytes = await extra_file_input.read()
+                guidelines_text = guidelines_bytes.decode("utf-8", errors="replace")
+                context_str = f"Accessibility guidelines to follow (user-provided):\n\n{guidelines_text}"
+                logger.debug("Extra context file successfully loaded")
         finally:
             try:
                 await extra_file_input.close()
@@ -287,34 +314,36 @@ async def analyze_web_accessibility_and_readability(
         f"Running accessibility pipeline with chunk size {chunk_size}, concurrency {concurrency_num}"
     )
 
-    results = await run_accessibility_pipeline(
-        content=content_str,
-        filename=source_name,
-        jinja_environment=jinja_environment,
-        chunk_size=chunk_size,
-        concurrency=concurrency_num,
-        context=context_str,
-    )
-    logger.info("Accessibility pipeline completed successfully")
+    with step("accessibility_analysis"):
+        results = await run_accessibility_pipeline(
+            content=content_str,
+            filename=source_name,
+            jinja_environment=jinja_environment,
+            chunk_size=chunk_size,
+            concurrency=concurrency_num,
+            context=context_str,
+        )
+        logger.info("Accessibility pipeline completed successfully")
 
-    # --- Aggregate results ---
-    resolved_results = [await resolve_coroutines(r) for r in results]
+        # --- Aggregate results ---
+        resolved_results = [await resolve_coroutines(r) for r in results]
 
-    scores = [
-        r.get("score")
-        for r in resolved_results
-        if isinstance(r.get("score"), (int, float))
-    ]
-    average_score: float | None = (sum(scores) / len(scores)) if scores else None
-    logger.debug("Computed average accessibility score: %s", average_score)
+        scores = [
+            r.get("score")
+            for r in resolved_results
+            if isinstance(r.get("score"), (int, float))
+        ]
+        average_score: float | None = (sum(scores) / len(scores)) if scores else None
+        logger.debug("Computed average accessibility score: %s", average_score)
 
     # --- Readability analysis ---
     readability_scores: dict[str, Any] | None = None
     try:
-        text = extract_text_from_html_bytes(content_str.encode("utf-8"))
-        if text.strip():
-            readability_scores = ReadabilityAnalyzer.analyze(text)
-            logger.debug("Readability analysis completed successfully")
+        with step("readability_analysis"):
+            text = extract_text_from_html_bytes(content_str.encode("utf-8"))
+            if text.strip():
+                readability_scores = ReadabilityAnalyzer.analyze(text)
+                logger.debug("Readability analysis completed successfully")
     except Exception as e:
         logger.warning("Error during readability analysis: %s", e)
         readability_scores = {"error": str(e)}
@@ -324,6 +353,7 @@ async def analyze_web_accessibility_and_readability(
         "average_score": average_score,
         "results": resolved_results,
         "readability": readability_scores,
+        "process_log": get_process_log(),
     }
 
     safe_payload = json_safe(payload)

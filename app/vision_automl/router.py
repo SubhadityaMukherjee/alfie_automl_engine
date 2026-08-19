@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.api_errors import automl_exception_to_response
 from app.core.exceptions import AutoMLError
+from app.core.process_log import get_process_log, start_process_log
 from app.core.schemas.ml_tasks import SUPPORTED_VISION_TASK_TYPES
 from app.core.schemas.responses import (
     ErrorResponse,
@@ -152,6 +153,7 @@ async def find_best_model_for_vision(
         500 – unexpected runtime error.
     """
     try:
+        start_process_log(request.headers.get("X-Task-ID"))
         req = VisionTrainingRequest(
             user_id=user_id,
             dataset_id=dataset_id,
@@ -170,7 +172,11 @@ async def find_best_model_for_vision(
         )
         return JSONResponse(
             status_code=200,
-            content={"message": result.message, "leaderboard": result.leaderboard},
+            content={
+                "message": result.message,
+                "leaderboard": result.leaderboard,
+                "process_log": get_process_log(),
+            },
         )
     except Exception as e:
         if not isinstance(e, AutoMLError):
@@ -244,6 +250,7 @@ async def find_best_model_for_multimodal_vision(
         500 – unexpected runtime error.
     """
     try:
+        start_process_log(request.headers.get("X-Task-ID"))
         req = MultimodalTrainingRequest(
             user_id=user_id,
             dataset_id=dataset_id,
@@ -264,6 +271,7 @@ async def find_best_model_for_multimodal_vision(
                 "message": result.message,
                 "leaderboard": result.leaderboard,
                 "auxiliary_columns": result.auxiliary_columns,
+                "process_log": get_process_log(),
             },
         )
     except Exception as e:

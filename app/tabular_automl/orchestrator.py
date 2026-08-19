@@ -38,6 +38,7 @@ from app.core.exceptions import (
     AutoMLRuntimeError,
     AutoMLValidationError,
 )
+from app.core.process_log import step
 from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
 from app.tabular_automl.services import (
     SUPPORTED_FILE_TYPES,
@@ -162,7 +163,8 @@ async def run_training_pipeline(
     Raises a typed ``AutoMLError`` subclass on any failure; the router maps
     these to HTTP status codes.
     """
-    _validate_request(req)
+    with step("validate_request"):
+        _validate_request(req)
 
     autodw_base = get_settings().autodw_url
     if not autodw_base:
@@ -171,13 +173,14 @@ async def run_training_pipeline(
 
     # 1. Fetch dataset metadata from AutoDW.
     try:
-        metadata = await offload(
-            fetch_dataset_metadata,
-            autodw_base,
-            req.user_id,
-            req.dataset_id,
-            req.dataset_version,
-        )
+        with step("fetch_metadata"):
+            metadata = await offload(
+                fetch_dataset_metadata,
+                autodw_base,
+                req.user_id,
+                req.dataset_id,
+                req.dataset_version,
+            )
     except requests.RequestException as e:
         logger.error("Failed to fetch dataset metadata: %s", e)
         raise AutoDWDownloadError(
@@ -187,18 +190,20 @@ async def run_training_pipeline(
         logger.error("Unexpected error fetching metadata: %s", e)
         raise AutoMLRuntimeError(f"Unexpected error fetching metadata: {e}") from e
 
-    _validate_metadata(metadata)
+    with step("validate_metadata"):
+        _validate_metadata(metadata)
 
     # 2. Resolve the correct download URL (respecting splits if present).
     try:
-        download_url = resolve_download_url(
-            autodw_base,
-            req.user_id,
-            req.dataset_id,
-            req.dataset_version,
-            metadata,
-            req.dataset_split,
-        )
+        with step("resolve_download_url"):
+            download_url = resolve_download_url(
+                autodw_base,
+                req.user_id,
+                req.dataset_id,
+                req.dataset_version,
+                metadata,
+                req.dataset_split,
+            )
     except Exception as e:
         logger.error("Failed to resolve download URL: %s", e)
         raise AutoMLRuntimeError(f"Failed to resolve download URL: {e}") from e
@@ -213,7 +218,8 @@ async def run_training_pipeline(
 
         # 3. Download the dataset file.
         try:
-            await offload(download_dataset, download_url, dataset_path)
+            with step("download_dataset"):
+                await offload(download_dataset, download_url, dataset_path)
         except requests.RequestException as e:
             logger.error("Failed to download dataset: %s", e)
             raise AutoDWDownloadError(
@@ -230,33 +236,40 @@ async def run_training_pipeline(
 
         # 4. Validate user-supplied parameters against the dataset.
         try:
-            validation_error = await offload(
-                validate_tabular_inputs,
-                train_path=dataset_path,
-                target_column_name=req.target_column_name,
-                time_stamp_column_name=req.time_stamp_column_name,
-                task_type=req.task_type,
-            )
+            with step("validate_inputs"):
+                validation_error = await offload(
+                    validate_tabular_inputs,
+                    train_path=dataset_path,
+                    target_column_name=req.target_column_name,
+                    time_stamp_column_name=req.time_stamp_column_name,
+                    task_type=req.task_type,
+                )
+                if validation_error:
+                    raise AutoMLValidationError(validation_error)
+        except AutoMLValidationError:
+            raise
         except Exception as e:
             logger.error("Unexpected error during validation: %s", e)
             raise AutoMLRuntimeError(f"Unexpected error during validation: {e}") from e
 
-        if validation_error:
-            raise AutoMLValidationError(validation_error)
-
         # 5. Train an AutoML model within the given time budget.
         save_model_path = tmp_path / "automl_model"
         try:
-            leaderboard, predictor = await offload(
-                train_automl,
-                dataset_path=dataset_path,
-                save_model_path=save_model_path,
-                target_column_name=req.target_column_name,
-                task_type=req.task_type,
-                time_budget=req.time_budget,
-                num_cpus=req.num_cpus,
-                num_gpus=req.num_gpus,
-            )
+            with step("train"):
+                leaderboard, predictor = await offload(
+                    train_automl,
+                    dataset_path=dataset_path,
+                    save_model_path=save_model_path,
+                    target_column_name=req.target_column_name,
+                    task_type=req.task_type,
+                    time_budget=req.time_budget,
+                    num_cpus=req.num_cpus,
+                    num_gpus=req.num_gpus,
+                )
+                if leaderboard is None:
+                    raise AutoMLRuntimeError(
+                        "Training completed but leaderboard is empty"
+                    )
         except AutoMLValidationError as e:
             logger.error("Validation error during training: %s", e)
             raise AutoMLValidationError(f"Training validation failed: {e}") from e
@@ -267,15 +280,15 @@ async def run_training_pipeline(
             logger.error("Unexpected error during training: %s", e)
             raise AutoMLRuntimeError(f"Unexpected error during training: {e}") from e
 
-        if leaderboard is None:
-            raise AutoMLRuntimeError("Training completed but leaderboard is empty")
-
         # 6. Serialize and zip the best predictor.
         try:
-            zip_path = await offload(
-                serialize_and_zip_predictor, predictor, save_model_path, tmp_path
-            )
-            leaderboard_json, leaderboard_str = convert_leaderboard_safely(leaderboard)
+            with step("serialize_model"):
+                zip_path = await offload(
+                    serialize_and_zip_predictor, predictor, save_model_path, tmp_path
+                )
+                leaderboard_json, leaderboard_str = convert_leaderboard_safely(
+                    leaderboard
+                )
         except Exception as e:
             logger.error("Failed to serialize and zip model: %s", e)
             raise AutoMLRuntimeError(f"Failed to serialize model: {e}") from e
@@ -285,34 +298,37 @@ async def run_training_pipeline(
 
         # 7. Upload the model and leaderboard back to AutoDW.
         try:
-            _, payload = build_upload_payload(
-                req.dataset_id,
-                req.dataset_version,
-                metadata,
-                req.task_type,
-                leaderboard_json,
-            )
+            with step("build_upload_payload"):
+                _, payload = build_upload_payload(
+                    req.dataset_id,
+                    req.dataset_version,
+                    metadata,
+                    req.task_type,
+                    leaderboard_json,
+                )
         except Exception as e:
             logger.error("Failed to build upload payload: %s", e)
             raise AutoMLRuntimeError(f"Failed to build upload payload: {e}") from e
 
         try:
-            upload_resp = await offload(
-                upload_model, upload_url, zip_path, payload, task_id
-            )
+            with step("upload_model"):
+                upload_resp = await offload(
+                    upload_model, upload_url, zip_path, payload, task_id
+                )
+                if upload_resp.status_code >= 400:
+                    logger.error("Model upload failed: %s", upload_resp.text)
+                    raise AutoDWUploadError(
+                        f"Failed to upload model: {upload_resp.text}",
+                        status_code=upload_resp.status_code,
+                    )
+        except AutoDWUploadError:
+            raise
         except requests.RequestException as e:
             logger.error("Network error uploading model: %s", e)
             raise AutoDWUploadError(f"Failed to upload model to AutoDW: {e}") from e
         except Exception as e:
             logger.error("Unexpected error uploading model: %s", e)
             raise AutoMLRuntimeError(f"Unexpected error uploading model: {e}") from e
-
-        if upload_resp.status_code >= 400:
-            logger.error("Model upload failed: %s", upload_resp.text)
-            raise AutoDWUploadError(
-                f"Failed to upload model: {upload_resp.text}",
-                status_code=upload_resp.status_code,
-            )
 
     logger.info("AutoML training completed and model uploaded successfully.")
     return TrainingResult(message=_SUCCESS_MESSAGE, leaderboard=leaderboard_str)
