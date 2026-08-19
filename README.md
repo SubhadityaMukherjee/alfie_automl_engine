@@ -11,6 +11,8 @@ provides LLM/VLM-powered analysis tools. Every service is mounted under one
 | Vision AutoML | `app/vision_automl` | `/automl/vision` | Optuna hyperparameter search + Lightning Fabric training over Hugging Face models: image, video, audio, and text tasks, plus multimodal (image + tabular). |
 | AutoML+ | `app/automlplus` | `/automl/automl_plus` | LLM/VLM tools with no model training: web accessibility and readability analysis, alt-text checking, image prompts, and an image-to-website tool. |
 
+Full endpoint reference per service: [available endpoints](https://subhadityamukherjee.github.io/alfie_automl_engine/available_endpoints/).
+
 > **Note:** branch off from `develop`, not `main`.
 
 ## ALFIE components
