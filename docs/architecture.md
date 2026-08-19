@@ -6,6 +6,51 @@ to [AutoDW](autodw.md) to fetch datasets and upload trained models.
 
 ![System components](images/flow.png)
 
+```mermaid
+flowchart TB
+    User(["Users / ALFIE web app"])
+
+    subgraph Engine["ALFIE AutoML Engine"]
+        subgraph Core["app/core - shared library"]
+            direction LR
+            COREUTILS["config · logging · typed errors · concurrency"]
+            DWHELP["AutoDW helpers"]
+            CHAT["ChatHandler (Azure AI)"]
+        end
+
+        subgraph Tabular["app/tabular_automl · /automl_tabular"]
+            TG["AutoGluon<br>classification · regression · time series"]
+        end
+
+        subgraph Vision["app/vision_automl · /automl_vision"]
+            direction TB
+            HPO["Optuna HPO"]
+            FABRIC["Lightning Fabric trainer"]
+            HFM["Hugging Face models<br>image · video · audio · text · multimodal"]
+            HPO --> FABRIC
+            FABRIC --> HFM
+        end
+
+        subgraph Plus["app/automlplus · /automlplus"]
+            direction LR
+            ACC["web accessibility + readability"]
+            VLMT["VLM tools<br>alt text · image prompts · image-to-website"]
+        end
+    end
+
+    AutoDW[("AutoDW<br>dataset and model store")]
+
+    User --> Tabular
+    User --> Vision
+    User --> Plus
+    Tabular --> Core
+    Vision --> Core
+    Plus --> Core
+    Tabular -- "fetch datasets / upload models" --> AutoDW
+    Vision -- "fetch datasets / upload models" --> AutoDW
+    Plus -- "LLM/VLM calls" --> CHAT
+```
+
 ## Services
 
 Each service is its own FastAPI app with its own router prefix, run separately

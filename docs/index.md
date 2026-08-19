@@ -1,21 +1,93 @@
 # ALFIE AutoML Engine
 
-An AutoML engine written for the ALFIE project with the following features
+An AutoML engine written for the ALFIE project: three independent FastAPI
+services, sharing one core library, that train models on tabular and
+multimedia data and provide LLM/VLM-powered analysis tools.
 
-- AutoML for tabular
-- AutoML for vision (this is a WIP)
-- Website accessibility checker
-- Image to website tool
-- Part of a host of tools made for better and more informed generation of AI models
+| Service | Module | Prefix | What it does |
+| --- | --- | --- | --- |
+| Tabular AutoML | `app/tabular_automl` | `/automl_tabular` | Trains AutoGluon models on CSV/TSV/Parquet data: classification, regression, and time series forecasting. |
+| Vision AutoML | `app/vision_automl` | `/automl_vision` | Optuna hyperparameter search + Lightning Fabric training over Hugging Face models: image, video, audio, and text tasks, plus multimodal (image + tabular). |
+| AutoML+ | `app/automlplus` | `/automlplus` | LLM/VLM tools with no model training: web accessibility and readability analysis, alt-text checking, image prompts, and an image-to-website tool. |
 
-## Quickstart
+> **Note:** branch off from `develop`, not `main`.
 
-### Installation
+## ALFIE components
 
-- First, follow the steps here, [installation](installation.md)
-- Then, follow [this](autodw.md) to install AutoDW
+![ALFIE components](https://raw.githubusercontent.com/SubhadityaMukherjee/alfie_automl_engine/main/docs/images/flow.png)
 
-### Generate sample data (optional)
+## Architecture
+
+```mermaid
+flowchart TB
+    User(["Users / ALFIE web app"])
+
+    subgraph Engine["ALFIE AutoML Engine"]
+        subgraph Core["app/core - shared library"]
+            direction LR
+            COREUTILS["config · logging · typed errors · concurrency"]
+            DWHELP["AutoDW helpers"]
+            CHAT["ChatHandler (Azure AI)"]
+        end
+
+        subgraph Tabular["app/tabular_automl · /automl_tabular"]
+            TG["AutoGluon<br>classification · regression · time series"]
+        end
+
+        subgraph Vision["app/vision_automl · /automl_vision"]
+            direction TB
+            HPO["Optuna HPO"]
+            FABRIC["Lightning Fabric trainer"]
+            HFM["Hugging Face models<br>image · video · audio · text · multimodal"]
+            HPO --> FABRIC
+            FABRIC --> HFM
+        end
+
+        subgraph Plus["app/automlplus · /automlplus"]
+            direction LR
+            ACC["web accessibility + readability"]
+            VLMT["VLM tools<br>alt text · image prompts · image-to-website"]
+        end
+    end
+
+    AutoDW[("AutoDW<br>dataset and model store")]
+
+    User --> Tabular
+    User --> Vision
+    User --> Plus
+    Tabular --> Core
+    Vision --> Core
+    Plus --> Core
+    Tabular -- "fetch datasets / upload models" --> AutoDW
+    Vision -- "fetch datasets / upload models" --> AutoDW
+    Plus -- "LLM/VLM calls" --> CHAT
+```
+
+Every service follows the same layering — a thin `router.py` delegating to an
+`orchestrator.py` pipeline over `services.py` helpers — on top of the shared
+`app/core` library (config, logging, typed errors, AutoDW helpers, chat model
+access). For the full walkthrough of the services, the training pipeline, and
+the repository layout, see the
+[architecture documentation](https://subhadityamukherjee.github.io/alfie_automl_engine/architecture/).
+
+## Getting started
+
+### 1. Installation
+
+Follow the [installation guide](https://subhadityamukherjee.github.io/alfie_automl_engine/installation/),
+then install and run [AutoDW](https://subhadityamukherjee.github.io/alfie_automl_engine/autodw/)
+(not needed if you only want AutoML+).
+
+### 2. Configuration
+
+You can set environment variables via the `.env` file in the project root.
+
+- Copy the `.env.template` to `.env` and fill in whatever is missing
+- Change the ports if needed
+- Uploads are saved under `uploaded_data/`
+- AutoML artifacts (from training) are written alongside the uploaded session folder in `automl_data_path/`
+
+### 3. Generate sample data (optional)
 
 The repo includes `download_sample_data.py` which downloads small datasets under `sample_data/`:
 
@@ -36,29 +108,24 @@ It also uploads the datasets to a running AutoDW instance and creates a
 
 If `wget` is missing on macOS: `brew install wget`.
 
-### Configuration
+### 4. Run the services
 
-You can set environment variables via the `.env` file in the project root.
+Run the service(s) you need — tabular, vision, and/or AutoML+ — following
+[running the services](https://subhadityamukherjee.github.io/alfie_automl_engine/running_the_services/).
+Docker instructions are [here](https://subhadityamukherjee.github.io/alfie_automl_engine/docker_instructions/).
 
-- Copy the `.env.template` to `.env` and fill in whatever is missing
-- Change the ports if needed
-- Uploads are saved under `uploaded_data/`.
-- AutoML artifacts (from training) are written alongside the uploaded session folder in `automl_data_path/`.
+## After training
 
-### Running the AutoML
+Once training finishes, the service points you to a folder with the trained
+model, leaderboard, and metadata. To load models for inference, follow
+[loading the trained model](https://subhadityamukherjee.github.io/alfie_automl_engine/loading_model/).
 
-- Once you have everything setup, and the data uploaded to AutoDW, you can use the AUotML!
-  - Note that if you only want to use AutoMLPlus, you don't need to use AutoDW or have it running
-- Just follow [this](running_the_services.md) to run the service of your choosing
+## Testing
 
-## System components
+The test suite and how to run it are described in the
+[testing guide](https://subhadityamukherjee.github.io/alfie_automl_engine/testing/).
 
-![System components](images/flow.png)
+## Documentation
 
-For a walkthrough of the services, how they are layered, and the repository
-layout, see [architecture](architecture.md).
-
-### Loading the trained model for inference
-
-- Follow the instructions [here](loading_model.md)
-- Once the AutoML tool is done, it will point you to a folder with
+Full documentation (API reference, architecture, guides) is hosted at
+[subhadityamukherjee.github.io/alfie_automl_engine](https://subhadityamukherjee.github.io/alfie_automl_engine/).
