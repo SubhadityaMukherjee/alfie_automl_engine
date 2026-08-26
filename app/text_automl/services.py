@@ -13,7 +13,9 @@ from pathlib import Path
 import pandas as pd
 
 from app.core.concurrency import offload
-from app.core.dataset_extraction import extract_and_locate_dataset  # noqa: F401 – re-exported for orchestrator
+from app.core.dataset_extraction import (
+    extract_and_locate_dataset,  # noqa: F401 – re-exported for orchestrator
+)
 from app.core.exceptions import AutoMLSerializationError
 from app.core.service_helpers import (  # noqa: F401 – re-exported for orchestrator
     build_upload_payload as _core_build_upload_payload,

@@ -23,8 +23,7 @@ training for the vision, audio, text, and tabular endpoints.
 
 ::: app.ml_engine.model_search
 
-## Tabular engine (AutoGluon)
-
-::: app.ml_engine.tabular.models
-
-::: app.ml_engine.tabular.modules
+The tabular (AutoGluon) pieces live in the same modules:
+`AutoGluonTrainer` and the tabular defaults in `app.ml_engine.trainer`, and
+the tabular task models + `SUPPORTED_TABULAR_TASK_TYPES` in
+`app.ml_engine.model`.

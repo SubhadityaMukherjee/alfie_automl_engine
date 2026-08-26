@@ -7,7 +7,7 @@ provides LLM/VLM-powered analysis tools. Every service is mounted under one
 
 | Service | Module | Prefix | What it does |
 | --- | --- | --- | --- |
-| Tabular AutoML | `app/tabular_automl` | `/automl/tabular` | Trains AutoGluon models on CSV/TSV/Parquet data: classification, regression, and time series forecasting. |
+| Tabular AutoML | `app/tabular_automl` | `/automl/tabular` | Trains AutoGluon models on CSV/TSV/Parquet data: classification, regression, and time series forecasting, via the shared ML engine. |
 | Vision AutoML | `app/vision_automl` | `/automl/vision` | Image and video tasks (classification, segmentation, detection, keypoints) plus multimodal (image + tabular), trained via the shared ML engine. |
 | Audio AutoML | `app/audio_automl` | `/automl/audio` | Audio classification, trained via the shared ML engine. |
 | Text AutoML | `app/text_automl` | `/automl/text` | Text tasks (classification, question answering, causal/masked/seq2seq language modelling), trained via the shared ML engine. |
@@ -15,8 +15,8 @@ provides LLM/VLM-powered analysis tools. Every service is mounted under one
 
 The actual training code lives in one consolidated ML engine (`app/ml_engine`):
 a generic Optuna + Lightning Fabric engine over Hugging Face models for image,
-video, audio, text, and multimodal tasks, plus an AutoGluon-based tabular
-engine (`app/ml_engine/tabular`). The service modules above are endpoints
+video, audio, text, and multimodal tasks, plus the AutoGluon-based
+`AutoGluonTrainer` for tabular tasks. The service modules above are endpoints
 (routers + orchestration) that call into it.
 
 Full endpoint reference per service: [available endpoints](https://subhadityamukherjee.github.io/alfie_automl_engine/available_endpoints/).

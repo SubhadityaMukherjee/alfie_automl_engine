@@ -87,7 +87,7 @@ service router under one `/automl` prefix (e.g.
 
 | Service | Module | Prefix | What it does |
 | --- | --- | --- | --- |
-| Tabular AutoML | `app/tabular_automl` | `/automl/tabular` | Trains AutoGluon models on CSV/TSV/Parquet data (classification, regression, time series) via `app/ml_engine/tabular`. |
+| Tabular AutoML | `app/tabular_automl` | `/automl/tabular` | Trains AutoGluon models on CSV/TSV/Parquet data (classification, regression, time series) via `AutoGluonTrainer` in the ML engine. |
 | Vision AutoML | `app/vision_automl` | `/automl/vision` | Image and video tasks (classification, segmentation, detection, keypoints) plus multimodal (image + tabular) via the generic ML engine. |
 | Audio AutoML | `app/audio_automl` | `/automl/audio` | Audio classification via the generic ML engine. |
 | Text AutoML | `app/text_automl` | `/automl/text` | Text tasks (classification, question answering, causal/masked/seq2seq language modelling) via the generic ML engine. |
@@ -146,18 +146,17 @@ engines can evolve independently:
 - `dataset.py` — `BaseCSVDataset` and the Torch datasets reading samples from CSV.
 - `datamodule.py` — `BaseDataModule` plus per-task datamodules (splits,
   preprocessing, DataLoaders) and `DATAMODULE_REGISTRY`.
-- `model.py` — thin wrappers around Hugging Face `AutoModelFor...` classes.
+- `model.py` — thin wrappers around Hugging Face `AutoModelFor...` classes,
+  plus the tabular task models (`SUPPORTED_TABULAR_TASK_TYPES`).
 - `trainer.py` — `FabricTrainer` (Lightning Fabric training loop with early
-  stopping, time limits, and Optuna pruning) and `run_optuna_search`.
+  stopping, time limits, and Optuna pruning), `run_optuna_search`, and the
+  AutoGluon-backed `AutoGluonTrainer` for tabular tasks.
 - `hpo/optuna_objectives.py` — one Optuna objective per task type plus
   `OBJECTIVE_REGISTRY`; `run_optuna_search` dispatches through the registry.
 - `feature_mapping.py` — extracts label maps, tokenizer vocabularies, and
   fitted scaler/encoder state so preprocessing can be reproduced at inference.
 - `model_search.py` — Hugging Face model discovery and small/medium/large
   size-tier filtering.
-- `tabular/` — the AutoGluon tabular engine: `AutoMLTrainer`
-  (`modules.py`) and the tabular task models (`models.py`) used by
-  `app/tabular_automl`.
 
 The generic engine covers image, video, audio, text, and multimodal tasks;
 the vision, audio, and text endpoints simply scope which task types they
@@ -180,8 +179,7 @@ alfie_automl_engine/
 │   │   └── prompt_templates/  # Jinja2 prompt and instruction templates
 │   ├── ml_engine/             # consolidated ML engine (all training code)
 │   │   ├── configs/           # per-task hyperparameter JSON configs
-│   │   ├── hpo/               # Optuna objectives
-│   │   └── tabular/           # AutoGluon tabular engine (AutoMLTrainer, task models)
+│   │   └── hpo/               # Optuna objectives
 │   ├── tabular_automl/        # tabular AutoML endpoint (router, orchestrator, services)
 │   ├── vision_automl/         # vision AutoML endpoint (router, orchestrator, services)
 │   ├── audio_automl/          # audio AutoML endpoint (router, orchestrator, services)
@@ -192,7 +190,6 @@ alfie_automl_engine/
 ├── docs/                      # mkdocs site (this documentation)
 ├── tests/                     # pytest suite (mirrors the app/ layout)
 ├── sample_data/               # datasets fetched by download_sample_data.py
-├── plans/                     # planning notes
 ├── docker-compose.yml         # single API container
 ├── Dockerfile
 ├── mkdocs.yml

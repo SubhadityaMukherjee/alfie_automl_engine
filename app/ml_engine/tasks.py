@@ -1,8 +1,9 @@
 """Task configuration models and supported task-type slugs for the ML engine.
 
 The generic engine supports image, video, audio, and text tasks; the tabular
-engine (``app.ml_engine.tabular``) has its own task models. Endpoints import
-these slugs to validate their ``task_type`` form parameters.
+(AutoGluon) task models live in ``app.ml_engine.model`` alongside the HF
+model wrappers. Endpoints import these slugs to validate their ``task_type``
+form parameters.
 """
 
 from pathlib import Path
