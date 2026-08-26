@@ -1,23 +1,32 @@
-"""Shared schema primitives: base datasets/datamodules used by all services."""
+"""Shared schema primitives: API response models.
 
-from .datamodule import (
-    DEFAULT_BATCH_SIZE,
-    DEFAULT_IMAGE_CLASSIFIER_HF_ID,
-    DEFAULT_NUM_WORKERS,
-    DEFAULT_TEST_SPLIT,
-    DEFAULT_VAL_SPLIT,
-    BaseDataModule,
-    logger,
+The task/dataset/datamodule base classes previously living here moved into
+the consolidated ML engine (``app.ml_engine.tasks``, ``app.ml_engine.dataset``,
+``app.ml_engine.datamodule``).
+"""
+
+from .responses import (
+    AltTextCheckResponse,
+    AudioTrainingSuccessResponse,
+    ErrorResponse,
+    ImagePromptResponse,
+    InstructionsResponse,
+    MultimodalTrainingSuccessResponse,
+    TextTrainingSuccessResponse,
+    TrainingSuccessResponse,
+    VisionTrainingSuccessResponse,
+    WebAccessibilityResponse,
 )
-from .datasets import BaseCSVDataset
 
 __all__ = [
-    "BaseCSVDataset",
-    "BaseDataModule",
-    "DEFAULT_BATCH_SIZE",
-    "DEFAULT_NUM_WORKERS",
-    "DEFAULT_VAL_SPLIT",
-    "DEFAULT_TEST_SPLIT",
-    "DEFAULT_IMAGE_CLASSIFIER_HF_ID",
-    "logger",
+    "ErrorResponse",
+    "InstructionsResponse",
+    "AltTextCheckResponse",
+    "ImagePromptResponse",
+    "WebAccessibilityResponse",
+    "TrainingSuccessResponse",
+    "VisionTrainingSuccessResponse",
+    "MultimodalTrainingSuccessResponse",
+    "AudioTrainingSuccessResponse",
+    "TextTrainingSuccessResponse",
 ]

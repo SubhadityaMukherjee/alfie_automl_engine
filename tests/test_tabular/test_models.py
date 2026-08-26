@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.tabular_automl.models import (
+from app.ml_engine.tabular.models import (
     TabularSupervisedClassificationTask,
     TabularSupervisedRegressionTask,
     TabularSupervisedTimeSeriesTask,

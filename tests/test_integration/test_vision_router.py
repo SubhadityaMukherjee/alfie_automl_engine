@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.vision_automl.router import router
+from app.api import router
 
 app = FastAPI()
 app.include_router(router)
@@ -49,7 +49,7 @@ def _make_metadata(file_type="zip"):
     return_value="deploy instructions",
 )
 def test_deployment_instructions(mock_fn):
-    resp = client.post("/automl_vision/deployment_instructions/")
+    resp = client.post("/automl/vision/deployment_instructions/")
     assert resp.status_code == 200
     assert "instructions" in resp.json()
 
@@ -59,7 +59,7 @@ def test_deployment_instructions(mock_fn):
     return_value="data instructions",
 )
 def test_accepted_format(mock_fn):
-    resp = client.post("/automl_vision/accepted_format/")
+    resp = client.post("/automl/vision/accepted_format/")
     assert resp.status_code == 200
     assert "instructions" in resp.json()
 
@@ -72,14 +72,14 @@ def test_accepted_format(mock_fn):
 @patch("app.vision_automl.orchestrator.fetch_dataset_metadata")
 def test_best_model_metadata_error_returns_500(mock_fetch):
     mock_fetch.side_effect = RuntimeError("metadata crash")
-    resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 500
 
 
 @patch("app.vision_automl.orchestrator.fetch_dataset_metadata")
 def test_best_model_non_zip_returns_400(mock_fetch):
     mock_fetch.return_value = _make_metadata(file_type="csv")
-    resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 400
     assert "ZIP" in resp.json()["error"]
 
@@ -100,7 +100,7 @@ def test_best_model_non_zip_returns_400(mock_fetch):
 )
 def test_best_model_download_error(mock_fetch, mock_resolve, mock_download):
     mock_download.side_effect = RuntimeError("download failed")
-    resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 500
 
 
@@ -121,7 +121,7 @@ def test_best_model_extract_error(
 
     mock_download.return_value = Path("/tmp/dataset.zip")
     mock_extract.side_effect = RuntimeError("extraction failed")
-    resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 500
 
 
@@ -150,7 +150,7 @@ def test_best_model_validation_error(
     mock_extract.return_value = (Path("/tmp/labels.csv"), Path("/tmp/images"))
     mock_validate.return_value = "Missing 5 image file(s)"
 
-    resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 400
     assert "Missing" in resp.json()["error"]
 
@@ -175,7 +175,7 @@ def test_best_model_unsupported_task_type(
     mock_extract.return_value = (Path("/tmp/labels.csv"), Path("/tmp/images"))
 
     params = {**_VISION_PARAMS, "task_type": "unsupported_task"}
-    resp = client.post("/automl_vision/best_model/", data=params)
+    resp = client.post("/automl/vision/best_model/", data=params)
     assert resp.status_code == 400
     assert "Unsupported task_type" in resp.json()["error"]
 
@@ -208,7 +208,7 @@ def test_best_model_training_validation_error(
     mock_extract.return_value = (Path("/tmp/labels.csv"), Path("/tmp/images"))
     mock_train.side_effect = AutoMLValidationError("bad data")
 
-    resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 400
 
 
@@ -235,7 +235,7 @@ def test_best_model_training_runtime_error(
     mock_extract.return_value = (Path("/tmp/labels.csv"), Path("/tmp/images"))
     mock_train.side_effect = AutoMLRuntimeError("training crashed")
 
-    resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 500
 
 
@@ -292,7 +292,7 @@ def test_best_model_upload_failure(
     upload_resp.text = "Service unavailable"
     mock_upload.return_value = upload_resp
 
-    resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 503
     assert "upload" in resp.json()["error"].lower()
 
@@ -349,7 +349,7 @@ def test_best_model_success(
     upload_resp.status_code = 200
     mock_upload.return_value = upload_resp
 
-    resp = client.post("/automl_vision/best_model/", data=_VISION_PARAMS)
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 200
     assert "Vision AutoML training completed" in resp.json()["message"]
     assert resp.json()["leaderboard"] == "lb_str"
@@ -380,7 +380,7 @@ def test_multimodal_validation_error(
     mock_extract.return_value = (Path("/tmp/labels.csv"), Path("/tmp/images"))
     mock_validate.return_value = ("No auxiliary columns found", [])
 
-    resp = client.post("/automl_vision/multimodal_best_model/", data=_MULTIMODAL_PARAMS)
+    resp = client.post("/automl/vision/multimodal_best_model/", data=_MULTIMODAL_PARAMS)
     assert resp.status_code == 400
     assert "auxiliary" in resp.json()["error"].lower()
 
@@ -400,7 +400,7 @@ def test_multimodal_non_zip_returns_400(
     mock_fetch, mock_resolve, mock_download, mock_extract, mock_validate
 ):
     mock_fetch.return_value = _make_metadata(file_type="csv")
-    resp = client.post("/automl_vision/multimodal_best_model/", data=_MULTIMODAL_PARAMS)
+    resp = client.post("/automl/vision/multimodal_best_model/", data=_MULTIMODAL_PARAMS)
     assert resp.status_code == 400
     assert "ZIP" in resp.json()["error"]
 
@@ -462,7 +462,7 @@ def test_multimodal_success(
     upload_resp.status_code = 200
     mock_upload.return_value = upload_resp
 
-    resp = client.post("/automl_vision/multimodal_best_model/", data=_MULTIMODAL_PARAMS)
+    resp = client.post("/automl/vision/multimodal_best_model/", data=_MULTIMODAL_PARAMS)
     assert resp.status_code == 200
     assert "Multimodal" in resp.json()["message"]
     assert resp.json()["auxiliary_columns"] == ["feature1", "feature2"]

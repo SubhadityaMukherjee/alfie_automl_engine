@@ -7,6 +7,7 @@ import structlog
 from structlog.stdlib import ProcessorFormatter
 
 from app.core.config import get_settings
+from app.core.process_log import ProcessLogHandler
 
 _TEN_MB = 10 * 1024 * 1024
 
@@ -65,6 +66,9 @@ def configure_structlog() -> None:
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
     root.addHandler(handler)
+
+    # Capture app.* log records into the per-request process log payload.
+    root.addHandler(ProcessLogHandler())
 
 
 def configure_service_logging(service_name: str) -> None:

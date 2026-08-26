@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.automlplus.router import router
+from app.api import router
 
 app = FastAPI()
 app.include_router(router)
@@ -23,7 +23,7 @@ client = TestClient(app)
     "app.automlplus.router.automl_plus_data_instructions", return_value="instructions"
 )
 def test_accepted_format(mock_instructions):
-    resp = client.post("/automlplus/accepted_format/")
+    resp = client.post("/automl/automl_plus/accepted_format/")
     assert resp.status_code == 200
     assert "instructions" in resp.json()
 
@@ -34,7 +34,7 @@ def test_accepted_format(mock_instructions):
 
 
 def test_image_to_website_not_implemented():
-    resp = client.post("/automlplus/image_tools/image_to_website/")
+    resp = client.post("/automl/automl_plus/image_tools/image_to_website/")
     assert resp.status_code == 501
 
 
@@ -47,7 +47,7 @@ def test_image_to_website_not_implemented():
 def test_check_alt_text_success(mock_checker_cls):
     mock_checker_cls.check.return_value = "Good alt text"
     resp = client.post(
-        "/automlplus/web_access/check-alt-text/",
+        "/automl/automl_plus/web_access/check-alt-text/",
         data={"image_url": "http://img.png", "alt_text": "desc"},
     )
     assert resp.status_code == 200
@@ -60,7 +60,7 @@ def test_check_alt_text_success(mock_checker_cls):
 def test_check_alt_text_error(mock_checker_cls):
     mock_checker_cls.check.side_effect = RuntimeError("VLM error")
     resp = client.post(
-        "/automlplus/web_access/check-alt-text/",
+        "/automl/automl_plus/web_access/check-alt-text/",
         data={"image_url": "http://img.png", "alt_text": "desc"},
     )
     assert resp.status_code == 500
@@ -74,7 +74,7 @@ def test_check_alt_text_error(mock_checker_cls):
 
 def test_run_on_image_missing_image():
     resp = client.post(
-        "/automlplus/image_tools/run_on_image/",
+        "/automl/automl_plus/image_tools/run_on_image/",
         data={"prompt": "describe"},
     )
     assert resp.status_code == 400
@@ -84,7 +84,7 @@ def test_run_on_image_missing_image():
 def test_run_on_image_success(mock_runner):
     mock_runner.run.return_value = "A cat"
     resp = client.post(
-        "/automlplus/image_tools/run_on_image/",
+        "/automl/automl_plus/image_tools/run_on_image/",
         data={"prompt": "describe"},
         files={"image_file": ("test.png", b"fake-image", "image/png")},
     )
@@ -96,7 +96,7 @@ def test_run_on_image_success(mock_runner):
 def test_run_on_image_error(mock_runner):
     mock_runner.run.side_effect = RuntimeError("fail")
     resp = client.post(
-        "/automlplus/image_tools/run_on_image/",
+        "/automl/automl_plus/image_tools/run_on_image/",
         data={"prompt": "describe"},
         files={"image_file": ("test.png", b"fake-image", "image/png")},
     )
@@ -110,7 +110,7 @@ def test_run_on_image_error(mock_runner):
 
 def test_run_on_image_stream_missing_image():
     resp = client.post(
-        "/automlplus/image_tools/run_on_image_stream/",
+        "/automl/automl_plus/image_tools/run_on_image_stream/",
         data={"prompt": "describe"},
     )
     assert resp.status_code == 400
@@ -120,7 +120,7 @@ def test_run_on_image_stream_missing_image():
 def test_run_on_image_stream_success(mock_runner):
     mock_runner.run_stream.return_value = iter(["chunk1", "chunk2"])
     resp = client.post(
-        "/automlplus/image_tools/run_on_image_stream/",
+        "/automl/automl_plus/image_tools/run_on_image_stream/",
         data={"prompt": "describe"},
         files={"image_file": ("test.png", b"fake-image", "image/png")},
     )
@@ -137,7 +137,7 @@ def test_run_on_image_stream_success(mock_runner):
 def test_run_on_image_with_url(mock_runner):
     mock_runner.run.return_value = "A dog"
     resp = client.post(
-        "/automlplus/image_tools/run_on_image/",
+        "/automl/automl_plus/image_tools/run_on_image/",
         data={"prompt": "describe", "image_url": "http://example.com/dog.png"},
     )
     assert resp.status_code == 200
@@ -169,7 +169,7 @@ def test_analyze_success(mock_extract, mock_analyzer, mock_pipeline):
 
     html_file = io.BytesIO(b"<html><body>Hello</body></html>")
     resp = client.post(
-        "/automlplus/web_access/analyze/",
+        "/automl/automl_plus/web_access/analyze/",
         files={"file": ("test.html", html_file, "text/html")},
     )
     assert resp.status_code == 200
@@ -181,7 +181,7 @@ def test_analyze_success(mock_extract, mock_analyzer, mock_pipeline):
 def test_analyze_missing_content():
     empty_file = io.BytesIO(b"")
     resp = client.post(
-        "/automlplus/web_access/analyze/",
+        "/automl/automl_plus/web_access/analyze/",
         files={"file": ("empty.html", empty_file, "text/html")},
     )
     assert resp.status_code == 400
@@ -197,7 +197,7 @@ def test_analyze_url_fetch_success(mock_get):
     # Provide empty file + URL so it fetches from URL
     html_file = io.BytesIO(b"")
     resp = client.post(
-        "/automlplus/web_access/analyze/",
+        "/automl/automl_plus/web_access/analyze/",
         files={"file": ("empty.html", html_file, "text/html")},
         data={"url": "http://example.com/page.html"},
     )
@@ -214,7 +214,7 @@ def test_analyze_url_fetch_error(mock_get):
     mock_get.side_effect = Exception("network error")
     html_file = io.BytesIO(b"")
     resp = client.post(
-        "/automlplus/web_access/analyze/",
+        "/automl/automl_plus/web_access/analyze/",
         files={"file": ("empty.html", html_file, "text/html")},
         data={"url": "http://example.com/bad.html"},
     )
@@ -244,7 +244,7 @@ def test_analyze_with_extra_context_file(mock_extract, mock_analyzer, mock_pipel
     context_file = io.BytesIO(b"Follow these guidelines: ...")
 
     resp = client.post(
-        "/automlplus/web_access/analyze/",
+        "/automl/automl_plus/web_access/analyze/",
         files={
             "file": ("test.html", html_file, "text/html"),
             "extra_file_input": ("guidelines.txt", context_file, "text/plain"),
@@ -278,7 +278,7 @@ def test_analyze_readability_error_returns_error_in_payload(
 
     html_file = io.BytesIO(b"<html><body>Test</body></html>")
     resp = client.post(
-        "/automlplus/web_access/analyze/",
+        "/automl/automl_plus/web_access/analyze/",
         files={"file": ("test.html", html_file, "text/html")},
     )
     assert resp.status_code == 200
@@ -306,7 +306,7 @@ def test_analyze_empty_text_skips_readability(
 
     html_file = io.BytesIO(b"<html><body>Test</body></html>")
     resp = client.post(
-        "/automlplus/web_access/analyze/",
+        "/automl/automl_plus/web_access/analyze/",
         files={"file": ("test.html", html_file, "text/html")},
     )
     assert resp.status_code == 200
@@ -344,7 +344,7 @@ def test_analyze_multiple_chunks_average_score(
 
     html_file = io.BytesIO(b"<html><body>Test</body></html>")
     resp = client.post(
-        "/automlplus/web_access/analyze/",
+        "/automl/automl_plus/web_access/analyze/",
         files={"file": ("test.html", html_file, "text/html")},
     )
     assert resp.status_code == 200

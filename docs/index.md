@@ -1,14 +1,25 @@
 # ALFIE AutoML Engine
 
-An AutoML engine written for the ALFIE project: three independent FastAPI
-services, sharing one core library, that train models on tabular and
-multimedia data and provide LLM/VLM-powered analysis tools.
+An AutoML engine written for the ALFIE project: a single FastAPI service
+with a unified router that trains models on tabular and multimedia data and
+provides LLM/VLM-powered analysis tools. Every service is mounted under one
+`/automl` prefix (e.g. `POST /automl/automl_plus/accepted_format/`).
 
 | Service | Module | Prefix | What it does |
 | --- | --- | --- | --- |
-| Tabular AutoML | `app/tabular_automl` | `/automl_tabular` | Trains AutoGluon models on CSV/TSV/Parquet data: classification, regression, and time series forecasting. |
-| Vision AutoML | `app/vision_automl` | `/automl_vision` | Optuna hyperparameter search + Lightning Fabric training over Hugging Face models: image, video, audio, and text tasks, plus multimodal (image + tabular). |
-| AutoML+ | `app/automlplus` | `/automlplus` | LLM/VLM tools with no model training: web accessibility and readability analysis, alt-text checking, image prompts, and an image-to-website tool. |
+| Tabular AutoML | `app/tabular_automl` | `/automl/tabular` | Trains AutoGluon models on CSV/TSV/Parquet data: classification, regression, and time series forecasting. |
+| Vision AutoML | `app/vision_automl` | `/automl/vision` | Image and video tasks (classification, segmentation, detection, keypoints) plus multimodal (image + tabular), trained via the shared ML engine. |
+| Audio AutoML | `app/audio_automl` | `/automl/audio` | Audio classification, trained via the shared ML engine. |
+| Text AutoML | `app/text_automl` | `/automl/text` | Text tasks (classification, question answering, causal/masked/seq2seq language modelling), trained via the shared ML engine. |
+| AutoML+ | `app/automlplus` | `/automl/automl_plus` | LLM/VLM tools with no model training: web accessibility and readability analysis, alt-text checking, image prompts, and an image-to-website tool. |
+
+The actual training code lives in one consolidated ML engine (`app/ml_engine`):
+a generic Optuna + Lightning Fabric engine over Hugging Face models for image,
+video, audio, text, and multimodal tasks, plus an AutoGluon-based tabular
+engine (`app/ml_engine/tabular`). The service modules above are endpoints
+(routers + orchestration) that call into it.
+
+Full endpoint reference per service: [available endpoints](https://subhadityamukherjee.github.io/alfie_automl_engine/available_endpoints/).
 
 > **Note:** branch off from `develop`, not `main`.
 
@@ -30,20 +41,33 @@ flowchart TB
             CHAT["ChatHandler (Azure AI)"]
         end
 
-        subgraph Tabular["app/tabular_automl · /automl_tabular"]
-            TG["AutoGluon<br>classification · regression · time series"]
-        end
-
-        subgraph Vision["app/vision_automl · /automl_vision"]
+        subgraph MLE["app/ml_engine - consolidated ML engine"]
             direction TB
             HPO["Optuna HPO"]
             FABRIC["Lightning Fabric trainer"]
             HFM["Hugging Face models<br>image · video · audio · text · multimodal"]
+            TABENG["AutoGluon tabular engine<br>classification · regression · time series"]
             HPO --> FABRIC
             FABRIC --> HFM
         end
 
-        subgraph Plus["app/automlplus · /automlplus"]
+        subgraph Tabular["app/tabular_automl · /automl/tabular"]
+            TBR["tabular endpoint"]
+        end
+
+        subgraph Vision["app/vision_automl · /automl/vision"]
+            VIR["vision endpoint"]
+        end
+
+        subgraph Audio["app/audio_automl · /automl/audio"]
+            AUR["audio endpoint"]
+        end
+
+        subgraph Text["app/text_automl · /automl/text"]
+            TER["text endpoint"]
+        end
+
+        subgraph Plus["app/automlplus · /automl/automl_plus"]
             direction LR
             ACC["web accessibility + readability"]
             VLMT["VLM tools<br>alt text · image prompts · image-to-website"]
@@ -54,19 +78,31 @@ flowchart TB
 
     User --> Tabular
     User --> Vision
+    User --> Audio
+    User --> Text
     User --> Plus
+    Tabular --> MLE
+    Vision --> MLE
+    Audio --> MLE
+    Text --> MLE
     Tabular --> Core
     Vision --> Core
+    Audio --> Core
+    Text --> Core
     Plus --> Core
+    MLE --> Core
     Tabular -- "fetch datasets / upload models" --> AutoDW
     Vision -- "fetch datasets / upload models" --> AutoDW
+    Audio -- "fetch datasets / upload models" --> AutoDW
+    Text -- "fetch datasets / upload models" --> AutoDW
     Plus -- "LLM/VLM calls" --> CHAT
 ```
 
 Every service follows the same layering — a thin `router.py` delegating to an
 `orchestrator.py` pipeline over `services.py` helpers — on top of the shared
 `app/core` library (config, logging, typed errors, AutoDW helpers, chat model
-access). For the full walkthrough of the services, the training pipeline, and
+access). All model training is delegated to the consolidated `app/ml_engine`
+package. For the full walkthrough of the services, the training pipeline, and
 the repository layout, see the
 [architecture documentation](https://subhadityamukherjee.github.io/alfie_automl_engine/architecture/).
 
@@ -108,9 +144,10 @@ It also uploads the datasets to a running AutoDW instance and creates a
 
 If `wget` is missing on macOS: `brew install wget`.
 
-### 4. Run the services
+### 4. Run the service
 
-Run the service(s) you need — tabular, vision, and/or AutoML+ — following
+Run the combined engine service (tabular + vision + audio + text + AutoML+
+behind one unified router) — following
 [running the services](https://subhadityamukherjee.github.io/alfie_automl_engine/running_the_services/).
 Docker instructions are [here](https://subhadityamukherjee.github.io/alfie_automl_engine/docker_instructions/).
 

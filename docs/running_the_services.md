@@ -30,21 +30,20 @@ Replace `8000` with the relevant service port.
 
 ## Services Overview (This might change based on the .env file)
 
-To run this locally, run each service you want to test in its own shell using (replace from table):
+To run this locally, start the combined engine service (all services are
+mounted under one unified router):
 
 ```bash
-uv run uvicorn app.x.main:app --reload --host 0.0.0.0 --port 800x
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
 
-| Service     | Port | Uvicorn Target                | Description                             |
-| ----------- | ---- | ----------------------------- | --------------------------------------- |
-| webfromfile | 8003 | `app.automlplus.main:app`     | Website accessibility (HTML file input) |
-| webfromurl  | 8003 | `app.automlplus.main:app`     | Website accessibility (URL input)       |
-| im2web      | 8003 | `app.automlplus.main:app`     | Image-to-Website tool                   |
-| tabular     | 8001 | `app.tabular_automl.main:app` | AutoML for tabular datasets             |
-| vision      | 8002 | `app.vision_automl.main:app`  | AutoML for vision datasets              |
-| AutoDW      | 8000 | `autodw service`  | AutoDW|
+| Service       | Port | Uvicorn Target  | Description                                        |
+| ------------- | ---- | --------------- | -------------------------------------------------- |
+| automl_engine | 8001 | `app.main:app`  | Unified service: `/automl/tabular`, `/automl/vision`, `/automl/automl_plus` |
+| AutoDW        | 8000 | `autodw service` | AutoDW                                             |
+
+The port comes from `AUTOML_ENGINE_PORT` in your `.env` (default `8001`).
 
 ---
 
@@ -59,7 +58,7 @@ Bits and bobs that are not really "AutoML" but use AI models for a specific use 
 - Only options here are to enter the html file
 
 ```bash
-curl -sN -X POST http://localhost:8000/automlplus/web_access/analyze/ \
+curl -sN -X POST http://localhost:8001/automl/automl_plus/web_access/analyze/ \
   -H "Content-Type: multipart/form-data" \
   -F "file=@./sample_data/test.html"
 ```
@@ -71,7 +70,7 @@ curl -sN -X POST http://localhost:8000/automlplus/web_access/analyze/ \
 - Only options here are to enter the url
 
 ```bash
-curl -s -X POST http://localhost:8000/automlplus/web_access/analyze/ \
+curl -s -X POST http://localhost:8001/automl/automl_plus/web_access/analyze/ \
   -H "Content-Type: multipart/form-data" \
   -F "url=https://alfie-project.eu"
   # Optionally add: -F "extra_file_input=@./sample_data/wcag_guidelines.txt"
@@ -84,7 +83,7 @@ curl -s -X POST http://localhost:8000/automlplus/web_access/analyze/ \
 - Options are the prompt and the image file
 
 ```bash
-curl -sN -X POST http://localhost:8000/automlplus/image_tools/run_on_image_stream/ \
+curl -sN -X POST http://localhost:8001/automl/automl_plus/image_tools/run_on_image_stream/ \
   -H "Content-Type: multipart/form-data" \
   -F "prompt=Recreate this image into a website with HTML/CSS/JS and explain how to run it." \
   -F "image_file=@./sample_data/websample.png"
@@ -108,11 +107,11 @@ Requires:
 Supported dataset formats: CSV, TSV, Parquet
 
 #### Trigger AutoML Training + Best Model Search
-The entire process is handled by a single endpoint: `POST /automl_tabular/best_model/`
+The entire process is handled by a single endpoint: `POST /automl/tabular/best_model/`
 
 Example cURL Command
 ```bash
-curl -s -X POST "http://localhost:8001/automl_tabular/best_model/" \
+curl -s -X POST "http://localhost:8001/automl/tabular/best_model/" \
   -H "Content-Type: multipart/form-data" \
   -F "user_id=101" \
   -F "dataset_id=55" \
@@ -168,105 +167,142 @@ curl -s -X POST "http://localhost:8001/automl_tabular/best_model/" \
 
 ## AutoML Vision
 
-The AutoML Vision pipeline supports **end-to-end image classification training** using a CSV file for labels and a ZIP archive containing images. The system automatically handles **train/validation/test splitting**, model selection, training, and best-model selection within a given time budget.
-****
+The AutoML Vision pipeline supports **end-to-end vision training** on datasets
+fetched from AutoDW. The system automatically handles dataset download,
+**train/validation/test splitting**, model search, training, and best-model
+selection within a given time budget.
+
 ### Key Features
 
-* Fully functional AutoML pipeline for **vision classification**
+* Fully functional AutoML pipeline for **vision tasks** (image classification
+  and more — see the `task_type` form field in the OpenAPI docs at `/docs`)
 * Automatic train / validation / test split
-* Session-based workflow (input collection → training)
+* Single-endpoint workflow (no sessions): `POST /automl/vision/best_model/`
+* Multimodal (image + tabular) training: `POST /automl/vision/multimodal_best_model/`
 * Configurable time budget and model size
-* Designed to integrate with AutoDW once full dataset APIs are available
+* Trained models and leaderboards are uploaded back to AutoDW
 
-## Input Requirements
+### Input Requirements
 
-### 1. Images ZIP (`images_zip`)
+The dataset is fetched from AutoDW (as a ZIP archive with a labels CSV inside).
 
-Images must be provided in a ZIP archive with the following structure:
-
-```
-images.zip
-└── main_folder/
-    ├── category1/
-    │   ├── image1.png
-    │   ├── image2.jpg
-    ├── category2/
-    │   ├── image3.jpeg
-    |-- metadata.csv
-```
-
-* Folder names may correspond to labels, but **labels are ultimately taken from the CSV**
-* This format is currently required and may later be replaced by a standardized format (e.g. Croissant)
-
-### 2. CSV File (`csv_file`)
-
-The CSV must contain **exactly two required columns**:
+The labels CSV must contain **exactly two required columns**:
 
 | filename   | label |
 | ---------- | ----- |
 | image1.png | cat   |
 | image2.png | dog   |
 
-* `filename`: image filename only (no paths)
-* `label`: class label
-* Filenames must match the image files in the ZIP
+* `filename`: image filename (column name configurable via `filename_column`)
+* `label`: class label (column name configurable via `label_column`)
 
----
+### Additional Parameters
 
-### 3. Additional Parameters
-
-| Parameter         | Description                         |
-| ----------------- | ----------------------------------- |
-| `filename_column` | Name of the filename column in CSV  |
-| `label_column`    | Name of the label column in CSV     |
-| `task_type`       | Currently supports `classification` |
-| `time_budget`     | Training time budget (seconds)      |
-| `model_size`      | One of `small`, `medium`, `large`   |
+| Parameter         | Description                          |
+| ----------------- | ------------------------------------ |
+| `user_id`         | AutoDW user identifier               |
+| `dataset_id`      | AutoDW dataset identifier            |
+| `dataset_version` | Optional dataset version (default `v1`) |
+| `task_type`       | Vision task type (default `image_classification`) |
+| `time_budget`     | Training time budget (seconds)       |
+| `model_size`      | One of `small`, `medium`, `large`    |
 
 #### Model Size Mapping
 
-* `small`: ≤ 50M parameters
-* `medium`: ≤ 200M parameters
+* `small`: <= 50M parameters
+* `medium`: <= 200M parameters
 * `large`: > 200M parameters
 
 ---
 
 ## API Workflow
 
-The AutoML Vision pipeline uses a **two-step session-based workflow**.
+The AutoML Vision pipeline uses a **single-endpoint workflow**: one request
+fetches the dataset from AutoDW, trains, and uploads the best model.
 
-## Step 1: Start a Vision AutoML Session
-
-Uploads data, validates inputs, and initializes a training session.
+### Trigger Vision AutoML Training
 
 ```bash
-curl -s -X POST http://localhost:8002/automl_vision/get_user_input/ \
+curl -s -X POST http://localhost:8001/automl/vision/best_model/ \
   -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=2" \
   -F "filename_column=filename" \
   -F "label_column=label" \
-  -F "task_type=classification" \
+  -F "task_type=image_classification" \
   -F "time_budget=10" \
-  -F "model_size=small"
+  -F "model_size=medium"
 ```
 
-## Step 2: Train and Find the Best Model
+### Trigger Multimodal (Image + Tabular) Training
 
-Triggers training using the previously created session.
+Same shape, plus `exclude_columns` to drop tabular columns from training:
 
 ```bash
-curl -s -X POST http://localhost:8002/automl_vision/find_best_model/ \
-  -H "Content-Type: application/json" \
-  -d '{"session_id": "REPLACE_WITH_SESSION_ID"}'
+curl -s -X POST http://localhost:8001/automl/vision/multimodal_best_model/ \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=5" \
+  -F "filename_column=image_file_path" \
+  -F "label_column=label" \
+  -F "time_budget=60" \
+  -F "model_size=medium"
 ```
 
 ### What Happens Internally
 
+* Dataset metadata is fetched from AutoDW and the dataset ZIP is downloaded and extracted
 * Dataset is split into train / validation / test
 * Candidate vision models are trained within the time budget
 * Best-performing model is selected automatically
 * Metrics and training artifacts are produced
-* Best model will be uploaded to AutoDW
+* Best model and leaderboard are uploaded to AutoDW
+
+### Error Handling
+
+* 400 – Validation errors (missing columns, bad task type, bad model size)
+* 502 – AutoDW communication failures (metadata or download)
+* 500 – Unexpected failures (training crash, serialization issues)
+
+## AutoML Audio and Text
+
+The audio and text services reuse the same pipeline shape as vision (fetch →
+download → extract → validate → train → upload) with the same Optuna +
+Lightning Fabric training behind them, scoped to their own task types:
+
+* `POST /automl/audio/best_model/` — `task_type=audio_classification`
+* `POST /automl/text/best_model/` — `task_type` one of `text_classification`,
+  `question_answering`, `causal_lm`, `seq2seq_lm`, `masked_lm`
+
+```bash
+curl -s -X POST http://localhost:8001/automl/audio/best_model/ \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=7" \
+  -F "filename_column=filename" \
+  -F "label_column=label" \
+  -F "task_type=audio_classification" \
+  -F "time_budget=60" \
+  -F "model_size=small"
+```
+
+```bash
+curl -s -X POST http://localhost:8001/automl/text/best_model/ \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=8" \
+  -F "text_column=text" \
+  -F "label_column=label" \
+  -F "task_type=text_classification" \
+  -F "time_budget=60" \
+  -F "model_size=small"
+```
+
+Both services also expose `deployment_instructions/` and `accepted_format/`
+endpoints describing their dataset formats. Audio and text task types are no
+longer accepted on the vision endpoint.
 
 ## Notes & Current Limitations
 
-* Image ZIP structure is currently strict
+* The image ZIP structure is currently strict (see the accepted-format
+  instructions via `POST /automl/vision/accepted_format/`)
