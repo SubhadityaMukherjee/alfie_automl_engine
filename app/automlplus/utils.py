@@ -1,3 +1,5 @@
+"""Shared helpers for the AutoML+ service (image conversion, HTML, JSON)."""
+
 import base64
 import logging
 import os
@@ -14,16 +16,17 @@ from app.core.exceptions import (
     AutoMLImageError,
     AutoMLValidationError,
 )
+from app.core.config import get_settings
 from app.core.utils import render_template
 
 logger = logging.getLogger(__name__)
-_jinja_path = os.getenv("JINJAPATH", "app/core/prompt_templates")
+_jinja_path = get_settings().jinja_path
 
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
 
 
 def automl_plus_data_instructions() -> str:
-    """Return the instructions from what kind of data is accepted by the tabular AutoML engine"""
+    """Return the instructions for what kind of data is accepted by AutoML+."""
     if jinja_environment is not None:
         try:
             return render_template(jinja_environment, "automl_plus_accepted_format.md")
@@ -40,6 +43,12 @@ class ImageConverter:
 
     @staticmethod
     def to_base64(image_path_or_url: str) -> str:
+        """Load an image from a local path or URL and return it as base64 PNG.
+
+        Fetches over HTTP when the input looks like a URL (checking the
+        content type really is an image), otherwise reads from disk. Either
+        way the image is re-encoded as PNG before base64 encoding.
+        """
         logger.info("Converting image to base64: %s", image_path_or_url)
         if not image_path_or_url or not isinstance(image_path_or_url, str):
             raise AutoMLValidationError(
@@ -56,7 +65,7 @@ class ImageConverter:
                     raise AutoMLValidationError(
                         f"URL does not point to an image: {image_path_or_url} (Content-Type: {content_type})"
                     )
-                image = Image.open(BytesIO(resp.content))
+                image: Image.Image = Image.open(BytesIO(resp.content))
             else:
                 if not os.path.isfile(image_path_or_url):
                     raise AutoMLValidationError(f"No such file: {image_path_or_url}")

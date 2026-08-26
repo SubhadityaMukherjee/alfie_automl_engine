@@ -1,9 +1,13 @@
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+from typing import Any
 
 import structlog
 from structlog.stdlib import ProcessorFormatter
+
+from app.core.config import get_settings
+from app.core.process_log import ProcessLogHandler
 
 _TEN_MB = 10 * 1024 * 1024
 
@@ -22,7 +26,7 @@ def configure_structlog() -> None:
 
     Must be called once at startup (idempotent).
     """
-    shared_processors = [
+    shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -63,6 +67,9 @@ def configure_structlog() -> None:
     handler.setFormatter(formatter)
     root.addHandler(handler)
 
+    # Capture app.* log records into the per-request process log payload.
+    root.addHandler(ProcessLogHandler())
+
 
 def configure_service_logging(service_name: str) -> None:
     """Set up a RotatingFileHandler for the given service name.
@@ -78,8 +85,8 @@ def configure_service_logging(service_name: str) -> None:
     # Ensure structlog is configured
     configure_structlog()
 
-    log_dir = os.getenv("ALFIE_LOG_DIR", os.path.join(os.getcwd(), "logs"))
-    log_level_name = os.getenv("ALFIE_LOG_LEVEL", "INFO").upper()
+    log_dir = get_settings().alfie_log_dir
+    log_level_name = get_settings().alfie_log_level.upper()
     log_level = getattr(logging, log_level_name, logging.INFO)
 
     os.makedirs(log_dir, exist_ok=True)
@@ -97,7 +104,7 @@ def configure_service_logging(service_name: str) -> None:
     if log_file in existing_files:
         return
 
-    shared_processors = [
+    shared_processors: list[Any] = [
         structlog.contextvars.merge_contextvars,
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
@@ -132,7 +139,7 @@ def configure_service_logging(service_name: str) -> None:
 
 def _is_dev_mode() -> bool:
     """Check if running in development mode (non-JSON console output)."""
-    return os.getenv("ALFIE_LOG_FORMAT", "json").lower() == "console"
+    return get_settings().alfie_log_format.lower() == "console"
 
 
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:

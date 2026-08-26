@@ -35,7 +35,18 @@ class AutoDWDownloadError(AutoMLRuntimeError):
 
 
 class AutoDWUploadError(AutoMLRuntimeError):
-    """Raised when uploading a model or artifact fails."""
+    """Raised when uploading a model or artifact fails.
+
+    ``status_code`` carries the HTTP status a router should report for the
+    failure. It defaults to ``502`` (AutoDW communication failure); when the
+    upload completed but AutoDW itself returned an error response, the
+    orchestrator sets it to the upstream status so that status propagates to
+    the caller.
+    """
+
+    def __init__(self, message: str = "", *, status_code: int = 502) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class AutoMLSerializationError(AutoMLRuntimeError):

@@ -13,12 +13,12 @@ When an AutoML trigger event is received, the consumer:
 - The AutoML service trains and uploads the model to the Data Warehouse (triggers automl-events)
 
 Usage:
-  # Default (localhost; Tabular 8001, Vision 8002)
+  # Default (localhost; unified engine on 8001)
   KAFKA_BOOTSTRAP_SERVERS=localhost:9092 python kafka_automl_consumer_example_v3.py
 
   # Override endpoints
-  API_BASE=http://localhost:8000 TABULAR_AUTOML_HOST=localhost TABULAR_AUTOML_PORT=8001 \\
-  VISION_AUTOML_HOST=localhost VISION_AUTOML_PORT=8002 python kafka_automl_consumer_example_v3.py
+  API_BASE=http://localhost:8000 AUTOML_ENGINE_HOST=localhost AUTOML_ENGINE_PORT=8001 \\
+  python kafka_automl_consumer_example_v3.py
 
   Note: Runs OUTSIDE Docker; connect to Docker services via localhost.
 """
@@ -27,7 +27,6 @@ import os
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
 from aiokafka import AIOKafkaConsumer
 import requests
 import pandas as pd
@@ -57,27 +56,22 @@ if os.getenv("API_BASE"):
 else:
     API_BASE = f"http://{DW_HOST}:{DW_PORT}"
 
-# AutoML Tabular configuration
+# AutoML engine configuration (unified router: /automl/tabular, /automl/vision, /automl/automl_plus)
 # Default to localhost (for running outside Docker)
-# Can be overridden with TABULAR_AUTOML_HOST environment variable
-TABULAR_AUTOML_HOST = os.getenv("TABULAR_AUTOML_HOST", "localhost")
-TABULAR_AUTOML_PORT = os.getenv("TABULAR_AUTOML_PORT", "8001")
-TABULAR_AUTOML_URL = f"http://{TABULAR_AUTOML_HOST}:{TABULAR_AUTOML_PORT}"
-AUTOML_TABULAR_BEST_MODEL_URL = f"{TABULAR_AUTOML_URL}/automl_tabular/best_model"
-
-# AutoML Vision configuration
-VISION_AUTOML_HOST = os.getenv("VISION_AUTOML_HOST", "localhost")
-VISION_AUTOML_PORT = os.getenv("VISION_AUTOML_PORT", "8002")
-VISION_AUTOML_URL = f"http://{VISION_AUTOML_HOST}:{VISION_AUTOML_PORT}"
-AUTOML_VISION_BEST_MODEL_URL = f"{VISION_AUTOML_URL}/automl_vision/best_model/"
+# Can be overridden with AUTOML_ENGINE_HOST / AUTOML_ENGINE_PORT environment variables
+AUTOML_ENGINE_HOST = os.getenv("AUTOML_ENGINE_HOST", "localhost")
+AUTOML_ENGINE_PORT = os.getenv("AUTOML_ENGINE_PORT", "8001")
+AUTOML_ENGINE_URL = f"http://{AUTOML_ENGINE_HOST}:{AUTOML_ENGINE_PORT}"
+AUTOML_TABULAR_BEST_MODEL_URL = f"{AUTOML_ENGINE_URL}/automl/tabular/best_model/"
+AUTOML_VISION_BEST_MODEL_URL = f"{AUTOML_ENGINE_URL}/automl/vision/best_model/"
 
 # Log configuration at module load
-logger.info(f"Configuration:")
+logger.info("Configuration:")
 logger.info(f"  Data Warehouse API: {API_BASE} (host: {DW_HOST}, port: {DW_PORT})")
 logger.info(f"  AutoML Tabular: {AUTOML_TABULAR_BEST_MODEL_URL}")
 logger.info(f"  AutoML Vision: {AUTOML_VISION_BEST_MODEL_URL}")
 logger.info(
-    f"  Note: Running outside Docker - using localhost to connect to Docker services"
+    "  Note: Running outside Docker - using localhost to connect to Docker services"
 )
 
 
@@ -102,7 +96,6 @@ def read_csv_with_encoding(file_data: bytes) -> pd.DataFrame:
     - cp1252 (Windows-1252): Windows default
     - utf-16: Some Excel exports
     """
-    from io import BytesIO
 
     encodings = ["utf-8", "latin-1", "cp1252", "iso-8859-1", "utf-16"]
 
@@ -143,7 +136,6 @@ def extract_dataset_folder(zip_bytes: bytes, extract_to: str = "temp_dataset") -
         List of extracted file paths
     """
     import zipfile
-    from io import BytesIO
 
     # Create extraction directory
     os.makedirs(extract_to, exist_ok=True)
@@ -281,7 +273,7 @@ async def process_automl_trigger(event: dict) -> None:
         try:
             logger.info(f"Fetching dataset metadata from: {API_BASE}")
             metadata = fetch_dataset_metadata(user_id, dataset_id, dataset_version)
-            logger.info(f"Dataset metadata fetched successfully")
+            logger.info("Dataset metadata fetched successfully")
 
             # Check if dataset is a folder or single file
             is_folder = metadata.get("is_folder", False)
@@ -299,7 +291,7 @@ async def process_automl_trigger(event: dict) -> None:
             logger.error(f"Timeout while fetching dataset from {API_BASE}")
             logger.error(f"   Error: {e}")
             logger.error(
-                f"   If running in Docker, ensure DW_HOST=data-warehouse-api is set"
+                "   If running in Docker, ensure DW_HOST=data-warehouse-api is set"
             )
             logger.error(
                 f"   If running locally, ensure the Data Warehouse API is running on {DW_HOST}:{DW_PORT}"
@@ -309,7 +301,7 @@ async def process_automl_trigger(event: dict) -> None:
             logger.error(f"Failed to connect to Data Warehouse API at {API_BASE}")
             logger.error(f"   Error: {e}")
             logger.error(
-                f"   If running in Docker, ensure DW_HOST=data-warehouse-api is set"
+                "   If running in Docker, ensure DW_HOST=data-warehouse-api is set"
             )
             logger.error(
                 f"   If running locally, ensure the Data Warehouse API is running on {DW_HOST}:{DW_PORT}"
@@ -349,12 +341,12 @@ async def process_automl_trigger(event: dict) -> None:
 
             logger.info(f"Calling AutoML Tabular: {AUTOML_TABULAR_BEST_MODEL_URL}")
             logger.info(
-                f"   Using host: {TABULAR_AUTOML_HOST}, port: {TABULAR_AUTOML_PORT}"
+                f"   Using host: {AUTOML_ENGINE_HOST}, port: {AUTOML_ENGINE_PORT}"
             )
 
             # Try to verify the service is reachable first
             try:
-                health_check_url = f"{TABULAR_AUTOML_URL}/docs"  # FastAPI docs endpoint
+                health_check_url = f"{AUTOML_ENGINE_URL}/docs"  # FastAPI docs endpoint
                 logger.debug(f"Checking if service is reachable at {health_check_url}")
                 health_check = requests.get(health_check_url, timeout=5)
                 logger.debug(f"Service health check: {health_check.status_code}")
@@ -363,7 +355,7 @@ async def process_automl_trigger(event: dict) -> None:
                     f"Could not reach AutoML service for health check: {health_e}"
                 )
                 logger.warning(
-                    f"   This might indicate the service is not running or not accessible"
+                    "   This might indicate the service is not running or not accessible"
                 )
 
             try:
@@ -386,12 +378,10 @@ async def process_automl_trigger(event: dict) -> None:
                 )
                 logger.error(f"   Error: {e}")
                 logger.error(
-                    f"   Ensure the tabular Docker service is running and accessible on {TABULAR_AUTOML_HOST}:{TABULAR_AUTOML_PORT}"
+                    f"   Ensure the AutoML engine service is running and accessible on {AUTOML_ENGINE_HOST}:{AUTOML_ENGINE_PORT}"
                 )
-                logger.error(f"   Check: docker ps | grep tabular")
-                logger.error(
-                    f"   Verify port mapping: docker port alfie_automl_tabular"
-                )
+                logger.error("   Check: docker ps | grep automl")
+                logger.error("   Verify port mapping: docker port alfie_automl_engine")
                 raise
             except requests.exceptions.HTTPError as e:
                 logger.error(f"AutoML service returned HTTP error: {e}")
@@ -404,19 +394,19 @@ async def process_automl_trigger(event: dict) -> None:
                             logger.error(
                                 f"   Response body: {json.dumps(error_detail, indent=2)}"
                             )
-                        except:
+                        except Exception:
                             logger.error(f"   Response body: {e.response.text[:500]}")
                 logger.error(
-                    f"   If running in Docker, ensure TABULAR_AUTOML_HOST=tabular is set"
+                    "   If running in Docker, ensure AUTOML_ENGINE_HOST=host.docker.internal is set"
                 )
                 raise
-            except requests.exceptions.Timeout as e:
+            except requests.exceptions.Timeout:
                 logger.error(
                     f"Request to AutoML service timed out after {request_timeout} seconds"
                 )
-                logger.error(f"   Training may have taken longer than expected")
+                logger.error("   Training may have taken longer than expected")
                 logger.error(
-                    f"   Consider increasing time_budget or checking service logs"
+                    "   Consider increasing time_budget or checking service logs"
                 )
                 raise
 
@@ -484,7 +474,7 @@ async def process_automl_trigger(event: dict) -> None:
                     except Exception:
                         logger.error(f"   Response: {e.response.text[:500]}")
                 raise
-            except requests.exceptions.Timeout as e:
+            except requests.exceptions.Timeout:
                 logger.error(
                     f"AutoML Vision request timed out after {request_timeout}s"
                 )

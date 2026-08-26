@@ -1,42 +1,42 @@
-"""Route definitions for the tabular AutoML service."""
+"""Route definitions for the tabular AutoML service.
+
+The ``best_model`` endpoint is deliberately thin: it binds HTTP form parameters,
+hands them to ``run_training_pipeline`` in the orchestrator layer, and
+translates the domain exceptions it raises into HTTP responses via
+``app.core.api_errors.automl_exception_to_response``. None of the fetch →
+resolve → download → validate → train → serialize → upload orchestration lives
+here.
+"""
 
 import logging
-import os
-import tempfile
-from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
-import requests
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse
 
-from app.core.exceptions import AutoMLRuntimeError, AutoMLValidationError
+from app.core.api_errors import automl_exception_to_response
+from app.core.exceptions import AutoMLError
+from app.core.process_log import get_process_log, start_process_log
 from app.core.schemas.responses import (
     ErrorResponse,
     InstructionsResponse,
     TrainingSuccessResponse,
 )
-from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
+from app.ml_engine.tabular.models import SUPPORTED_TABULAR_TASK_TYPES
+from app.tabular_automl.orchestrator import (
+    TabularTrainingRequest,
+    run_training_pipeline,
+)
 from app.tabular_automl.services import (
-    SUPPORTED_FILE_TYPES,
-    build_upload_payload,
-    convert_leaderboard_safely,
     deployment_instructions,
-    download_dataset,
-    fetch_dataset_metadata,
-    resolve_download_url,
-    serialize_and_zip_predictor,
     tabular_data_instructions,
-    train_automl,
-    upload_model,
-    validate_tabular_inputs,
 )
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/automl_tabular", tags=["tabular"])
+router = APIRouter(tags=["tabular"])
 
-_COMMON_RESPONSES = {
+_COMMON_RESPONSES: dict[int | str, dict[str, Any]] = {
     500: {"description": "Internal server error", "model": ErrorResponse},
 }
 
@@ -128,73 +128,10 @@ async def find_best_model_for_mvp(
         Form(description="Dataset split to use for training (e.g., 'train')."),
     ] = None,
 ) -> JSONResponse:
-    if not user_id or not isinstance(user_id, str) or not user_id.strip():
-        return JSONResponse(
-            status_code=400, content={"error": "user_id must be a non-empty string"}
-        )
-
-    if not dataset_id or not isinstance(dataset_id, str) or not dataset_id.strip():
-        return JSONResponse(
-            status_code=400, content={"error": "dataset_id must be a non-empty string"}
-        )
-    if isinstance(num_cpus, str):
-        if num_cpus != "auto":
-            return JSONResponse(
-                status_code=400,
-                content={"error": "num_cpus must be either a number or auto"},
-            )
-    else:
-        if num_cpus < 0:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "num_cpus must be greater than 1"},
-            )
-
-    if isinstance(num_gpus, str):
-        if num_gpus != "auto":
-            return JSONResponse(
-                status_code=400,
-                content={"error": "num_gpus must be either a number or auto"},
-            )
-    else:
-        if num_gpus < 0:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "num_gpus must be greater than 1"},
-            )
-
-    if (
-        not target_column_name
-        or not isinstance(target_column_name, str)
-        or not target_column_name.strip()
-    ):
-        return JSONResponse(
-            status_code=400,
-            content={"error": "target_column_name must be a non-empty string"},
-        )
-
-    if task_type not in SUPPORTED_TABULAR_TASK_TYPES:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "error": f"Invalid task_type '{task_type}'. Must be one of: {SUPPORTED_TABULAR_TASK_TYPES}"
-            },
-        )
-
-    if not isinstance(time_budget, int) or time_budget <= 0:
-        return JSONResponse(
-            status_code=400, content={"error": "time_budget must be a positive integer"}
-        )
-
-    if dataset_split is not None and dataset_split not in ("train", "test", "drift"):
-        return JSONResponse(
-            status_code=400,
-            content={"error": "dataset_split must be one of: 'train', 'test', 'drift'"},
-        )
     """
     Fetch a tabular dataset from AutoDW, run AutoML training, and upload the best model.
 
-    Steps:
+    Steps (performed in the orchestrator):
       1. Fetch dataset metadata from AutoDW.
       2. Resolve the correct download URL (respecting splits if present).
       3. Download the dataset file to a temporary directory.
@@ -209,229 +146,32 @@ async def find_best_model_for_mvp(
         502 – AutoDW communication failure.
         500 – unexpected runtime error.
     """
-    autodw_base = os.getenv("AUTODW_URL", "http://localhost:8000")
-    upload_url = f"{autodw_base}/ai-models/upload/single/{user_id}"
-
     try:
-        if not autodw_base:
-            return JSONResponse(
-                status_code=500,
-                content={"error": "AUTODW_URL environment variable is not set"},
-            )
-
-        # 1. Metadata
-        try:
-            metadata = fetch_dataset_metadata(
-                autodw_base, user_id, dataset_id, dataset_version
-            )
-        except requests.RequestException as e:
-            logger.error(f"Failed to fetch dataset metadata: {e}")
-            return JSONResponse(
-                status_code=502,
-                content={"error": f"Failed to fetch dataset metadata from AutoDW: {e}"},
-            )
-        except Exception as e:
-            logger.error(f"Unexpected error fetching metadata: {e}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Unexpected error fetching metadata: {e}"},
-            )
-
-        if not isinstance(metadata, dict) or not metadata:
-            return JSONResponse(
-                status_code=502,
-                content={"error": "Invalid or empty metadata received from AutoDW"},
-            )
-
-        file_type = metadata.get("file_type")
-        if not file_type:
-            return JSONResponse(
-                status_code=400,
-                content={"error": "file_type not found in dataset metadata"},
-            )
-
-        if file_type not in SUPPORTED_FILE_TYPES:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "error": f"Unsupported file type '{file_type}'. Supported types: {SUPPORTED_FILE_TYPES}"
-                },
-            )
-
-        # 2. Download URL
-        try:
-            download_url = resolve_download_url(
-                autodw_base,
-                user_id,
-                dataset_id,
-                dataset_version,
-                metadata,
-                dataset_split,
-            )
-        except Exception as e:
-            logger.error(f"Failed to resolve download URL: {e}")
-            return JSONResponse(
-                status_code=500,
-                content={"error": f"Failed to resolve download URL: {e}"},
-            )
-
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            tmp_path = Path(tmp_dir)
-
-            original_filename = metadata.get("original_filename", "train.csv")
-            if not isinstance(original_filename, str) or not original_filename:
-                original_filename = "train.csv"
-            dataset_path = tmp_path / original_filename
-
-            # 3. Download
-            try:
-                download_dataset(download_url, dataset_path)
-            except requests.RequestException as e:
-                logger.error(f"Failed to download dataset: {e}")
-                return JSONResponse(
-                    status_code=502,
-                    content={"error": f"Failed to download dataset from AutoDW: {e}"},
-                )
-            except Exception as e:
-                logger.error(f"Unexpected error downloading dataset: {e}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"Unexpected error downloading dataset: {e}"},
-                )
-
-            if not dataset_path.exists():
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": "Dataset file was not created after download"},
-                )
-
-            # 4. Validate
-            try:
-                validation_error = validate_tabular_inputs(
-                    train_path=dataset_path,
-                    target_column_name=target_column_name,
-                    time_stamp_column_name=time_stamp_column_name,
-                    task_type=task_type,
-                )
-                if validation_error:
-                    return JSONResponse(
-                        status_code=400, content={"error": validation_error}
-                    )
-            except Exception as e:
-                logger.error(f"Unexpected error during validation: {e}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"Unexpected error during validation: {e}"},
-                )
-
-            # 5. Train
-            try:
-                save_model_path = tmp_path / "automl_model"
-                leaderboard, predictor = train_automl(
-                    dataset_path=dataset_path,
-                    save_model_path=save_model_path,
-                    target_column_name=target_column_name,
-                    task_type=task_type,
-                    time_budget=time_budget,
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                )
-            except AutoMLValidationError as e:
-                logger.error(f"Validation error during training: {e}")
-                return JSONResponse(
-                    status_code=400,
-                    content={"error": f"Training validation failed: {e}"},
-                )
-            except AutoMLRuntimeError as e:
-                logger.error(f"Training runtime error: {e}")
-                return JSONResponse(
-                    status_code=500, content={"error": f"Model training failed: {e}"}
-                )
-            except Exception as e:
-                logger.error(f"Unexpected error during training: {e}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"Unexpected error during training: {e}"},
-                )
-
-            if leaderboard is None:
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": "Training completed but leaderboard is empty"},
-                )
-
-            # 6. Serialize
-            try:
-                zip_path = serialize_and_zip_predictor(
-                    predictor, save_model_path, tmp_path
-                )
-                leaderboard_json, leaderboard_str = convert_leaderboard_safely(
-                    leaderboard
-                )
-            except Exception as e:
-                logger.error(f"Failed to serialize and zip model: {e}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"Failed to serialize model: {e}"},
-                )
-
-            if not zip_path.exists():
-                return JSONResponse(
-                    status_code=500, content={"error": "Model zip file was not created"}
-                )
-
-            # 7. Upload
-            try:
-                _, payload = build_upload_payload(
-                    dataset_id, dataset_version, metadata, task_type, leaderboard_json
-                )
-            except Exception as e:
-                logger.error(f"Failed to build upload payload: {e}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"Failed to build upload payload: {e}"},
-                )
-
-            try:
-                upload_resp = upload_model(
-                    upload_url, zip_path, payload, request.headers.get("X-Task-ID")
-                )
-
-                if upload_resp.status_code >= 400:
-                    logger.error(f"Model upload failed: {upload_resp.text}")
-                    return JSONResponse(
-                        status_code=upload_resp.status_code,
-                        content={
-                            "error": f"Failed to upload model: {upload_resp.text}"
-                        },
-                    )
-            except requests.RequestException as e:
-                logger.error(f"Network error uploading model: {e}")
-                return JSONResponse(
-                    status_code=502,
-                    content={"error": f"Failed to upload model to AutoDW: {e}"},
-                )
-            except Exception as e:
-                logger.error(f"Unexpected error uploading model: {e}")
-                return JSONResponse(
-                    status_code=500,
-                    content={"error": f"Unexpected error uploading model: {e}"},
-                )
-
-        logger.info("AutoML training completed and model uploaded successfully.")
+        start_process_log(request.headers.get("X-Task-ID"))
+        req = TabularTrainingRequest(
+            user_id=user_id,
+            dataset_id=dataset_id,
+            target_column_name=target_column_name,
+            task_type=task_type,
+            time_budget=time_budget,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            dataset_version=dataset_version,
+            time_stamp_column_name=time_stamp_column_name,
+            dataset_split=dataset_split,
+        )
+        result = await run_training_pipeline(
+            req, task_id=request.headers.get("X-Task-ID")
+        )
         return JSONResponse(
             status_code=200,
             content={
-                "message": "AutoML training completed successfully and model uploaded to AutoDW",
-                "leaderboard": leaderboard_str,
+                "message": result.message,
+                "leaderboard": result.leaderboard,
+                "process_log": get_process_log(),
             },
         )
-
-    except requests.RequestException as e:
-        logger.exception("Network or HTTP error during AutoDW communication")
-        return JSONResponse(
-            status_code=502, content={"error": f"AutoDW communication failed: {e}"}
-        )
     except Exception as e:
-        logger.exception("Unexpected error during AutoML training or upload")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        if not isinstance(e, AutoMLError):
+            logger.exception("Unexpected error during tabular AutoML")
+        return automl_exception_to_response(e)

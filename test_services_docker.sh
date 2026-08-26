@@ -2,6 +2,9 @@
 inpargs="${1:-all}"
 set -euo pipefail
 
+ENGINE_PORT="${AUTOML_ENGINE_PORT:-8001}"
+ENGINE_BASE="http://localhost:${ENGINE_PORT}"
+
 wait_for() {
   local name="$1"; shift
   local url="$1"; shift
@@ -19,63 +22,79 @@ wait_for() {
   echo "$name is up"
 }
 
+wait_for "automl engine" "${ENGINE_BASE}/health" 240
+
 if [[ $inpargs == "web" || $inpargs == "all" ]]; then
-wait_for "website" "http://localhost:8000/web_access" 90
 echo "=== Testing Website Accessibility ==="
-curl -X POST http://localhost:8000/web_access/accessibility/ \
+curl -X POST "${ENGINE_BASE}/automl/automl_plus/web_access/analyze/" \
   -H "Content-Type: multipart/form-data" \
   -F "file=@./sample_data/test.html"
 echo -e "\n"
 fi
+
 if [[ $inpargs == "tabular" || $inpargs == "all" ]]; then
-wait_for "tabular" "http://localhost:8001/automl_tabular" 90
-echo "=== Testing AutoML Tabular - get_user_input ==="
-SESSION_RESPONSE=$(curl -s -X POST http://localhost:8001/automl_tabular/get_user_input/ \
+echo "=== Testing AutoML Tabular - best_model ==="
+curl -s -X POST "${ENGINE_BASE}/automl/tabular/best_model/" \
   -H "Content-Type: multipart/form-data" \
-  -F "train_csv=@./sample_data/knot_theory/train.csv" \
-  -F "target_column_name=signature" \
-  -F "task_type=classification" \
-  -F "time_budget=30")
-echo "$SESSION_RESPONSE"
-SESSION_ID=$(echo "$SESSION_RESPONSE" | jq -r '.session_id')
-
-if [[ "$SESSION_ID" != "null" && -n "$SESSION_ID" ]]; then
-  echo "=== Testing AutoML Tabular - find_best_model ==="
-  curl -X POST http://localhost:8001/automl_tabular/find_best_model/ \
-    -H "Content-Type: application/json" \
-    -d "{\"session_id\": \"$SESSION_ID\"}"
-else
-  echo "Failed to get valid session_id from tabular get_user_input"
-  exit 1
-fi
-
-fi
+  -F "user_id=1" \
+  -F "dataset_id=4" \
+  -F "target_column_name=labels" \
+  -F "task_type=tabular_classification" \
+  -F "time_budget=10"
 echo -e "\n"
+fi
 
 if [[ $inpargs == "vision" || $inpargs == "all" ]]; then
-wait_for "vision" "http://localhost:8002/automl_vision" 120
-echo "=== Testing AutoML Vision - get_user_input ==="
-VISION_SESSION_RESPONSE=$(curl -s -X POST http://localhost:8002/automl_vision/get_user_input/ \
+echo "=== Testing AutoML Vision - best_model ==="
+curl -s -X POST "${ENGINE_BASE}/automl/vision/best_model/" \
   -H "Content-Type: multipart/form-data" \
-  -F "csv_file=@./sample_data/Garbage_Dataset_Classification/metadata.csv" \
-  -F "images_zip=@./sample_data/Garbage_Dataset_Classification/images.zip" \
+  -F "user_id=1" \
+  -F "dataset_id=2" \
   -F "filename_column=filename" \
   -F "label_column=label" \
-  -F "task_type=classification" \
+  -F "task_type=image_classification" \
   -F "time_budget=10" \
-  -F "model_size=medium")
-echo "$VISION_SESSION_RESPONSE"
-VISION_SESSION_ID=$(echo "$VISION_SESSION_RESPONSE" | jq -r '.session_id')
-
-if [[ "$VISION_SESSION_ID" != "null" && -n "$VISION_SESSION_ID" ]]; then
-  echo "=== Testing AutoML Vision - find_best_model ==="
-  curl -X POST http://localhost:8002/automl_vision/find_best_model/ \
-    -H "Content-Type: application/json" \
-    -d "{\"session_id\": \"$VISION_SESSION_ID\"}"
-else
-  echo "Failed to get valid session_id from vision get_user_input"
-  exit 1
-fi
-fi
+  -F "model_size=medium"
 echo -e "\n"
+
+echo "=== Testing AutoML Vision - multimodal_best_model ==="
+curl -s -X POST "${ENGINE_BASE}/automl/vision/multimodal_best_model/" \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=5" \
+  -F "filename_column=image_file_path" \
+  -F "label_column=label" \
+  -F "time_budget=60" \
+  -F "model_size=medium"
+echo -e "\n"
+fi
+
+if [[ $inpargs == "audio" || $inpargs == "all" ]]; then
+echo "=== Testing AutoML Audio - best_model ==="
+curl -s -X POST "${ENGINE_BASE}/automl/audio/best_model/" \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=6" \
+  -F "filename_column=filename" \
+  -F "label_column=label" \
+  -F "task_type=audio_classification" \
+  -F "time_budget=60" \
+  -F "model_size=small"
+echo -e "\n"
+fi
+
+if [[ $inpargs == "text" || $inpargs == "all" ]]; then
+echo "=== Testing AutoML Text - best_model ==="
+curl -s -X POST "${ENGINE_BASE}/automl/text/best_model/" \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=7" \
+  -F "text_column=text" \
+  -F "label_column=label" \
+  -F "task_type=text_classification" \
+  -F "time_budget=60" \
+  -F "model_size=small"
+echo -e "\n"
+fi
+
 echo "=== All tests completed ==="

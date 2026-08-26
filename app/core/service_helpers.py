@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 def build_metadata_url(
     autodw_base: str, user_id: str, dataset_id: str, dataset_version: str | None
 ) -> str:
+    """Assemble the AutoDW metadata URL for a dataset, including version if given."""
     url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
     if dataset_version:
         url = f"{url}/version/{dataset_version}"

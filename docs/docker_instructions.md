@@ -3,12 +3,13 @@
 ## Running everything
 
 - Simply do `docker compose up` in the main folder (assuming you have docker installed)
-- After that you can `curl` any of the services you want
-- For information on the ports, please look at your .env file
-- eg: Website Accessibility (HTML file input)
+- This starts a single combined service that mounts every AutoML service under one unified router (`/automl/tabular`, `/automl/vision`, `/automl/automl_plus`)
+- After that you can `curl` any of the endpoints you want
+- For information on the ports, please look at your .env file (`AUTOML_ENGINE_PORT`, default `8001`)
+- eg: Tabular AutoML best-model search
 
 ```bash
-curl -s -X POST "http://localhost:8001/automl_tabular/best_model/" \
+curl -s -X POST "http://localhost:8001/automl/tabular/best_model/" \
   -H "Content-Type: multipart/form-data" \
   -F "user_id=1" \
   -F "dataset_id=2" \

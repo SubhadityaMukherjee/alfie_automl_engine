@@ -11,13 +11,13 @@ use-cases:
 """
 
 import logging
-import os
 
 from dotenv import find_dotenv, load_dotenv
 from jinja2 import Environment
 
 from app.automlplus.utils import ImageConverter
 from app.core.chat_handler import ChatHandler
+from app.core.config import get_settings
 from app.core.exceptions import AutoMLChatError, AutoMLImageError, AutoMLValidationError
 from app.core.utils import render_template
 
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 class ImagePromptRunner:
     """Run a VLM on an image and user-provided prompt."""
 
-    DEFAULT_MODEL: str = os.getenv("IMAGE_PROMPT_MODEL", "gpt-4o-mini")
+    DEFAULT_MODEL: str = get_settings().image_prompt_model
 
     @staticmethod
     def _resolve_model(model: str | None) -> str:
@@ -194,7 +194,7 @@ class AltTextChecker:
         jinja_environment: Environment,
         image_url_or_path: str,
         alt_text: str,
-        model: str = os.getenv("ALT_TEXT_CHECKER_MODEL", DEFAULT_MODEL),
+        model: str = get_settings().alt_text_checker_model or DEFAULT_MODEL,
     ) -> str:
         logger.info("Checking alt-text using model %s", model)
         model = AltTextChecker._resolve_model(model)

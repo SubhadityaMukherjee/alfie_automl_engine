@@ -1,3 +1,11 @@
+"""Service layer for tabular AutoML workflows.
+
+Wraps the AutoGluon trainer with validation, leaderboard conversion, artifact
+packaging, and the instruction templates, and re-exports the shared AutoDW
+helpers so the orchestrator has one import surface.
+"""
+
+import json
 import logging
 import os
 import pickle
@@ -21,8 +29,8 @@ from app.core.service_helpers import (  # noqa: F401 – re-exported for router
     upload_model,
 )
 from app.core.utils import jinja_environment, render_template
-from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
-from app.tabular_automl.modules import AutoMLTrainer
+from app.ml_engine.tabular.models import SUPPORTED_TABULAR_TASK_TYPES
+from app.ml_engine.tabular.modules import AutoMLTrainer
 
 logger = logging.getLogger(__name__)
 
@@ -122,10 +130,15 @@ def validate_tabular_inputs(
     return None
 
 
-def convert_leaderboard_safely(leaderboard):
+def convert_leaderboard_safely(leaderboard) -> tuple[list | dict, str]:
+    """Turn a leaderboard into a JSON-ready structure plus a markdown string.
+
+    DataFrames become a list of row dicts and a markdown table; anything else
+    falls back to its plain string form.
+    """
     if isinstance(leaderboard, pd.DataFrame):
         leaderboard_json = leaderboard.to_dict(orient="records")
-        leaderboard_str = leaderboard.to_markdown()
+        leaderboard_str = str(leaderboard.to_markdown())
     else:
         leaderboard_json = {"result": str(leaderboard)}
         leaderboard_str = str(leaderboard)
@@ -220,6 +233,148 @@ def tabular_data_instructions() -> str:
         return "Ask the agent for help"
 
 
+_MULTIMODAL_TOKENIZER_MARKERS = frozenset(
+    {
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "vocab.txt",
+        "vocab.json",
+        "spiece.model",
+        "special_tokens_map.json",
+    }
+)
+
+
+def extract_text_feature_mapping(predictor, save_model_path: Path) -> dict:
+    """Extract text-feature mappings from a fitted AutoGluon ``TabularPredictor``.
+
+    Captures both text-handling paths AutoGluon may take:
+
+      * ``ngram_features``: word/n-gram -> column-index vocabulary pulled from any
+        ``TextNgramFeatureGenerator`` in the default tabular feature pipeline.
+      * ``multimodal_text_model_dirs``: relative paths under ``save_model_path``
+        that contain transformer tokenizer artifacts (``tokenizer.json`` etc.),
+        indicating deep-embedding text models. The tokenizer vocab files for
+        those models are already part of the saved artifacts and ship inside
+        the zip; this entry just points consumers at them.
+
+    Returns a dict with both keys always present (empty when the corresponding
+    path was not used) so callers can rely on JSON serialization succeeding.
+    """
+    mapping: dict = {
+        "ngram_features": {},
+        "multimodal_text_model_dirs": [],
+    }
+    try:
+        mapping["ngram_features"] = _extract_ngram_vocab(predictor)
+    except Exception as e:
+        logger.warning(f"Failed to extract n-gram text vocabulary: {e}")
+    try:
+        mapping["multimodal_text_model_dirs"] = _scan_multimodal_tokenizer_dirs(
+            save_model_path
+        )
+    except Exception as e:
+        logger.warning(f"Failed to scan multimodal text-model artifacts: {e}")
+    return mapping
+
+
+def _get_feature_generator(predictor):
+    """Return the fitted feature generator, or ``None`` if it cannot be reached.
+
+    AutoGluon 1.x exposes the generator on the ``Learner`` (``predictor._learner``)
+    rather than on the public ``TabularPredictor`` surface. ``_learner`` is
+    private but stable across the 1.x line; we guard defensively so a future
+    restructure degrades to a warning instead of breaking training.
+    """
+    learner = getattr(predictor, "_learner", None)
+    if learner is None:
+        return None
+    return getattr(learner, "feature_generator", None)
+
+
+def _find_ngram_generators(root) -> list:
+    """Depth-first walk of a feature-generator pipeline, collecting n-gram generators."""
+    found: list = []
+    visited: set[int] = set()
+
+    def _walk(node) -> None:
+        if node is None:
+            return
+        node_id = id(node)
+        if node_id in visited:
+            return
+        visited.add(node_id)
+
+        if type(node).__name__ == "TextNgramFeatureGenerator":
+            found.append(node)
+
+        for attr in (
+            "generators",
+            "feature_generators",
+            "pre_generators",
+            "post_generators",
+        ):
+            sub = getattr(node, attr, None)
+            if not sub:
+                continue
+            if isinstance(sub, (list, tuple)):
+                for group in sub:
+                    items = group if isinstance(group, (list, tuple)) else [group]
+                    for item in items:
+                        _walk(item)
+
+    _walk(root)
+    return found
+
+
+def _extract_ngram_vocab(predictor) -> dict:
+    """Pull word/n-gram -> column-index vocabularies out of any fitted n-gram generators."""
+    feature_generator = _get_feature_generator(predictor)
+    if feature_generator is None:
+        logger.info(
+            "No feature_generator accessible on predictor; skipping n-gram vocab extraction"
+        )
+        return {}
+
+    ngram_gens = _find_ngram_generators(feature_generator)
+    if not ngram_gens:
+        logger.info(
+            "No TextNgramFeatureGenerator found — text was either dropped, "
+            "deep-embedded via multimodal, or no text columns were present"
+        )
+        return {}
+
+    out: dict = {}
+    for ngram_gen in ngram_gens:
+        feature_names = list(getattr(ngram_gen, "vectorizer_features", []) or [])
+        vectorizers = list(getattr(ngram_gen, "vectorizers", []) or [])
+        for feat_name, vectorizer in zip(feature_names, vectorizers):
+            vocab = getattr(vectorizer, "vocabulary_", None)
+            try:
+                vocab_features = list(vectorizer.get_feature_names_out())
+            except Exception:
+                vocab_features = []
+            out[feat_name] = {
+                "vocabulary": dict(vocab) if vocab else {},
+                "feature_names": vocab_features,
+            }
+    return out
+
+
+def _scan_multimodal_tokenizer_dirs(save_model_path: Path) -> list:
+    """List relative paths under ``save_model_path`` containing tokenizer artifacts."""
+    if not save_model_path.exists() or not save_model_path.is_dir():
+        return []
+    hits: set[str] = set()
+    for candidate in save_model_path.rglob("*"):
+        if not candidate.is_file():
+            continue
+        if candidate.name in _MULTIMODAL_TOKENIZER_MARKERS:
+            rel = candidate.parent.relative_to(save_model_path)
+            hits.add(str(rel))
+    return sorted(hits)
+
+
 def serialize_and_zip_predictor(
     predictor, save_model_path: Path, tmp_path: Path
 ) -> Path:
@@ -253,6 +408,15 @@ def serialize_and_zip_predictor(
         logger.debug(f"Deployment instructions written to {instructions_path}")
     except Exception as e:
         logger.debug(f"No deployment_instructions found, {e}")
+
+    try:
+        mapping = extract_text_feature_mapping(predictor, save_model_path)
+        mapping_path = save_model_path / "text_feature_mapping.json"
+        with open(mapping_path, "w") as f:
+            json.dump(mapping, f, indent=2, sort_keys=True)
+        logger.debug(f"Text feature mapping written to {mapping_path}")
+    except Exception as e:
+        logger.warning(f"Failed to write text feature mapping: {e}")
 
     zip_path = tmp_path / "automl_predictor.zip"
 

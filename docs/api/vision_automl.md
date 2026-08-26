@@ -1,18 +1,8 @@
 # Vision AutoML
 
-::: app.vision_automl.main
-
 ::: app.vision_automl.router
 ::: app.vision_automl.services
+::: app.vision_automl.orchestrator
 
-## ML engine
-
-::: app.vision_automl.ml_engine.configs
-
-::: app.vision_automl.ml_engine.datamodule
-
-::: app.vision_automl.ml_engine.dataset
-
-::: app.vision_automl.ml_engine.model
-
-::: app.vision_automl.ml_engine.trainer
+The training machinery itself (datamodules, models, trainer, Optuna
+objectives) lives in the consolidated [ML engine](ml_engine.md).
