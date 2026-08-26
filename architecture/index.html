@@ -1,0 +1,1155 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="API and developer documentation for the ALFIE AutoML Engine">
+      
+      
+      
+      
+        <link rel="prev" href="..">
+      
+      
+        <link rel="next" href="../autodw/">
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.6.21">
+    
+    
+      
+        <title>Architecture - ALFIE AutoML Engine Docs</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.2a3383ac.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="ALFIE AutoML Engine Docs" class="md-header__button md-logo" aria-label="ALFIE AutoML Engine Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ALFIE AutoML Engine Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Architecture
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/SubhadityaMukherjee/alfie_automl_engine" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="ALFIE AutoML Engine Docs" class="md-nav__button md-logo" aria-label="ALFIE AutoML Engine Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ALFIE AutoML Engine Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SubhadityaMukherjee/alfie_automl_engine" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.0.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ALFIE AutoML Engine
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    Architecture
+    
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unified-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      Unified API
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shared-core-appcore" class="md-nav__link">
+    <span class="md-ellipsis">
+      Shared core (app/core)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layering-inside-a-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      Layering inside a service
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consolidated-ml-engine-appml_engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      Consolidated ML engine (app/ml_engine)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#repository-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Repository layout
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../autodw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    AutoDW Setup
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../available_endpoints/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Available endpoints
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker_instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Docker instructions
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ideas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Ideas for the project
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Installation Instructions
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../loading_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Loading and/or Deploying a trained model
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../running_the_services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Running and Testing AutoML Services
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Testing
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    Api
+    
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_11">
+            <span class="md-nav__icon md-icon"></span>
+            Api
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/audio_automl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Audio AutoML
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/automlplus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    AutoML+
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Core
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/ml_engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    ML Engine
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/tabular_automl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Tabular AutoML
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/text_automl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Text AutoML
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/vision_automl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    Vision AutoML
+    
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#unified-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      Unified API
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#shared-core-appcore" class="md-nav__link">
+    <span class="md-ellipsis">
+      Shared core (app/core)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layering-inside-a-service" class="md-nav__link">
+    <span class="md-ellipsis">
+      Layering inside a service
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#consolidated-ml-engine-appml_engine" class="md-nav__link">
+    <span class="md-ellipsis">
+      Consolidated ML engine (app/ml_engine)
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#repository-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      Repository layout
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h1>
+<p>The ALFIE AutoML Engine is a single FastAPI service that mounts five service
+modules plus a shared core library under one unified <code>/automl</code> router, all
+living under <code>app/</code>. The training services talk to <a href="../autodw/">AutoDW</a> to fetch
+datasets and upload trained models, and delegate all model training to one
+consolidated ML engine (<code>app/ml_engine</code>).</p>
+<p><img alt="System components" src="../images/flow.png" /></p>
+<pre class="mermaid"><code>flowchart TB
+    User(["Users / ALFIE web app"])
+
+    subgraph Engine["ALFIE AutoML Engine"]
+        subgraph Core["app/core - shared library"]
+            direction LR
+            COREUTILS["config · logging · typed errors · concurrency"]
+            DWHELP["AutoDW helpers"]
+            CHAT["ChatHandler (Azure AI)"]
+        end
+
+        subgraph MLE["app/ml_engine - consolidated ML engine"]
+            direction TB
+            HPO["Optuna HPO"]
+            FABRIC["Lightning Fabric trainer"]
+            HFM["Hugging Face models&lt;br&gt;image · video · audio · text · multimodal"]
+            TABENG["AutoGluon tabular engine&lt;br&gt;classification · regression · time series"]
+            HPO --&gt; FABRIC
+            FABRIC --&gt; HFM
+        end
+
+        subgraph Tabular["app/tabular_automl · /automl/tabular"]
+            TBR["tabular endpoint"]
+        end
+
+        subgraph Vision["app/vision_automl · /automl/vision"]
+            VIR["vision endpoint"]
+        end
+
+        subgraph Audio["app/audio_automl · /automl/audio"]
+            AUR["audio endpoint"]
+        end
+
+        subgraph Text["app/text_automl · /automl/text"]
+            TER["text endpoint"]
+        end
+
+        subgraph Plus["app/automlplus · /automl/automl_plus"]
+            direction LR
+            ACC["web accessibility + readability"]
+            VLMT["VLM tools&lt;br&gt;alt text · image prompts · image-to-website"]
+        end
+    end
+
+    AutoDW[("AutoDW&lt;br&gt;dataset and model store")]
+
+    User --&gt; Tabular
+    User --&gt; Vision
+    User --&gt; Audio
+    User --&gt; Text
+    User --&gt; Plus
+    Tabular --&gt; MLE
+    Vision --&gt; MLE
+    Audio --&gt; MLE
+    Text --&gt; MLE
+    Tabular --&gt; Core
+    Vision --&gt; Core
+    Audio --&gt; Core
+    Text --&gt; Core
+    Plus --&gt; Core
+    MLE --&gt; Core
+    Tabular -- "fetch datasets / upload models" --&gt; AutoDW
+    Vision -- "fetch datasets / upload models" --&gt; AutoDW
+    Audio -- "fetch datasets / upload models" --&gt; AutoDW
+    Text -- "fetch datasets / upload models" --&gt; AutoDW
+    Plus -- "LLM/VLM calls" --&gt; CHAT</code></pre>
+<h2 id="unified-api">Unified API<a class="headerlink" href="#unified-api" title="Permanent link">&para;</a></h2>
+<p><code>app/main.py</code> builds a single FastAPI app and <code>app/api.py</code> mounts every
+service router under one <code>/automl</code> prefix (e.g.
+<code>POST /automl/automl_plus/accepted_format/</code>). Health endpoints (<code>/health</code>,
+<code>/ready</code>) stay at the root. The app runs as one service on a single port
+(see <a href="../running_the_services/">running the services</a>).</p>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>Module</th>
+<th>Prefix</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Tabular AutoML</td>
+<td><code>app/tabular_automl</code></td>
+<td><code>/automl/tabular</code></td>
+<td>Trains AutoGluon models on CSV/TSV/Parquet data (classification, regression, time series) via <code>AutoGluonTrainer</code> in the ML engine.</td>
+</tr>
+<tr>
+<td>Vision AutoML</td>
+<td><code>app/vision_automl</code></td>
+<td><code>/automl/vision</code></td>
+<td>Image and video tasks (classification, segmentation, detection, keypoints) plus multimodal (image + tabular) via the generic ML engine.</td>
+</tr>
+<tr>
+<td>Audio AutoML</td>
+<td><code>app/audio_automl</code></td>
+<td><code>/automl/audio</code></td>
+<td>Audio classification via the generic ML engine.</td>
+</tr>
+<tr>
+<td>Text AutoML</td>
+<td><code>app/text_automl</code></td>
+<td><code>/automl/text</code></td>
+<td>Text tasks (classification, question answering, causal/masked/seq2seq language modelling) via the generic ML engine.</td>
+</tr>
+<tr>
+<td>AutoML+</td>
+<td><code>app/automlplus</code></td>
+<td><code>/automl/automl_plus</code></td>
+<td>LLM/VLM tools: web accessibility analysis, alt-text checking, image prompts, readability metrics. No model training.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="shared-core-appcore">Shared core (<code>app/core</code>)<a class="headerlink" href="#shared-core-appcore" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>config.py</code> — typed settings over the environment (single source of truth for env vars).</li>
+<li><code>concurrency.py</code> — <code>offload()</code> runs blocking work in the Starlette threadpool so async endpoints don't block the event loop.</li>
+<li><code>exceptions.py</code> — the <code>AutoMLError</code> hierarchy (validation, data, runtime, upload, ...).</li>
+<li><code>api_errors.py</code> — maps those exceptions to HTTP status codes (400 / 500 / 502 policy) in one place.</li>
+<li><code>logging.py</code> — structlog setup plus per-service rotating log files.</li>
+<li><code>chat_handler.py</code> — facade over Azure AI Inference chat models (sync, async, streaming, with images).</li>
+<li><code>service_helpers.py</code> — AutoDW dataset metadata fetch / download / model upload / payload building.</li>
+<li><code>dataset_extraction.py</code> — shared ZIP + CSV + media-folder dataset extraction helpers used by the vision, audio, and text pipelines.</li>
+<li><code>health.py</code> — <code>/health</code> and <code>/ready</code> endpoints.</li>
+<li><code>utils.py</code> — Jinja2 prompt template rendering.</li>
+<li><code>schemas/</code> — Pydantic response models for the API.</li>
+</ul>
+<h2 id="layering-inside-a-service">Layering inside a service<a class="headerlink" href="#layering-inside-a-service" title="Permanent link">&para;</a></h2>
+<p>Every service module follows the same layering, so the HTTP layer stays thin:</p>
+<div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal">1</span>
+<span class="normal">2</span>
+<span class="normal">3</span>
+<span class="normal">4</span>
+<span class="normal">5</span>
+<span class="normal">6</span></pre></div></td><td class="code"><div><pre><span></span><code>app/main.py         FastAPI app + lifespan (logging setup)
+   └─ app/api.py            unified router: mounts each service under /automl/&lt;service&gt;
+        └─ router.py           bind HTTP form params, delegate, map exceptions to responses
+             └─ orchestrator.py   the multi-step pipeline, raises typed exceptions
+                  └─ services.py     validation, training wrappers, packaging, templates
+                        └─ app/ml_engine/...   the actual training machinery
+</code></pre></div></td></tr></table></div>
+<p>The training pipelines in <code>tabular_automl</code>, <code>vision_automl</code>, <code>audio_automl</code>,
+and <code>text_automl</code> share the same shape:</p>
+<ol>
+<li>Fetch dataset metadata from AutoDW.</li>
+<li>Resolve the correct download URL (respecting dataset splits).</li>
+<li>Download the dataset to a temporary directory (the media services also extract the ZIP).</li>
+<li>Validate user-supplied parameters against the dataset.</li>
+<li>Train within the given time budget (delegated to <code>app/ml_engine</code>).</li>
+<li>Serialize and zip the model artifacts.</li>
+<li>Upload the model and leaderboard back to AutoDW.</li>
+</ol>
+<p>Blocking steps (network, training) are pushed off the event loop via <code>offload</code>.</p>
+<h2 id="consolidated-ml-engine-appml_engine">Consolidated ML engine (<code>app/ml_engine</code>)<a class="headerlink" href="#consolidated-ml-engine-appml_engine" title="Permanent link">&para;</a></h2>
+<p>All model training lives in one package so the endpoints stay thin and the
+engines can evolve independently:</p>
+<ul>
+<li><code>configs/</code> — one JSON file per task type with candidate models and
+  hyperparameter search ranges.</li>
+<li><code>tasks.py</code> — Pydantic task models plus the <code>SUPPORTED_VISION_TASK_TYPES</code>,
+  <code>SUPPORTED_AUDIO_TASK_TYPES</code>, and <code>SUPPORTED_TEXT_TASK_TYPES</code> slugs the
+  routers use to validate <code>task_type</code> form parameters.</li>
+<li><code>dataset.py</code> — <code>BaseCSVDataset</code> and the Torch datasets reading samples from CSV.</li>
+<li><code>datamodule.py</code> — <code>BaseDataModule</code> plus per-task datamodules (splits,
+  preprocessing, DataLoaders) and <code>DATAMODULE_REGISTRY</code>.</li>
+<li><code>model.py</code> — thin wrappers around Hugging Face <code>AutoModelFor...</code> classes,
+  plus the tabular task models (<code>SUPPORTED_TABULAR_TASK_TYPES</code>).</li>
+<li><code>trainer.py</code> — <code>FabricTrainer</code> (Lightning Fabric training loop with early
+  stopping, time limits, and Optuna pruning), <code>run_optuna_search</code>, and the
+  AutoGluon-backed <code>AutoGluonTrainer</code> for tabular tasks.</li>
+<li><code>hpo/optuna_objectives.py</code> — one Optuna objective per task type plus
+  <code>OBJECTIVE_REGISTRY</code>; <code>run_optuna_search</code> dispatches through the registry.</li>
+<li><code>feature_mapping.py</code> — extracts label maps, tokenizer vocabularies, and
+  fitted scaler/encoder state so preprocessing can be reproduced at inference.</li>
+<li><code>model_search.py</code> — Hugging Face model discovery and small/medium/large
+  size-tier filtering.</li>
+</ul>
+<p>The generic engine covers image, video, audio, text, and multimodal tasks;
+the vision, audio, and text endpoints simply scope which task types they
+accept (<code>image_*</code> slugs on <code>/automl/vision</code>, <code>audio_classification</code> on
+<code>/automl/audio</code>, text slugs on <code>/automl/text</code>).</p>
+<p>A <code>feature_mapping.json</code> (label maps, tokenizer vocab, scaler/encoder state)
+is saved alongside each trial so the preprocessing pipeline can be reproduced
+when loading a trained model (see <a href="../loading_model/">loading the model</a>).</p>
+<h2 id="repository-layout">Repository layout<a class="headerlink" href="#repository-layout" title="Permanent link">&para;</a></h2>
+<div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"> 1</span>
+<span class="normal"> 2</span>
+<span class="normal"> 3</span>
+<span class="normal"> 4</span>
+<span class="normal"> 5</span>
+<span class="normal"> 6</span>
+<span class="normal"> 7</span>
+<span class="normal"> 8</span>
+<span class="normal"> 9</span>
+<span class="normal">10</span>
+<span class="normal">11</span>
+<span class="normal">12</span>
+<span class="normal">13</span>
+<span class="normal">14</span>
+<span class="normal">15</span>
+<span class="normal">16</span>
+<span class="normal">17</span>
+<span class="normal">18</span>
+<span class="normal">19</span>
+<span class="normal">20</span>
+<span class="normal">21</span>
+<span class="normal">22</span>
+<span class="normal">23</span>
+<span class="normal">24</span></pre></div></td><td class="code"><div><pre><span></span><code>alfie_automl_engine/
+├── app/
+│   ├── main.py                # combined FastAPI app (single service)
+│   ├── api.py                 # unified router mounting every service under /automl
+│   ├── core/                  # shared library (config, logging, errors, AutoDW helpers, schemas)
+│   │   ├── schemas/           # pydantic response models
+│   │   └── prompt_templates/  # Jinja2 prompt and instruction templates
+│   ├── ml_engine/             # consolidated ML engine (all training code)
+│   │   ├── configs/           # per-task hyperparameter JSON configs
+│   │   └── hpo/               # Optuna objectives
+│   ├── tabular_automl/        # tabular AutoML endpoint (router, orchestrator, services)
+│   ├── vision_automl/         # vision AutoML endpoint (router, orchestrator, services)
+│   ├── audio_automl/          # audio AutoML endpoint (router, orchestrator, services)
+│   ├── text_automl/           # text AutoML endpoint (router, orchestrator, services)
+│   └── automlplus/            # AutoML+ service
+│       ├── tools/             # static (readability), text (LLM), vlm tools
+│       └── website_accessibility/
+├── docs/                      # mkdocs site (this documentation)
+├── tests/                     # pytest suite (mirrors the app/ layout)
+├── sample_data/               # datasets fetched by download_sample_data.py
+├── docker-compose.yml         # single API container
+├── Dockerfile
+├── mkdocs.yml
+└── pyproject.toml
+</code></pre></div></td></tr></table></div>
+<p>Runtime output (not in git): <code>logs/</code> holds per-service log files and
+<code>uploaded_data/</code> holds upload artifacts.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      <script id="__config" type="application/json">{"base": "..", "features": ["content.code.copy"], "search": "../assets/javascripts/workers/search.973d3a69.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.f55a23d4.min.js"></script>
+      
+    
+  </body>
+</html>
