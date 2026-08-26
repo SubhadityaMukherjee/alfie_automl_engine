@@ -72,3 +72,25 @@ class MultimodalTrainingSuccessResponse(BaseModel):
     leaderboard: str
     auxiliary_columns: list[str]
     process_log: list[dict[str, Any]] = []
+
+
+# ---------------------------------------------------------------------------
+# Audio AutoML  (/automl/audio)
+# ---------------------------------------------------------------------------
+
+
+class AudioTrainingSuccessResponse(BaseModel):
+    message: str
+    leaderboard: str
+    process_log: list[dict[str, Any]] = []
+
+
+# ---------------------------------------------------------------------------
+# Text AutoML  (/automl/text)
+# ---------------------------------------------------------------------------
+
+
+class TextTrainingSuccessResponse(BaseModel):
+    message: str
+    leaderboard: str
+    process_log: list[dict[str, Any]] = []

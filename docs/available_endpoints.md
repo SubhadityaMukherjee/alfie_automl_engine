@@ -54,13 +54,14 @@ Responses: `200` success (message + leaderboard), `400` validation error,
 ## Vision AutoML (`/automl/vision`)
 
 Optuna hyperparameter search + Lightning Fabric training over Hugging Face
-models, on image ZIP datasets fetched from AutoDW.
+models, on image/video ZIP datasets fetched from AutoDW. Training is delegated
+to the consolidated ML engine (`app/ml_engine`).
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | POST | `/automl/vision/deployment_instructions/` | Return rendered deployment instructions for using a trained vision model. |
 | POST | `/automl/vision/accepted_format/` | Return the accepted vision dataset format (ZIP structure + labels CSV). |
-| POST | `/automl/vision/best_model/` | Fetch a vision dataset from AutoDW, train image/video/audio/text models within a time budget, and upload the best model + leaderboard to AutoDW. |
+| POST | `/automl/vision/best_model/` | Fetch a vision dataset from AutoDW, train image/video models within a time budget, and upload the best model + leaderboard to AutoDW. |
 | POST | `/automl/vision/multimodal_best_model/` | Same pipeline, but trains on images **plus** auxiliary tabular CSV columns (auto-detected) as extra features. |
 
 ### `best_model` parameters
@@ -72,7 +73,7 @@ models, on image ZIP datasets fetched from AutoDW.
 | `dataset_version` | str | `v1` | Dataset version |
 | `filename_column` | str | `filename` | CSV column holding image filenames |
 | `label_column` | str | `label` | CSV column holding class labels |
-| `task_type` | str | `image_classification` | One of the supported vision task types (image, video, audio, text tasks — see OpenAPI docs) |
+| `task_type` | str | `image_classification` | One of the image/video task types: `image_classification`, `image_segmentation`, `object_detection`, `video_classification`, `keypoint_detection` |
 | `time_budget` | int | `60` | Training time budget in seconds |
 | `model_size` | str | `small` | `small` (≤ 50M params), `medium` (≤ 200M), or `large` |
 | `num_cpus` | int \| `auto` | `auto` | CPU count for AutoML |
@@ -88,6 +89,80 @@ models, on image ZIP datasets fetched from AutoDW.
 Responses for both endpoints: `200` success (message + leaderboard;
 multimodal also returns the detected `auxiliary_columns`), `400` validation
 error, `502` AutoDW communication failure, `500` unexpected error.
+
+> **Note:** audio and text task types are no longer accepted on the vision
+> endpoint — use `/automl/audio/best_model/` and `/automl/text/best_model/`
+> instead.
+
+---
+
+## Audio AutoML (`/automl/audio`)
+
+Audio classification with the same Optuna + Lightning Fabric pipeline over
+Hugging Face models, on audio ZIP datasets fetched from AutoDW.
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| POST | `/automl/audio/deployment_instructions/` | Return rendered deployment instructions for using a trained audio model. |
+| POST | `/automl/audio/accepted_format/` | Return the accepted audio dataset format (ZIP structure + labels CSV + audio folder). |
+| POST | `/automl/audio/best_model/` | Fetch an audio dataset from AutoDW, train an audio model within a time budget, and upload the best model + leaderboard to AutoDW. |
+
+### `best_model` parameters
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `user_id` | str | *required* | AutoDW user identifier |
+| `dataset_id` | str | *required* | AutoDW dataset identifier |
+| `dataset_version` | str | `v1` | Dataset version |
+| `filename_column` | str | `filename` | CSV column holding audio filenames |
+| `label_column` | str | `label` | CSV column holding class labels |
+| `task_type` | str | `audio_classification` | Audio task type (`audio_classification`) |
+| `time_budget` | int | `60` | Training time budget in seconds |
+| `model_size` | str | `small` | `small` (≤ 50M params), `medium` (≤ 200M), or `large` |
+| `num_cpus` | int \| `auto` | `auto` | CPU count for AutoML |
+| `num_gpus` | int \| `auto` | `auto` | GPU count for AutoML |
+| `dataset_split` | str | `None` | AutoDW dataset split to train on |
+
+Responses: `200` success (message + leaderboard), `400` validation error,
+`502` AutoDW communication failure, `500` unexpected error.
+
+---
+
+## Text AutoML (`/automl/text`)
+
+Text tasks with the same Optuna + Lightning Fabric pipeline over Hugging Face
+models, on CSV-in-ZIP datasets fetched from AutoDW.
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| POST | `/automl/text/deployment_instructions/` | Return rendered deployment instructions for using a trained text model. |
+| POST | `/automl/text/accepted_format/` | Return the accepted text dataset formats per task type. |
+| POST | `/automl/text/best_model/` | Fetch a text dataset from AutoDW, train a text model within a time budget, and upload the best model + leaderboard to AutoDW. |
+
+### `best_model` parameters
+
+| Field | Type | Default | Description |
+| ----- | ---- | ------- | ----------- |
+| `user_id` | str | *required* | AutoDW user identifier |
+| `dataset_id` | str | *required* | AutoDW dataset identifier |
+| `dataset_version` | str | `v1` | Dataset version |
+| `text_column` | str | `text` | CSV column holding the input text (used for `text_classification`) |
+| `label_column` | str | `label` | CSV column holding class labels (used for `text_classification`) |
+| `task_type` | str | `text_classification` | One of: `text_classification`, `question_answering`, `causal_lm`, `seq2seq_lm`, `masked_lm` |
+| `time_budget` | int | `60` | Training time budget in seconds |
+| `model_size` | str | `small` | `small` (≤ 50M params), `medium` (≤ 200M), or `large` |
+| `num_cpus` | int \| `auto` | `auto` | CPU count for AutoML |
+| `num_gpus` | int \| `auto` | `auto` | GPU count for AutoML |
+| `dataset_split` | str | `None` | AutoDW dataset split to train on |
+
+Required CSV columns per task type: `text` + `label` for
+`text_classification` (the text column name is configurable via
+`text_column`); `question`, `context`, `answer_start`, `answer_text` for
+`question_answering`; `text` for `causal_lm` / `masked_lm`; `input_text` +
+`target_text` for `seq2seq_lm`.
+
+Responses: `200` success (message + leaderboard), `400` validation error,
+`502` AutoDW communication failure, `500` unexpected error.
 
 ---
 
@@ -121,9 +196,10 @@ fetch failure).
 
 - **Trailing slashes matter**: endpoints are registered with a trailing
   slash; omitting it triggers a `307` redirect.
-- **`X-Task-ID` header**: the three training endpoints (`tabular/best_model`,
-  `vision/best_model`, `vision/multimodal_best_model`) accept an optional
-  `X-Task-ID` header used for request tracking.
+- **`X-Task-ID` header**: the five training endpoints (`tabular/best_model`,
+  `vision/best_model`, `vision/multimodal_best_model`, `audio/best_model`,
+  `text/best_model`) accept an optional `X-Task-ID` header used for request
+  tracking.
 - **Error shape**: errors are returned as `{"error": "<message>"}` with the
   status codes listed per service above.
 - Runnable `curl` examples live in

@@ -264,6 +264,44 @@ curl -s -X POST http://localhost:8001/automl/vision/multimodal_best_model/ \
 * 502 – AutoDW communication failures (metadata or download)
 * 500 – Unexpected failures (training crash, serialization issues)
 
+## AutoML Audio and Text
+
+The audio and text services reuse the same pipeline shape as vision (fetch →
+download → extract → validate → train → upload) with the same Optuna +
+Lightning Fabric training behind them, scoped to their own task types:
+
+* `POST /automl/audio/best_model/` — `task_type=audio_classification`
+* `POST /automl/text/best_model/` — `task_type` one of `text_classification`,
+  `question_answering`, `causal_lm`, `seq2seq_lm`, `masked_lm`
+
+```bash
+curl -s -X POST http://localhost:8001/automl/audio/best_model/ \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=7" \
+  -F "filename_column=filename" \
+  -F "label_column=label" \
+  -F "task_type=audio_classification" \
+  -F "time_budget=60" \
+  -F "model_size=small"
+```
+
+```bash
+curl -s -X POST http://localhost:8001/automl/text/best_model/ \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=8" \
+  -F "text_column=text" \
+  -F "label_column=label" \
+  -F "task_type=text_classification" \
+  -F "time_budget=60" \
+  -F "model_size=small"
+```
+
+Both services also expose `deployment_instructions/` and `accepted_format/`
+endpoints describing their dataset formats. Audio and text task types are no
+longer accepted on the vision endpoint.
+
 ## Notes & Current Limitations
 
 * The image ZIP structure is currently strict (see the accepted-format

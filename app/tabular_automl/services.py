@@ -29,8 +29,8 @@ from app.core.service_helpers import (  # noqa: F401 – re-exported for router
     upload_model,
 )
 from app.core.utils import jinja_environment, render_template
-from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
-from app.tabular_automl.modules import AutoMLTrainer
+from app.ml_engine.tabular.models import SUPPORTED_TABULAR_TASK_TYPES
+from app.ml_engine.tabular.modules import AutoMLTrainer
 
 logger = logging.getLogger(__name__)
 

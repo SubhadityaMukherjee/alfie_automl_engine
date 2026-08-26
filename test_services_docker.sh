@@ -69,4 +69,32 @@ curl -s -X POST "${ENGINE_BASE}/automl/vision/multimodal_best_model/" \
 echo -e "\n"
 fi
 
+if [[ $inpargs == "audio" || $inpargs == "all" ]]; then
+echo "=== Testing AutoML Audio - best_model ==="
+curl -s -X POST "${ENGINE_BASE}/automl/audio/best_model/" \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=6" \
+  -F "filename_column=filename" \
+  -F "label_column=label" \
+  -F "task_type=audio_classification" \
+  -F "time_budget=60" \
+  -F "model_size=small"
+echo -e "\n"
+fi
+
+if [[ $inpargs == "text" || $inpargs == "all" ]]; then
+echo "=== Testing AutoML Text - best_model ==="
+curl -s -X POST "${ENGINE_BASE}/automl/text/best_model/" \
+  -H "Content-Type: multipart/form-data" \
+  -F "user_id=1" \
+  -F "dataset_id=7" \
+  -F "text_column=text" \
+  -F "label_column=label" \
+  -F "task_type=text_classification" \
+  -F "time_budget=60" \
+  -F "model_size=small"
+echo -e "\n"
+fi
+
 echo "=== All tests completed ==="

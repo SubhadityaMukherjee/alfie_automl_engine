@@ -17,13 +17,13 @@ from fastapi.responses import JSONResponse
 from app.core.api_errors import automl_exception_to_response
 from app.core.exceptions import AutoMLError
 from app.core.process_log import get_process_log, start_process_log
-from app.core.schemas.ml_tasks import SUPPORTED_VISION_TASK_TYPES
 from app.core.schemas.responses import (
     ErrorResponse,
     InstructionsResponse,
     MultimodalTrainingSuccessResponse,
     VisionTrainingSuccessResponse,
 )
+from app.ml_engine.tasks import SUPPORTED_VISION_TASK_TYPES
 from app.vision_automl.orchestrator import (
     MultimodalTrainingRequest,
     VisionTrainingRequest,

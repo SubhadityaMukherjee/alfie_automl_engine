@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 from app.core.exceptions import AutoMLConfigError, AutoMLDataError
-from app.tabular_automl.modules import AutoMLTrainer
+from app.ml_engine.tabular.modules import AutoMLTrainer
 
 
 @pytest.fixture

@@ -27,6 +27,14 @@ def test_unified_router_exposes_all_service_endpoints():
         "/automl/vision/accepted_format/",
         "/automl/vision/best_model/",
         "/automl/vision/multimodal_best_model/",
+        # Audio AutoML
+        "/automl/audio/deployment_instructions/",
+        "/automl/audio/accepted_format/",
+        "/automl/audio/best_model/",
+        # Text AutoML
+        "/automl/text/deployment_instructions/",
+        "/automl/text/accepted_format/",
+        "/automl/text/best_model/",
         # AutoML+
         "/automl/automl_plus/accepted_format/",
         "/automl/automl_plus/image_tools/image_to_website/",

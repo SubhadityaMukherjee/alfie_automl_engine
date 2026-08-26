@@ -28,7 +28,7 @@ from typing import Iterator
 from app.core.concurrency import offload
 from app.core.exceptions import AutoDWUploadError, AutoMLValidationError
 from app.core.process_log import step
-from app.core.schemas.ml_tasks import SUPPORTED_VISION_TASK_TYPES
+from app.ml_engine.tasks import SUPPORTED_VISION_TASK_TYPES
 from app.vision_automl.services import (
     build_upload_payload,
     convert_leaderboard_safely,

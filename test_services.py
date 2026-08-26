@@ -36,6 +36,8 @@ SCENARIOS = [
     "tabularmvp",
     "visionmvp",
     "multimodal",
+    "audio",
+    "text",
 ]
 
 DEFAULT_READY_TIMEOUT_S = 240.0
@@ -315,6 +317,74 @@ def test_multimodal() -> None:
     print()
 
 
+def test_audio() -> None:
+    print("=== Testing AutoML Audio - best_model ===")
+    cmd = [
+        "curl",
+        "-s",
+        "-X",
+        "POST",
+        f"{BASE_URL}/automl/audio/best_model/",
+        "-H",
+        "Content-Type: multipart/form-data",
+        "-F",
+        "user_id=1",
+        "-F",
+        "dataset_id=6",
+        "-F",
+        "filename_column=filename",
+        "-F",
+        "label_column=label",
+        "-F",
+        "task_type=audio_classification",
+        "-F",
+        "time_budget=60",
+        "-F",
+        "model_size=small",
+    ]
+    cp = run(cmd, capture_output=True, check=False)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
+    print()
+
+
+def test_text() -> None:
+    print("=== Testing AutoML Text - best_model ===")
+    cmd = [
+        "curl",
+        "-s",
+        "-X",
+        "POST",
+        f"{BASE_URL}/automl/text/best_model/",
+        "-H",
+        "Content-Type: multipart/form-data",
+        "-F",
+        "user_id=1",
+        "-F",
+        "dataset_id=7",
+        "-F",
+        "text_column=text",
+        "-F",
+        "label_column=label",
+        "-F",
+        "task_type=text_classification",
+        "-F",
+        "time_budget=60",
+        "-F",
+        "model_size=small",
+    ]
+    cp = run(cmd, capture_output=True, check=False)
+    data = parse_json(cp.stdout or "")
+    if data:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
+    else:
+        print(cp.stdout)
+    print()
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run and test the ALFIE AutoML engine service (Python replacement for test_services.sh)"
@@ -371,6 +441,12 @@ def main() -> int:
 
         if "multimodal" in scenarios:
             test_multimodal()
+
+        if "audio" in scenarios:
+            test_audio()
+
+        if "text" in scenarios:
+            test_text()
 
         print("=== All tests completed ===")
         return 0

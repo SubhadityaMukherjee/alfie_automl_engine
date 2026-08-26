@@ -22,7 +22,7 @@ from app.core.schemas.responses import (
     InstructionsResponse,
     TrainingSuccessResponse,
 )
-from app.tabular_automl.models import SUPPORTED_TABULAR_TASK_TYPES
+from app.ml_engine.tabular.models import SUPPORTED_TABULAR_TASK_TYPES
 from app.tabular_automl.orchestrator import (
     TabularTrainingRequest,
     run_training_pipeline,
