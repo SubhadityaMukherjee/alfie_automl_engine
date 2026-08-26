@@ -4,9 +4,11 @@ All services are exposed by a single FastAPI app behind the unified `/automl`
 router (see [architecture](architecture.md)). The app listens on
 `AUTOML_ENGINE_PORT` (default `8001`), so the base URL is typically
 `http://localhost:8001`. Interactive OpenAPI docs are served at `/docs` and
-`/redoc`.
+`/redoc`, and `GET /automl/endpoints` returns a compact, LLM-readable JSON
+listing of every endpoint.
 
-All service endpoints are `POST`. Parameters are sent as
+All service endpoints are `POST` (the endpoint listing and health checks are
+`GET`). Parameters are sent as
 `multipart/form-data` form fields (file uploads included) unless noted
 otherwise.
 
@@ -18,6 +20,14 @@ otherwise.
 | ------ | ------- | ------------------------------------------------ |
 | GET    | `/health` | Liveness probe — reports that the service process is up. |
 | GET    | `/ready`  | Readiness probe — reports that the service can handle requests. |
+
+---
+
+## Endpoint listing (`/automl/endpoints`)
+
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET | `/automl/endpoints` | List every endpoint in the running service as structured JSON (path, HTTP methods, function name, summary, docstring-derived description, tags) — a compact, LLM-readable alternative to the raw OpenAPI spec. Useful for agents deciding which endpoint to call. |
 
 ---
 

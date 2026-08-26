@@ -1,8 +1,11 @@
 """Integration tests for the unified router mounted on the combined app."""
 
 from fastapi.routing import APIRoute
+from fastapi.testclient import TestClient
 
 from app.main import app
+
+client = TestClient(app)
 
 
 def _api_paths() -> set[str]:
@@ -51,3 +54,30 @@ def test_legacy_prefixes_are_gone():
         path.startswith(("/automl_tabular", "/automl_vision", "/automlplus"))
         for path in paths
     )
+
+
+def test_endpoints_listing_covers_every_route():
+    resp = client.get("/automl/endpoints")
+    assert resp.status_code == 200
+    listed = {e["path"] for e in resp.json()}
+    assert listed == _api_paths()
+
+
+def test_endpoints_listing_is_llm_readable():
+    resp = client.get("/automl/endpoints")
+    entries = resp.json()
+    assert len(entries) > 0
+
+    by_path = {e["path"]: e for e in entries}
+    vision = by_path["/automl/vision/best_model/"]
+    assert vision["methods"] == ["POST"]
+    assert "vision" in vision["tags"]
+    assert vision["summary"]
+    assert "Fetch a vision dataset" in vision["description"]
+
+    health = by_path["/health"]
+    assert health["methods"] == ["GET"]
+
+    # Sorted by path for stable, diff-friendly output.
+    paths = [e["path"] for e in entries]
+    assert paths == sorted(paths)
