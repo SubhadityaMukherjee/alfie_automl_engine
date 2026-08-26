@@ -39,7 +39,7 @@ from app.core.exceptions import (
     AutoMLValidationError,
 )
 from app.core.process_log import step
-from app.ml_engine.tabular.models import SUPPORTED_TABULAR_TASK_TYPES
+from app.ml_engine.model import SUPPORTED_TABULAR_TASK_TYPES
 from app.tabular_automl.services import (
     SUPPORTED_FILE_TYPES,
     build_upload_payload,

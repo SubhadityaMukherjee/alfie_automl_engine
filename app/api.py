@@ -49,6 +49,7 @@ class EndpointInfo(BaseModel):
 async def list_endpoints(request: Request) -> list[EndpointInfo]:
     """List every endpoint in this service as structured JSON.
 
+    Call this endpoint if the user wants to know what the AutoML engine does.
     Introspects the running FastAPI app's routes and returns each endpoint's
     path, HTTP methods, function name, and docstring-derived summary and
     description — a compact, LLM-readable alternative to the raw OpenAPI spec.

@@ -5,18 +5,18 @@ import pandas as pd
 import pytest
 
 from app.core.exceptions import AutoMLConfigError, AutoMLDataError
-from app.ml_engine.tabular.modules import AutoMLTrainer
+from app.ml_engine.trainer import AutoGluonTrainer
 
 
 @pytest.fixture
 def trainer_class():
     tmpdir = tempfile.mkdtemp()
-    trainer = AutoMLTrainer(save_model_path=tmpdir)
+    trainer = AutoGluonTrainer(save_model_path=tmpdir)
     yield trainer
     shutil.rmtree(tmpdir)  # cleanup after test
 
 
-def test_check_if_save_model_path_exists(trainer_class: AutoMLTrainer):
+def test_check_if_save_model_path_exists(trainer_class: AutoGluonTrainer):
     assert isinstance(str(trainer_class.save_model_path), str)
 
 
@@ -132,7 +132,9 @@ def test_train_invalid_target_column(
 
 
 @pytest.mark.slow
-def test_train_leaderboard_works(trainer_class: AutoMLTrainer, small_df: pd.DataFrame):
+def test_train_leaderboard_works(
+    trainer_class: AutoGluonTrainer, small_df: pd.DataFrame
+):
     leaderboard, _ = trainer_class.train(
         train_df=small_df, test_df=None, target_column="target", time_limit=20
     )
@@ -141,7 +143,7 @@ def test_train_leaderboard_works(trainer_class: AutoMLTrainer, small_df: pd.Data
 
 
 def test_train_leaderboard_exception(
-    trainer_class: AutoMLTrainer, small_df: pd.DataFrame
+    trainer_class: AutoGluonTrainer, small_df: pd.DataFrame
 ):
     with pytest.raises(AutoMLDataError):
         trainer_class.train(

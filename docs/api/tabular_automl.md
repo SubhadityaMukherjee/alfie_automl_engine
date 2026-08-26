@@ -6,6 +6,6 @@
 
 ::: app.tabular_automl.router
 
-The AutoGluon training wrapper (`AutoMLTrainer`) and the tabular task models
-live in the consolidated ML engine: `app.ml_engine.tabular` (see the
-[ML engine reference](ml_engine.md)).
+The AutoGluon training wrapper (`AutoGluonTrainer`) and the tabular task
+models live in the consolidated ML engine: `app.ml_engine.trainer` and
+`app.ml_engine.model` (see the [ML engine reference](ml_engine.md)).

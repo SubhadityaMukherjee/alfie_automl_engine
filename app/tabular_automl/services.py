@@ -29,8 +29,8 @@ from app.core.service_helpers import (  # noqa: F401 – re-exported for router
     upload_model,
 )
 from app.core.utils import jinja_environment, render_template
-from app.ml_engine.tabular.models import SUPPORTED_TABULAR_TASK_TYPES
-from app.ml_engine.tabular.modules import AutoMLTrainer
+from app.ml_engine.model import SUPPORTED_TABULAR_TASK_TYPES
+from app.ml_engine.trainer import AutoGluonTrainer
 
 logger = logging.getLogger(__name__)
 
@@ -174,7 +174,7 @@ def train_automl(
         raise AutoMLRuntimeError(f"Failed to create model directory: {e}") from e
 
     try:
-        trainer = AutoMLTrainer(save_model_path=save_model_path)
+        trainer = AutoGluonTrainer(save_model_path=save_model_path)
     except AutoMLConfigError as e:
         logger.error(f"Failed to initialize AutoML trainer: {e}")
         raise AutoMLRuntimeError(f"Failed to initialize trainer: {e}") from e
