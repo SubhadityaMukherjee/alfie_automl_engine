@@ -1,36 +1,13 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.venv/
+.git
+.venv
 .env
-
-# Git
-.git/
-.gitignore
-
-# Docker
-Dockerfile
-docker-compose.yml
-
-# Data & artifacts (CRITICAL)
-uploaded_data/
-data/
-datasets/
-*.zip
-*.tar
-*.tar.gz
-
-# ML junk
-wandb/
-mlruns/
-checkpoints/
-models/
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
+**/__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.mypy_cache
+logs
+docs
+tests
+.github
+sample_data
