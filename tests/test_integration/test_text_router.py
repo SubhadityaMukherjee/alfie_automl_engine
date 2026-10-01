@@ -137,6 +137,7 @@ def test_best_model_unsupported_task_type(
 # ---------------------------------------------------------------------------
 
 
+@patch("app.text_automl.router.deployment_instructions", return_value="deploy info")
 @patch("app.text_automl.orchestrator.upload_model")
 @patch(
     "app.text_automl.orchestrator.build_upload_payload",
@@ -170,6 +171,7 @@ def test_best_model_success(
     mock_convert,
     mock_payload,
     mock_upload,
+    mock_instructions,
 ):
     from pathlib import Path
 
@@ -188,3 +190,4 @@ def test_best_model_success(
     assert resp.status_code == 200
     assert "Text AutoML training completed" in resp.json()["message"]
     assert resp.json()["leaderboard"] == "lb_str"
+    assert resp.json()["deployment_instructions"] == "deploy info"

@@ -39,9 +39,13 @@ class ImagePromptResponse(BaseModel):
 
 class WebAccessibilityResponse(BaseModel):
     source: str
+    pages_crawled: list[str] = []
     average_score: float | None = None
     results: list[dict[str, Any]]
     readability: dict[str, Any] | None = None
+    summary: str | None = None
+    crawl_errors: list[dict[str, str]] = []
+    html_report: str | None = None
     process_log: list[dict[str, Any]] = []
 
 
@@ -53,6 +57,7 @@ class WebAccessibilityResponse(BaseModel):
 class TrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
+    deployment_instructions: str | None = None
     process_log: list[dict[str, Any]] = []
 
 
@@ -64,6 +69,7 @@ class TrainingSuccessResponse(BaseModel):
 class VisionTrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
+    deployment_instructions: str | None = None
     process_log: list[dict[str, Any]] = []
 
 
@@ -71,6 +77,7 @@ class MultimodalTrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
     auxiliary_columns: list[str]
+    deployment_instructions: str | None = None
     process_log: list[dict[str, Any]] = []
 
 
@@ -82,6 +89,7 @@ class MultimodalTrainingSuccessResponse(BaseModel):
 class AudioTrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
+    deployment_instructions: str | None = None
     process_log: list[dict[str, Any]] = []
 
 
@@ -93,4 +101,5 @@ class AudioTrainingSuccessResponse(BaseModel):
 class TextTrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
+    deployment_instructions: str | None = None
     process_log: list[dict[str, Any]] = []

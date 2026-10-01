@@ -14,3 +14,4 @@
 ## Website Accessibility
 
 ::: app.automlplus.website_accessibility.pipeline
+::: app.automlplus.website_accessibility.crawler

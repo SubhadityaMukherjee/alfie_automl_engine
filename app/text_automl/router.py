@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from app.core.api_errors import automl_exception_to_response
 from app.core.exceptions import AutoMLError
 from app.core.process_log import get_process_log, start_process_log
+from app.core.utils import render_deployment_instructions
 from app.core.schemas.responses import (
     ErrorResponse,
     InstructionsResponse,
@@ -173,6 +174,9 @@ async def find_best_model_for_text(
             content={
                 "message": result.message,
                 "leaderboard": result.leaderboard,
+                "deployment_instructions": render_deployment_instructions(
+                    deployment_instructions
+                ),
                 "process_log": get_process_log(),
             },
         )

@@ -32,8 +32,15 @@ async def run_accessibility_pipeline(
     chunk_size: int,
     concurrency: int = 4,
     context: str = "",
+    page: str | None = None,
+    chunk_offset: int = 0,
 ) -> List[ChunkResult]:
-    """Split HTML into chunks and process them concurrently with a semaphore."""
+    """Split HTML into chunks and process them concurrently with a semaphore.
+
+    ``page`` tags every chunk result with the page (or file) it came from and
+    ``chunk_offset`` shifts chunk indices so results from multiple pages can be
+    merged into one globally-numbered list.
+    """
     if not content or not content.strip():
         logger.warning("Empty content provided to run_accessibility_pipeline")
         return []
@@ -71,6 +78,10 @@ async def run_accessibility_pipeline(
     except Exception as e:
         logger.exception("Failed to process chunks")
         raise AutoMLRuntimeError(f"Failed to process chunks: {e}") from e
+
+    for result in results:
+        result.page = page
+        result.chunk += chunk_offset
 
     return results
 

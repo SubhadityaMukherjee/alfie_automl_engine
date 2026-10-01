@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 
 from jinja2 import Environment, FileSystemLoader
 
@@ -8,6 +9,19 @@ logger = logging.getLogger(__name__)
 
 _jinja_path = get_settings().jinja_path
 jinja_environment = Environment(loader=FileSystemLoader(_jinja_path))
+
+
+def render_deployment_instructions(renderer: Callable[[], str]) -> str | None:
+    """Render deployment instructions, returning None instead of raising.
+
+    Used by the training endpoints so a template failure never turns a
+    successful training run into an error response.
+    """
+    try:
+        return renderer()
+    except Exception as e:
+        logger.warning("Failed to render deployment instructions: %s", e)
+        return None
 
 
 def render_template(

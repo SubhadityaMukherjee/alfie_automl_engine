@@ -55,7 +55,7 @@ Open another shell and run the tests.
 Bits and bobs that are not really "AutoML" but use AI models for a specific use case
 #### Test: Website Accessibility (HTML file input)
 - This tests the accessibility of a file given an HTML
-- Only options here are to enter the html file
+- Options: upload the html file (`file`), and optionally an extra guidelines file (`extra_file_input`)
 
 ```bash
 curl -sN -X POST http://localhost:8001/automl/automl_plus/web_access/analyze/ \
@@ -65,15 +65,56 @@ curl -sN -X POST http://localhost:8001/automl/automl_plus/web_access/analyze/ \
 
 ---
 
-#### Test: Website Accessibility (URL input)
-- This tests the accessibility of a file given a URL (it downloads the html/css)
-- Only options here are to enter the url
+#### Test: Website Accessibility (URL input, recursive crawl)
+- This tests the accessibility of a website given a URL
+- The service crawls the site (same-origin links only) and analyses every page
+  it fetches
+- Options:
+  - `url` — the website to analyse (works on its own, no `file` needed)
+  - `depth` — crawl depth, default `2` (`1` = only the given page,
+    `2` = the page plus the pages it links to, ...)
+  - `include_html` — default `true`; also embed a rendered, human-readable
+    HTML report in the response as the `html_report` field (set `false` to
+    get JSON only and keep responses small)
+  - `extra_file_input` — optional guidelines file for LLM context
+- The crawl is capped at `WEB_ACCESSIBILITY_MAX_PAGES` (default 25); the
+  default depth is `WEB_ACCESSIBILITY_CRAWL_DEPTH` (default 2)
 
 ```bash
 curl -s -X POST http://localhost:8001/automl/automl_plus/web_access/analyze/ \
   -H "Content-Type: multipart/form-data" \
-  -F "url=https://alfie-project.eu"
+  -F "url=https://alfie-project.eu" \
+  -F "depth=2"
   # Optionally add: -F "extra_file_input=@./sample_data/wcag_guidelines.txt"
+```
+
+Save the embedded HTML report to a file (jq) and open it:
+
+```bash
+curl -s -X POST http://localhost:8001/automl/automl_plus/web_access/analyze/ \
+  -F "url=https://alfie-project.eu" -o report.json
+jq -r .html_report report.json > report.html && open report.html
+```
+
+The response contains:
+- `source` — the seed URL or uploaded filename
+- `pages_crawled` — every page that was analysed
+- `average_score` — mean WCAG score (0–10) over all analysed chunks
+- `results` — per-chunk findings (score, LLM feedback, image alt-text checks),
+  each tagged with the `page` it came from
+- `readability` — textstat metrics over the combined page text
+- `summary` — an LLM-written markdown summary of the aggregated results
+  (recurring issues, score breakdown, readability interpretation, priority
+  recommendations)
+- `crawl_errors` — any sub-pages that failed to download during the crawl
+- `html_report` — the same report rendered as a self-contained HTML document
+  (unless `include_html=false`); write it to a `.html` file to view it
+- `process_log` — step timings for the request
+
+There is also a standalone renderer for existing JSON reports:
+
+```bash
+uv run python app/automlplus/render_accessibility_report.py report.json report.html
 ```
 
 ---
@@ -138,9 +179,16 @@ curl -s -X POST "http://localhost:8001/automl/tabular/best_model/" \
 ```json
 {
   "message": "AutoML training completed successfully and model uploaded to AutoDW",
-  "leaderboard": "| model | score | ... |"
+  "leaderboard": "| model | score | ... |",
+  "deployment_instructions": "## Loading and/or Deploying a trained model ..."
 }
 ```
+- The `deployment_instructions` field (markdown) is included in every training
+  response across all modalities (`/automl/tabular`, `/automl/vision` incl.
+  multimodal, `/automl/audio`, `/automl/text`) — same content as the dedicated
+  `deployment_instructions/` endpoints and the copy embedded in the uploaded
+  model zip.
+
 #### Error Handling
 - 400 – Validation Errors
   - Target column missing
