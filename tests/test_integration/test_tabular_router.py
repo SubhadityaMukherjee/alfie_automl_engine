@@ -374,6 +374,7 @@ def test_best_model_training_unexpected_error(
 # ---------------------------------------------------------------------------
 
 
+@patch("app.tabular_automl.router.deployment_instructions", return_value="deploy info")
 @patch("app.tabular_automl.orchestrator.upload_model")
 @patch(
     "app.tabular_automl.orchestrator.build_upload_payload",
@@ -411,6 +412,7 @@ def test_best_model_success(
     mock_convert,
     mock_payload,
     mock_upload,
+    mock_instructions,
 ):
     zip_path = MagicMock()
     zip_path.exists.return_value = True
@@ -425,3 +427,4 @@ def test_best_model_success(
     body = resp.json()
     assert "AutoML training completed" in body["message"]
     assert body["leaderboard"] == "leaderboard_str"
+    assert body["deployment_instructions"] == "deploy info"

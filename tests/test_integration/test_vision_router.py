@@ -302,6 +302,7 @@ def test_best_model_upload_failure(
 # ---------------------------------------------------------------------------
 
 
+@patch("app.vision_automl.router.deployment_instructions", return_value="deploy info")
 @patch("app.vision_automl.orchestrator.upload_model")
 @patch(
     "app.vision_automl.orchestrator.build_upload_payload",
@@ -335,6 +336,7 @@ def test_best_model_success(
     mock_convert,
     mock_payload,
     mock_upload,
+    mock_instructions,
 ):
     from pathlib import Path
 
@@ -353,6 +355,7 @@ def test_best_model_success(
     assert resp.status_code == 200
     assert "Vision AutoML training completed" in resp.json()["message"]
     assert resp.json()["leaderboard"] == "lb_str"
+    assert resp.json()["deployment_instructions"] == "deploy info"
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +413,7 @@ def test_multimodal_non_zip_returns_400(
 # ---------------------------------------------------------------------------
 
 
+@patch("app.vision_automl.router.deployment_instructions", return_value="deploy info")
 @patch("app.vision_automl.orchestrator.upload_model")
 @patch(
     "app.vision_automl.orchestrator.build_upload_payload",
@@ -448,6 +452,7 @@ def test_multimodal_success(
     mock_convert,
     mock_payload,
     mock_upload,
+    mock_instructions,
 ):
     from pathlib import Path
 
@@ -466,3 +471,4 @@ def test_multimodal_success(
     assert resp.status_code == 200
     assert "Multimodal" in resp.json()["message"]
     assert resp.json()["auxiliary_columns"] == ["feature1", "feature2"]
+    assert resp.json()["deployment_instructions"] == "deploy info"

@@ -179,9 +179,16 @@ curl -s -X POST "http://localhost:8001/automl/tabular/best_model/" \
 ```json
 {
   "message": "AutoML training completed successfully and model uploaded to AutoDW",
-  "leaderboard": "| model | score | ... |"
+  "leaderboard": "| model | score | ... |",
+  "deployment_instructions": "## Loading and/or Deploying a trained model ..."
 }
 ```
+- The `deployment_instructions` field (markdown) is included in every training
+  response across all modalities (`/automl/tabular`, `/automl/vision` incl.
+  multimodal, `/automl/audio`, `/automl/text`) — same content as the dedicated
+  `deployment_instructions/` endpoints and the copy embedded in the uploaded
+  model zip.
+
 #### Error Handling
 - 400 – Validation Errors
   - Target column missing
