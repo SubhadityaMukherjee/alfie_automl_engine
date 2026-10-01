@@ -70,5 +70,50 @@ It is strongly recommended to:
 * Python and AutoGluon versions should match (or be compatible) between training and deployment environments
 * Containerized deployment (Docker) is recommended for reproducibility
 
-## Vision Dataset
-- This is a WIP
+## Vision model - Loading and Deployment
+
+Vision models (`image_classification`, multimodal, and the other vision task
+types) are saved as a full pickled PyTorch module plus a
+`feature_mapping.json` with the label map (and auxiliary-feature state for
+multimodal). Full instructions, including preprocessing and multimodal
+auxiliary features:
+
+- rendered: `POST /automl/vision/deployment_instructions/`
+- template: `app/core/prompt_templates/vision_deployment_instructions.md`
+
+```python
+import torch
+from app.ml_engine.model import ImageClassificationModel  # noqa: F401
+
+model = torch.load("model/model.pt", weights_only=False, map_location="cpu")
+model.eval()
+```
+
+## Audio model - Loading and Deployment
+
+Audio models (`audio_classification`) use the same artifact shape: a pickled
+module + `feature_mapping.json`. At inference, resample audio to 16 kHz mono
+and use the backbone's HF feature extractor. Full instructions:
+
+- rendered: `POST /automl/audio/deployment_instructions/`
+- template: `app/core/prompt_templates/audio_deployment_instructions.md`
+
+## Text model - Loading and Deployment
+
+Text models (`text_classification`, `question_answering`, `causal_lm`,
+`seq2seq_lm`, `masked_lm`) are pickled modules + `feature_mapping.json`
+(label map, tokenizer vocab, `hf_model_id`). Rebuild the tokenizer from the
+recorded `hf_model_id`; for generation tasks call `model.model.generate()`.
+Full instructions:
+
+- rendered: `POST /automl/text/deployment_instructions/`
+- template: `app/core/prompt_templates/text_deployment_instructions.md`
+
+Notes common to vision/audio/text artifacts:
+
+- `model.pt` is a **full-module pickle** (`torch.save(model)`), so loading
+  needs `app.ml_engine.model` importable and `weights_only=False` (torch >= 2.6
+  defaults to `weights_only=True`)
+- Only load artifacts you trust — pickled modules can execute arbitrary code
+- The three services also expose `POST /automl/{vision,audio,text}/accepted_format/`
+  describing the training dataset format
