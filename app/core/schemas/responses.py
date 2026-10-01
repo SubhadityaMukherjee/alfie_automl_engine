@@ -39,9 +39,13 @@ class ImagePromptResponse(BaseModel):
 
 class WebAccessibilityResponse(BaseModel):
     source: str
+    pages_crawled: list[str] = []
     average_score: float | None = None
     results: list[dict[str, Any]]
     readability: dict[str, Any] | None = None
+    summary: str | None = None
+    crawl_errors: list[dict[str, str]] = []
+    html_report: str | None = None
     process_log: list[dict[str, Any]] = []
 
 

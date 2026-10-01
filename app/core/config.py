@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     chunk_size_for_accessibility: int = 3000
     concurrency_num_for_accessibility: int = 4
     web_accessibility_url_retry_timeout: int = 10
+    web_accessibility_crawl_depth: int = 2
+    web_accessibility_max_pages: int = 25
 
     # --- Tabular AutoML ----------------------------------------------------
     autodw_url: str = "http://localhost:8000"

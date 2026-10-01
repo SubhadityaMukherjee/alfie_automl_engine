@@ -3,18 +3,20 @@
 import logging
 from typing import Annotated, Any
 
-import requests
 from fastapi import APIRouter, File, Form, UploadFile
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from jinja2 import Environment, FileSystemLoader
 
+from app.automlplus.render_accessibility_report import render_report_html
 from app.automlplus.tools.static import ReadabilityAnalyzer
+from app.automlplus.tools.text import ChunkResult, summarize_accessibility_results
 from app.automlplus.tools.vlm import AltTextChecker, ImagePromptRunner
 from app.automlplus.utils import (
     automl_plus_data_instructions,
     extract_text_from_html_bytes,
     json_safe,
 )
+from app.automlplus.website_accessibility.crawler import crawl_website
 from app.automlplus.website_accessibility.pipeline import (
     resolve_coroutines,
     run_accessibility_pipeline,
@@ -232,22 +234,58 @@ async def run_on_image_stream(
     },
 )
 async def analyze_web_accessibility_and_readability(
-    file: Annotated[UploadFile, File(..., description="HTML file")],
-    url: Annotated[str | None, Form(..., description="URL of website")] = None,
+    file: Annotated[
+        UploadFile | None, File(description="HTML file (optional when url is given)")
+    ] = None,
+    url: Annotated[str | None, Form(description="URL of website")] = None,
+    depth: Annotated[
+        int, Form(description="Crawl depth when a url is given (1 = seed page only)")
+    ] = get_settings().web_accessibility_crawl_depth,
+    include_html: Annotated[
+        bool,
+        Form(
+            description=(
+                "Also include a rendered, human-readable HTML report of these "
+                "results as the html_report field"
+            )
+        ),
+    ] = True,
     extra_file_input: Annotated[
-        UploadFile | None, File(..., description="Extra file for LLM context")
+        UploadFile | None, File(description="Extra file for LLM context")
     ] = None,
 ) -> JSONResponse:
     """Run WCAG-inspired accessibility checks and optional readability analysis on HTML."""
     logger.info("Starting web accessibility and readability analysis")
     start_process_log()
 
-    content: str | None = None
-    source_name: str = "uploaded.html"
     settings = get_settings()
     timeout: int = settings.web_accessibility_url_retry_timeout
 
-    # --- Load HTML content ---
+    if not file and not url:
+        logger.error("No HTML file or URL provided for accessibility analysis")
+        return JSONResponse(
+            content={
+                "error": "Provide an HTML file or a url",
+                "process_log": get_process_log(),
+            },
+            status_code=400,
+        )
+
+    if depth < 1:
+        logger.error("Invalid crawl depth: %s", depth)
+        return JSONResponse(
+            content={
+                "error": f"depth must be >= 1, got {depth}",
+                "process_log": get_process_log(),
+            },
+            status_code=400,
+        )
+
+    # --- Resolve pages to analyse (uploaded file or crawled website) ---
+    pages_to_analyse: list[tuple[str, str]] = []
+    crawl_errors: list[dict[str, str]] = []
+    source_name: str = "uploaded.html"
+
     if file:
         try:
             with step("load_html"):
@@ -259,16 +297,25 @@ async def analyze_web_accessibility_and_readability(
                 await file.close()
             except Exception:
                 logger.warning("Failed to close uploaded HTML file", exc_info=True)
+        pages_to_analyse.append((source_name, content))
 
     if url:
         try:
             with step("fetch_url"):
-                logger.debug("Fetching HTML from URL: %s", url)
-                resp = await offload(requests.get, url, timeout=timeout)
-                resp.raise_for_status()
-                content = resp.text
+                logger.debug("Crawling website from URL: %s (depth %d)", url, depth)
+                crawl_result = await offload(
+                    crawl_website,
+                    start_url=url,
+                    depth=depth,
+                    timeout=timeout,
+                    max_pages=settings.web_accessibility_max_pages,
+                )
+                pages_to_analyse = [
+                    (page.url, page.content) for page in crawl_result.pages
+                ]
+                crawl_errors = crawl_result.errors
                 source_name = url
-                logger.debug("HTML successfully fetched from URL")
+                logger.debug("Crawled %d page(s) from URL", len(pages_to_analyse))
         except Exception as e:
             logger.error("Failed to fetch HTML from URL: %s", e)
             return JSONResponse(
@@ -279,7 +326,13 @@ async def analyze_web_accessibility_and_readability(
                 status_code=400,
             )
 
-    if not content or not str(content).strip():
+    pages_to_analyse = [
+        (name, content)
+        for name, content in pages_to_analyse
+        if content and str(content).strip()
+    ]
+
+    if not pages_to_analyse:
         logger.error("Resolved HTML content is empty")
         return JSONResponse(
             content={
@@ -288,8 +341,6 @@ async def analyze_web_accessibility_and_readability(
             },
             status_code=400,
         )
-
-    content_str: str = str(content)
 
     # --- Load guidelines file if provided ---
     context_str: str = ""
@@ -307,26 +358,33 @@ async def analyze_web_accessibility_and_readability(
             except Exception:
                 logger.warning("Failed to close extra context file", exc_info=True)
 
-    # --- Run accessibility pipeline ---
+    # --- Run accessibility pipeline per page ---
     chunk_size: int = settings.chunk_size_for_accessibility
     concurrency_num: int = settings.concurrency_num_for_accessibility
     logger.debug(
         f"Running accessibility pipeline with chunk size {chunk_size}, concurrency {concurrency_num}"
     )
 
+    all_results: list[ChunkResult] = []
     with step("accessibility_analysis"):
-        results = await run_accessibility_pipeline(
-            content=content_str,
-            filename=source_name,
-            jinja_environment=jinja_environment,
-            chunk_size=chunk_size,
-            concurrency=concurrency_num,
-            context=context_str,
-        )
+        chunk_offset = 0
+        for page_name, page_content in pages_to_analyse:
+            page_results = await run_accessibility_pipeline(
+                content=page_content,
+                filename=page_name,
+                jinja_environment=jinja_environment,
+                chunk_size=chunk_size,
+                concurrency=concurrency_num,
+                context=context_str,
+                page=page_name,
+                chunk_offset=chunk_offset,
+            )
+            chunk_offset += len(page_results)
+            all_results.extend(page_results)
         logger.info("Accessibility pipeline completed successfully")
 
         # --- Aggregate results ---
-        resolved_results = [await resolve_coroutines(r) for r in results]
+        resolved_results = [await resolve_coroutines(r) for r in all_results]
 
         scores = [
             r.get("score")
@@ -340,7 +398,11 @@ async def analyze_web_accessibility_and_readability(
     readability_scores: dict[str, Any] | None = None
     try:
         with step("readability_analysis"):
-            text = extract_text_from_html_bytes(content_str.encode("utf-8"))
+            texts = [
+                extract_text_from_html_bytes(content.encode("utf-8"))
+                for _, content in pages_to_analyse
+            ]
+            text = "\n".join(t for t in texts if t.strip())
             if text.strip():
                 readability_scores = ReadabilityAnalyzer.analyze(text)
                 logger.debug("Readability analysis completed successfully")
@@ -348,14 +410,57 @@ async def analyze_web_accessibility_and_readability(
         logger.warning("Error during readability analysis: %s", e)
         readability_scores = {"error": str(e)}
 
+    # --- LLM summary of aggregated results ---
+    summary: str | None = None
+    try:
+        with step("summary"):
+            summary = await summarize_accessibility_results(
+                jinja_environment=jinja_environment,
+                source=source_name,
+                pages=[name for name, _ in pages_to_analyse],
+                average_score=average_score,
+                chunk_scores=[
+                    {
+                        "page": r.get("page"),
+                        "chunk": r.get("chunk"),
+                        "score": r.get("score"),
+                    }
+                    for r in resolved_results
+                ],
+                readability=readability_scores,
+                llm_responses=[r.get("llm_response") or "" for r in resolved_results],
+            )
+            logger.debug("Accessibility summary generated successfully")
+    except Exception as e:
+        logger.warning("Error during accessibility summary generation: %s", e)
+        summary = None
+
     payload = {
         "source": source_name,
+        "pages_crawled": [name for name, _ in pages_to_analyse],
         "average_score": average_score,
         "results": resolved_results,
         "readability": readability_scores,
+        "summary": summary,
+        "crawl_errors": crawl_errors,
         "process_log": get_process_log(),
     }
 
+    # --- Render the human-readable HTML report (kept out of json_safe so the
+    # --- HTML arrives unescaped and can be saved straight to a .html file) ---
+    html_report: str | None = None
+    if include_html:
+        try:
+            with step("render_html_report"):
+                html_report = await offload(render_report_html, payload)
+                logger.debug("HTML accessibility report rendered successfully")
+        except Exception as e:
+            logger.warning("Error during HTML report rendering: %s", e)
+            html_report = None
+
     safe_payload = json_safe(payload)
+    # Overwrite (bypassing json_safe) so the HTML arrives unescaped and can be
+    # saved straight to a .html file
+    safe_payload["html_report"] = html_report
     logger.info("Web accessibility and readability analysis finished successfully")
     return JSONResponse(content=safe_payload)

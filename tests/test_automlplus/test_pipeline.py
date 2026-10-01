@@ -122,6 +122,34 @@ async def test_process_failure_raises(mock_split, mock_process):
         )
 
 
+@pytest.mark.asyncio
+@patch("app.automlplus.website_accessibility.pipeline._process_single_chunk")
+@patch(
+    "app.automlplus.website_accessibility.pipeline.split_chunks",
+    return_value=(["chunk1", "chunk2"], [(1, 10), (11, 20)]),
+)
+async def test_tags_results_with_page_and_chunk_offset(mock_split, mock_process):
+    mock_process.side_effect = lambda i, *a, **kw: ChunkResult(
+        chunk=i,
+        start_line=1,
+        end_line=10,
+        score=80.0,
+        image_feedback=[],
+        llm_response="ok",
+    )
+
+    result = await run_accessibility_pipeline(
+        "content",
+        "https://example.com",
+        MagicMock(),
+        chunk_size=100,
+        page="https://example.com",
+        chunk_offset=5,
+    )
+    assert [r.chunk for r in result] == [5, 6]
+    assert all(r.page == "https://example.com" for r in result)
+
+
 # ---------------------------------------------------------------------------
 # resolve_coroutines
 # ---------------------------------------------------------------------------

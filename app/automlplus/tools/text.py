@@ -11,6 +11,9 @@ Current tools:
 - ``_process_single_chunk`` — sends one HTML chunk to the LLM for WCAG analysis,
   extracts a numeric score from the response, and runs ``AltTextChecker`` on any
   ``<img>`` tags found in the chunk.
+- ``summarize_accessibility_results`` — asks the LLM to condense aggregated
+  pipeline results (scores, recurring issues, readability) into a markdown
+  summary report.
 """
 
 import asyncio
@@ -38,6 +41,7 @@ class ChunkResult:
     image_feedback: List[Dict[str, Any]]
     llm_response: str | None
     error: str | None = None
+    page: str | None = None
 
 
 async def _process_single_chunk(
@@ -160,3 +164,48 @@ async def _process_single_chunk(
                 llm_response=None,
                 error=str(e),
             )
+
+
+_MAX_FINDING_CHARS = 600
+
+
+async def summarize_accessibility_results(
+    jinja_environment,
+    source: str,
+    pages: List[str],
+    average_score: float | None,
+    chunk_scores: List[Dict[str, Any]],
+    readability: Dict[str, Any] | None,
+    llm_responses: List[str],
+) -> str:
+    """Condense aggregated pipeline results into a markdown summary via the LLM."""
+    findings = "\n\n".join(
+        f"[{idx + 1}] {response[:_MAX_FINDING_CHARS]}"
+        for idx, response in enumerate(llm_responses)
+        if response
+    )
+    if not findings:
+        findings = "No chunk findings available."
+
+    prompt = render_template(
+        jinja_environment=jinja_environment,
+        template_name="website_accessibility_summary.txt",
+        source=source,
+        pages="\n".join(f"- {p}" for p in pages) or "- (none)",
+        chunk_scores="\n".join(
+            f"- page={cs.get('page')} chunk={cs.get('chunk')} score={cs.get('score')}"
+            for cs in chunk_scores
+        )
+        or "- (none)",
+        average_score=average_score if average_score is not None else "N/A",
+        readability=readability if readability is not None else {},
+        findings=findings,
+    )
+
+    settings = get_settings()
+    backend = settings.model_backend.lower()
+    model = (settings.web_accessibility_chat_model or "").strip() or "gpt-4o-mini"
+    response = await ChatHandler.chat(
+        prompt, backend=backend, model=model, stream=False
+    )
+    return response if isinstance(response, str) else ""
