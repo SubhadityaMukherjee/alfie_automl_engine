@@ -1,13 +1,49 @@
-.git
-.venv
-.env
-**/__pycache__
+# Python
+__pycache__/
 *.pyc
-.pytest_cache
-.ruff_cache
-.mypy_cache
-logs
-docs
-tests
-.github
-sample_data
+*.pyo
+*.pyd
+.venv/
+.env
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+Dockerfile.worker
+docker-compose.yml
+
+# Data & artifacts (CRITICAL)
+uploaded_data/
+data/
+datasets/
+sample_data/
+*.zip
+*.tar
+*.tar.gz
+
+# ML junk
+wandb/
+mlruns/
+checkpoints/
+models/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Repo extras not needed in image contexts
+docs/
+tests/
+.github/
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
