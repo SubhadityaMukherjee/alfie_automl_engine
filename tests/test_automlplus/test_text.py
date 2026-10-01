@@ -1,11 +1,15 @@
-"""Tests for app.automlplus.tools.text (_process_single_chunk, ChunkResult)."""
+"""Tests for app.automlplus.tools.text (_process_single_chunk, ChunkResult, summarize)."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.automlplus.tools.text import ChunkResult, _process_single_chunk
+from app.automlplus.tools.text import (
+    ChunkResult,
+    _process_single_chunk,
+    summarize_accessibility_results,
+)
 
 
 @pytest.fixture
@@ -33,6 +37,7 @@ def test_chunk_result_defaults():
         llm_response="ok",
     )
     assert r.error is None
+    assert r.page is None
     assert r.chunk == 0
     assert r.score == 85.0
 
@@ -195,4 +200,91 @@ async def test_whitespace_normalization(
         0, "<p>Hello</p>", 1, 10, 1, "test.html", mock_jinja, sem, ""
     )
     assert result.score == 75.0
-    assert "  " not in result.llm_response
+    assert "  " not in (result.llm_response or "")
+
+
+# ---------------------------------------------------------------------------
+# summarize_accessibility_results
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.tools.text.ChatHandler")
+@patch("app.automlplus.tools.text.render_template", return_value="summary prompt")
+async def test_summarize_returns_llm_text(mock_render, mock_chat, mock_jinja):
+    mock_chat.chat = AsyncMock(return_value="## Overall\nGood site")
+
+    summary = await summarize_accessibility_results(
+        jinja_environment=mock_jinja,
+        source="https://example.com",
+        pages=["https://example.com"],
+        average_score=6.5,
+        chunk_scores=[{"page": "https://example.com", "chunk": 0, "score": 6.5}],
+        readability={"Flesch Reading Ease": 25.7},
+        llm_responses=["Score: 6.5 missing alt texts"],
+    )
+    assert summary == "## Overall\nGood site"
+    mock_chat.chat.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.tools.text.ChatHandler")
+@patch("app.automlplus.tools.text.render_template")
+async def test_summarize_truncates_long_findings(mock_render, mock_chat, mock_jinja):
+    mock_chat.chat = AsyncMock(return_value="summary")
+    mock_render.return_value = "prompt"
+
+    await summarize_accessibility_results(
+        jinja_environment=mock_jinja,
+        source="s",
+        pages=["s"],
+        average_score=None,
+        chunk_scores=[],
+        readability=None,
+        llm_responses=["x" * 5000],
+    )
+
+    rendered = mock_render.call_args.kwargs
+    assert len(rendered["findings"]) < 1000
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.tools.text.ChatHandler")
+@patch("app.automlplus.tools.text.render_template", return_value="prompt")
+async def test_summarize_no_findings_uses_placeholder(
+    mock_render, mock_chat, mock_jinja
+):
+    mock_chat.chat = AsyncMock(return_value="summary")
+
+    await summarize_accessibility_results(
+        jinja_environment=mock_jinja,
+        source="s",
+        pages=["s"],
+        average_score=None,
+        chunk_scores=[],
+        readability=None,
+        llm_responses=[""],
+    )
+
+    rendered = mock_render.call_args.kwargs
+    assert "No chunk findings available." in rendered["findings"]
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.tools.text.ChatHandler")
+@patch("app.automlplus.tools.text.render_template", return_value="prompt")
+async def test_summarize_non_string_response_returns_empty(
+    mock_render, mock_chat, mock_jinja
+):
+    mock_chat.chat = AsyncMock(return_value=42)
+
+    summary = await summarize_accessibility_results(
+        jinja_environment=mock_jinja,
+        source="s",
+        pages=["s"],
+        average_score=None,
+        chunk_scores=[],
+        readability=None,
+        llm_responses=[],
+    )
+    assert summary == ""
