@@ -12,12 +12,14 @@ __pycache__/
 
 # Docker
 Dockerfile
+Dockerfile.worker
 docker-compose.yml
 
 # Data & artifacts (CRITICAL)
 uploaded_data/
 data/
 datasets/
+sample_data/
 *.zip
 *.tar
 *.tar.gz
@@ -27,6 +29,17 @@ wandb/
 mlruns/
 checkpoints/
 models/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Repo extras not needed in image contexts
+docs/
+tests/
+.github/
+logs/
 
 # IDE
 .vscode/
