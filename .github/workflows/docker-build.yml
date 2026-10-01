@@ -57,6 +57,9 @@ jobs:
           file: ${{ matrix.context }}/${{ matrix.dockerfile }}
           platforms: linux/amd64,linux/arm64
           push: true
+          # GitLab registry rejects buildx's default provenance attestations
+          # ("blob unknown to registry"); disable for non-GHCR registries.
+          provenance: false
           tags: |
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:${{ steps.version.outputs.tag }}
             ${{ env.IMAGE_PREFIX }}/${{ matrix.service }}:latest
