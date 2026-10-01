@@ -28,6 +28,9 @@ jobs:
           - service: automl_engine
             context: .
             dockerfile: Dockerfile
+          - service: automl_worker
+            context: .
+            dockerfile: Dockerfile.worker
 
     steps:
       - uses: actions/checkout@v4 # v4
