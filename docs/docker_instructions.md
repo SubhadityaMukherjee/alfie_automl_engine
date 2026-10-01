@@ -19,6 +19,27 @@ curl -s -X POST "http://localhost:8001/automl/tabular/best_model/" \
   -F "time_budget=30"
 ```
 
+## Images
+
+Two images are built and pushed to the GitLab registry on every `v*.*.*` tag
+(via `.github/workflows/docker-build.yml`, multi-arch amd64/arm64):
+
+| Image          | Dockerfile        | Contents                                                        |
+| -------------- | ----------------- | --------------------------------------------------------------- |
+| `automl_engine`| `app/Dockerfile`  | The full unified FastAPI AutoML engine (uv + ML stack)          |
+| `automl_worker`| `Dockerfile.worker` | Lightweight Kafka consumer worker (`kafka_automl_consumer_example_v5.py` + aiokafka/requests/pandas/dotenv only) |
+
+Running the worker (configure via the same env vars as the script —
+`KAFKA_BOOTSTRAP_SERVERS`, `API_BASE`/`DW_HOST`, `AUTOML_ENGINE_HOST`/`AUTOML_ENGINE_PORT`, ...):
+
+```bash
+docker run --rm \
+  -e KAFKA_BOOTSTRAP_SERVERS=alfie.iti.gr:9092 \
+  -e API_BASE=http://autodw:8000 \
+  -e AUTOML_ENGINE_HOST=automl-engine -e AUTOML_ENGINE_PORT=8001 \
+  gitlab.catalink.eu:5050/external/alfie_eu/alfie/automl_worker:latest
+```
+
 ## Pushing to repo
 
 Login: echo {PASS} | docker login gitlab.catalink.eu:5050 -u {USER} --password-stdin

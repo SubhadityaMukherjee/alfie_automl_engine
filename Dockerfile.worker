@@ -1,0 +1,28 @@
+# Lightweight image for the Kafka AutoML consumer worker.
+#
+# Deliberately minimal: unlike app/Dockerfile (uv + full ML stack), this only
+# ships the Kafka consumer script and its four runtime dependencies
+# (aiokafka, requests, pandas, python-dotenv) on a slim Python base.
+#
+# Built and pushed as `automl_worker` alongside the main engine image on
+# every version tag (see .github/workflows/docker-build.yml).
+
+FROM python:3.12-slim
+
+RUN groupadd --system --gid 999 nonroot \
+ && useradd --system --gid 999 --uid 999 --create-home nonroot
+
+WORKDIR /worker
+RUN chown nonroot:nonroot /worker
+
+RUN pip install --no-cache-dir \
+    "aiokafka>=0.11,<1" \
+    "requests>=2.31,<3" \
+    "pandas>=2.2,<3" \
+    "python-dotenv>=1.0,<2"
+
+USER nonroot
+
+COPY --chown=nonroot:nonroot kafka_automl_consumer_example_v5.py ./kafka_automl_consumer.py
+
+ENTRYPOINT ["python", "-u", "kafka_automl_consumer.py"]
