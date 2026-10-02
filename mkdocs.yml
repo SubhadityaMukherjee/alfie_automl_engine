@@ -4,8 +4,7 @@ repo_url: https://github.com/SubhadityaMukherjee/alfie_automl_engine
 
 theme:
   name: material
-  # classic = Material for MkDocs look (zensical); mkdocs-material also accepts it
-  variant: classic
+  variant: modern
   features:
     - content.code.copy
   palette:
