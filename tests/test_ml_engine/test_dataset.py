@@ -162,3 +162,68 @@ def test_getitem_with_transform(class_structured_images_dir):
     )
     img, label = ds[0]
     assert isinstance(img, torch.Tensor)
+
+
+# ---------------------------------------------------------------------------
+# Draft-mode JPEG decoding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.full
+def test_draft_decode_downscales_large_jpeg(tmp_path):
+    """decode_size triggers draft-mode downscaling during JPEG decode."""
+    from PIL import Image
+
+    cls_dir = tmp_path / "cat"
+    cls_dir.mkdir()
+    Image.new("RGB", (1024, 1024), color=(10, 20, 30)).save(cls_dir / "big.jpg", "JPEG")
+    df = pd.DataFrame({"filename": ["big.jpg"], "label": ["cat"]})
+
+    ds = ImageClassificationFromCSVDataset(
+        csv_file=df,
+        root_dir=tmp_path,
+        img_col="filename",
+        label_col="label",
+        decode_size=(448, 448),
+    )
+    img, _ = ds[0]
+    # Draft mode scales by powers of two: 1024 -> 512 (still >= 448 request).
+    assert img.size == (512, 512)
+
+
+@pytest.mark.full
+def test_no_draft_decode_without_decode_size(tmp_path):
+    """Without decode_size the full-resolution image is decoded."""
+    from PIL import Image
+
+    cls_dir = tmp_path / "cat"
+    cls_dir.mkdir()
+    Image.new("RGB", (1024, 1024), color=(10, 20, 30)).save(cls_dir / "big.jpg", "JPEG")
+    df = pd.DataFrame({"filename": ["big.jpg"], "label": ["cat"]})
+
+    ds = ImageClassificationFromCSVDataset(
+        csv_file=df, root_dir=tmp_path, img_col="filename", label_col="label"
+    )
+    img, _ = ds[0]
+    assert img.size == (1024, 1024)
+
+
+@pytest.mark.full
+def test_draft_decode_ignored_for_png(tmp_path):
+    """Draft mode is JPEG-only; PNGs decode at full size."""
+    from PIL import Image
+
+    cls_dir = tmp_path / "cat"
+    cls_dir.mkdir()
+    Image.new("RGB", (512, 512), color=(10, 20, 30)).save(cls_dir / "img.png")
+    df = pd.DataFrame({"filename": ["img.png"], "label": ["cat"]})
+
+    ds = ImageClassificationFromCSVDataset(
+        csv_file=df,
+        root_dir=tmp_path,
+        img_col="filename",
+        label_col="label",
+        decode_size=(64, 64),
+    )
+    img, _ = ds[0]
+    assert img.size == (512, 512)

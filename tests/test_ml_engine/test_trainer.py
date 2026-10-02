@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+import torch
 
 from app.core.exceptions import AutoMLConfigError
 from app.ml_engine.hpo.optuna_objectives import OBJECTIVE_REGISTRY
@@ -11,8 +12,38 @@ from app.ml_engine.configs import SUPPORTED_TASK_TYPES
 from app.ml_engine.trainer import (
     EarlyStopping,
     _copy_best_trial_artifacts,
+    _resolve_precision,
     run_optuna_search,
 )
+
+
+# ---------------------------------------------------------------------------
+# _resolve_precision
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_precision_explicit_values_pass_through():
+    assert _resolve_precision("32-true") == "32-true"
+    assert _resolve_precision("bf16-mixed") == "bf16-mixed"
+    assert _resolve_precision("16-mixed") == "16-mixed"
+
+
+def test_resolve_precision_auto_without_cuda(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    assert _resolve_precision("auto") == "32-true"
+
+
+def test_resolve_precision_auto_cuda_bf16(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: True)
+    assert _resolve_precision("auto") == "bf16-mixed"
+
+
+def test_resolve_precision_auto_cuda_fp16(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: False)
+    assert _resolve_precision("auto") == "16-mixed"
+
 
 # ---------------------------------------------------------------------------
 # EarlyStopping — pure logic, no model/HF downloads needed

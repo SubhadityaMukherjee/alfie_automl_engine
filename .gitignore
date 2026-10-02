@@ -1,4 +1,5 @@
 htmlcov/
+docs/ideas.md
 .idea/
 *.log
 logs/

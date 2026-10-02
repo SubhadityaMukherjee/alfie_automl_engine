@@ -43,6 +43,7 @@ class ImageClassificationModel(nn.Module):
         label2id: dict | None = None,
     ):
         super().__init__()
+        self.freeze_backbone = freeze_backbone
         config_kwargs = {
             "num_labels": num_classes,
             "id2label": id2label or {i: str(i) for i in range(num_classes)},
@@ -67,6 +68,13 @@ class ImageClassificationModel(nn.Module):
             if hasattr(self.model, "classifier"):
                 for param in self.model.classifier.parameters():
                     param.requires_grad = True
+
+    def train(self, mode: bool = True) -> "ImageClassificationModel":
+        """Keep a frozen backbone in eval mode (BatchNorm stats, dropout)."""
+        super().train(mode)
+        if self.freeze_backbone:
+            self.model.eval()
+        return self
 
     def forward(self, pixel_values: torch.Tensor) -> torch.Tensor:
         return self.model(pixel_values).logits
@@ -99,6 +107,7 @@ class MultimodalClassificationModel(nn.Module):
     ):
         super().__init__()
         self.aux_feature_dim = aux_feature_dim
+        self.freeze_backbone = freeze_backbone
 
         from transformers import AutoConfig
 
@@ -150,6 +159,13 @@ class MultimodalClassificationModel(nn.Module):
             nn.Dropout(0.1),
             nn.Linear(fusion_hidden_dim, num_classes),
         )
+
+    def train(self, mode: bool = True) -> "MultimodalClassificationModel":
+        """Keep the frozen vision backbone in eval mode (BatchNorm, dropout)."""
+        super().train(mode)
+        if self.freeze_backbone:
+            self.backbone.eval()
+        return self
 
     def _get_vision_embed_dim(self) -> int:
         model = self.backbone

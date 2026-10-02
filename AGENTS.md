@@ -149,7 +149,7 @@ docker compose up --build      # dev: uvicorn --reload, AutoDW via host.docker.i
 
 - `testing.yml` — lint + type-check + pytest on push/PR to main/develop
 - `docker-build.yml` — image build/push on version tags
-- `pages.yml` — MkDocs docs to GitHub Pages on push to main touching `docs/`
+- `pages.yml` — Zensical docs to GitHub Pages on push to main touching `docs/`
 
 ## Conventions
 

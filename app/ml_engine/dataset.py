@@ -80,12 +80,14 @@ class ImageClassificationFromCSVDataset(BaseCSVDataset):
         img_col: str = "image",
         label_col: str = "label",
         transform: Optional[T.Compose] = None,
+        decode_size: Optional[tuple[int, int]] = None,
     ):
         super().__init__(csv_file)
         self.root_dir = Path(root_dir)
         self.img_col = img_col
         self.label_col = label_col
         self.transform = transform
+        self.decode_size = decode_size
 
         label_series = self.df[self.label_col]
         self._use_label_subdir: bool = not pd.api.types.is_numeric_dtype(label_series)
@@ -143,7 +145,13 @@ class ImageClassificationFromCSVDataset(BaseCSVDataset):
             )
 
         try:
-            img = Image.open(img_path).convert("RGB")
+            img = Image.open(img_path)
+            if self.decode_size is not None and img.format == "JPEG":
+                # Draft mode lets the JPEG decoder downscale on decode
+                # (1/2, 1/4, ...) — much cheaper than decoding full size
+                # when images are far larger than the processor target.
+                img.draft("RGB", self.decode_size)
+            img = img.convert("RGB")
         except Exception as e:
             logger.error("Failed to open or convert image %s: %s", img_path, e)
             raise
@@ -279,6 +287,7 @@ class MultimodalClassificationDataset(BaseCSVDataset):
         label_col: str = "label",
         auxiliary_columns: list[str] | None = None,
         transform: Optional[T.Compose] = None,
+        decode_size: Optional[tuple[int, int]] = None,
     ):
         super().__init__(csv_file)
         self.root_dir = root_dir
@@ -286,6 +295,7 @@ class MultimodalClassificationDataset(BaseCSVDataset):
         self.label_col = label_col
         self.auxiliary_columns = auxiliary_columns or []
         self.transform = transform
+        self.decode_size = decode_size
 
         if self.df[self.label_col].dtype not in [int, float]:
             self.classes = sorted(self.df[self.label_col].unique().tolist())
@@ -327,7 +337,10 @@ class MultimodalClassificationDataset(BaseCSVDataset):
             )
 
         try:
-            img = Image.open(img_path).convert("RGB")
+            img = Image.open(img_path)
+            if self.decode_size is not None and img.format == "JPEG":
+                img.draft("RGB", self.decode_size)
+            img = img.convert("RGB")
         except Exception as e:
             logger.error("Failed to open or convert image %s: %s", img_path, e)
             raise

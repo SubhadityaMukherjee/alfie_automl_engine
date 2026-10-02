@@ -73,6 +73,16 @@ class Settings(BaseSettings):
     model_small_max_param_size: int = 50_000_000
     model_medium_max_param_size: int = 200_000_000
 
+    # --- Training efficiency (generic ML engine) ---------------------------
+    # "auto" picks bf16-mixed / 16-mixed on CUDA (depending on hardware
+    # support) and falls back to full precision elsewhere.
+    training_precision: str = "auto"
+    # Use PIL draft-mode JPEG downscaling during decode (large speedup when
+    # images are much bigger than the processor's target resolution).
+    fast_image_decode: bool = True
+    # Upper bound for auto-selected DataLoader worker processes.
+    auto_num_workers_max: int = 8
+
 
 def get_settings() -> Settings:
     """Return a ``Settings`` instance populated from the current environment.

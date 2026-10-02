@@ -1,5 +1,6 @@
 """Tests for app/ml_engine/datamodule.py."""
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -9,7 +10,14 @@ from PIL import Image
 from torch.utils.data import DataLoader
 
 from app.core.exceptions import AutoMLRuntimeError
-from app.ml_engine.datamodule import ClassificationData
+from app.ml_engine.datamodule import (
+    ClassificationData,
+    ImageSegmentationDataModule,
+    KeypointDetectionDataModule,
+    _evenly_spaced_timestamps,
+    _processor_draft_size,
+    auto_num_workers,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -217,3 +225,140 @@ def test_test_dataloader_raises_if_dataset_none(data_module):
     data_module.test_dataset = None
     with pytest.raises(AutoMLRuntimeError, match="Test dataset not initialized"):
         data_module.test_dataloader()
+
+
+# ---------------------------------------------------------------------------
+# Loader performance kwargs
+# ---------------------------------------------------------------------------
+
+
+def test_loader_kwargs_zero_workers_no_persistence(data_module):
+    data_module.num_workers = 0
+    kwargs = data_module._loader_kwargs()
+    assert "persistent_workers" not in kwargs
+    assert "prefetch_factor" not in kwargs
+
+
+def test_loader_kwargs_positive_workers_persist_and_prefetch(data_module):
+    data_module.num_workers = 2
+    kwargs = data_module._loader_kwargs()
+    assert kwargs["persistent_workers"] is True
+    assert kwargs["prefetch_factor"] == 4
+
+
+def test_loader_kwargs_pin_memory_only_on_cuda(data_module, monkeypatch):
+    data_module.num_workers = 0
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    assert "pin_memory" not in data_module._loader_kwargs()
+
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    assert data_module._loader_kwargs()["pin_memory"] is True
+
+
+# ---------------------------------------------------------------------------
+# auto_num_workers
+# ---------------------------------------------------------------------------
+
+
+def test_auto_num_workers_uses_all_but_one_cpu(monkeypatch):
+    monkeypatch.setattr(os, "cpu_count", lambda: 3)
+    assert auto_num_workers() == 2
+
+
+def test_auto_num_workers_respects_cap(monkeypatch):
+    monkeypatch.setattr(os, "cpu_count", lambda: 100)
+    assert auto_num_workers() == 8  # default auto_num_workers_max
+
+
+def test_auto_num_workers_never_negative(monkeypatch):
+    monkeypatch.setattr(os, "cpu_count", lambda: 1)
+    assert auto_num_workers() == 0
+
+
+def test_auto_num_workers_explicit_max(monkeypatch):
+    monkeypatch.setattr(os, "cpu_count", lambda: 16)
+    assert auto_num_workers(max_workers=3) == 3
+
+
+# ---------------------------------------------------------------------------
+# _processor_draft_size
+# ---------------------------------------------------------------------------
+
+
+def test_draft_size_from_int_size():
+    assert _processor_draft_size(MagicMock(size=224)) == (448, 448)
+
+
+def test_draft_size_from_shortest_edge_dict():
+    assert _processor_draft_size(MagicMock(size={"shortest_edge": 224})) == (448, 448)
+
+
+def test_draft_size_from_height_width_dict():
+    assert _processor_draft_size(MagicMock(size={"height": 224, "width": 384})) == (
+        448,
+        448,
+    )
+
+
+def test_draft_size_none_when_size_unknown():
+    assert _processor_draft_size(MagicMock(spec=[])) is None
+
+
+def test_draft_size_disabled_via_settings(monkeypatch):
+    monkeypatch.setenv("FAST_IMAGE_DECODE", "false")
+    assert _processor_draft_size(MagicMock(size=224)) is None
+
+
+# ---------------------------------------------------------------------------
+# Draft decode gating per task
+# ---------------------------------------------------------------------------
+
+
+def test_classification_draft_decode_enabled():
+    dm = ClassificationData.__new__(ClassificationData)
+    assert dm._draft_decode_enabled() is True
+
+
+def test_segmentation_draft_decode_disabled():
+    dm = ImageSegmentationDataModule.__new__(ImageSegmentationDataModule)
+    assert dm._draft_decode_enabled() is False
+
+
+def test_keypoint_draft_decode_disabled():
+    dm = KeypointDetectionDataModule.__new__(KeypointDetectionDataModule)
+    assert dm._draft_decode_enabled() is False
+
+
+def test_setup_passes_decode_size_to_datasets(large_class_structured_dir):
+    csv_path, images_dir = large_class_structured_dir
+    processor = _make_mock_processor()
+    processor.size = {"shortest_edge": 224}
+    with patch(
+        "app.ml_engine.datamodule.AutoImageProcessor.from_pretrained",
+        return_value=processor,
+    ):
+        dm = ClassificationData(
+            csv_file=csv_path,
+            root_dir=images_dir,
+            img_col="filename",
+            label_col="label",
+        )
+    assert dm.train_dataset is not None
+    assert dm.train_dataset.decode_size == (448, 448)
+
+
+# ---------------------------------------------------------------------------
+# Video timestamp sampling
+# ---------------------------------------------------------------------------
+
+
+def test_evenly_spaced_timestamps_basic():
+    assert _evenly_spaced_timestamps(8.0, 4) == [0.0, 2.0, 4.0, 6.0]
+
+
+def test_evenly_spaced_timestamps_single_frame():
+    assert _evenly_spaced_timestamps(8.0, 1) == [0.0]
+
+
+def test_evenly_spaced_timestamps_empty():
+    assert _evenly_spaced_timestamps(8.0, 0) == []

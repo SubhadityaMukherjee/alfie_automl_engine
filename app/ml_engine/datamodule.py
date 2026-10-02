@@ -7,6 +7,7 @@ encoder) so feature mappings can be extracted after training.
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable
@@ -47,6 +48,43 @@ DEFAULT_NUM_WORKERS: int = _settings.default_num_workers
 DEFAULT_VAL_SPLIT: float = _settings.default_val_split
 DEFAULT_TEST_SPLIT: float = _settings.default_test_split
 DEFAULT_IMAGE_CLASSIFIER_HF_ID: str = _settings.default_image_classifier_hf_id
+
+
+def auto_num_workers(max_workers: int | None = None) -> int:
+    """Pick a sensible DataLoader worker count for "auto" resource requests.
+
+    Uses all but one CPU, capped by ``auto_num_workers_max``; never negative.
+    """
+    if max_workers is None:
+        max_workers = get_settings().auto_num_workers_max
+    return max(0, min(max_workers, (os.cpu_count() or 2) - 1))
+
+
+def _processor_draft_size(processor: Any) -> tuple[int, int] | None:
+    """Derive a PIL draft-mode decode target from an HF image processor.
+
+    Draft mode only downscales during JPEG decode, so we keep a 2x margin
+    above the processor's target edge to preserve resize quality. Returns
+    None when the target size cannot be determined or fast decode is off.
+    """
+    if not get_settings().fast_image_decode:
+        return None
+
+    size = getattr(processor, "size", None)
+    edge: int | None = None
+    if isinstance(size, int):
+        edge = size
+    elif isinstance(size, dict):
+        shortest = size.get("shortest_edge")
+        if isinstance(shortest, int):
+            edge = shortest
+        elif isinstance(size.get("height"), int) and isinstance(size.get("width"), int):
+            edge = min(size["height"], size["width"])
+
+    if edge is None or edge <= 0:
+        return None
+    target = int(edge) * 2
+    return (target, target)
 
 
 class BaseDataModule(ABC):
@@ -174,6 +212,16 @@ class BaseDataModule(ABC):
         )
         return train_df, val_df, test_df
 
+    def _loader_kwargs(self) -> dict[str, Any]:
+        """Extra DataLoader kwargs for throughput (pinning, prefetching)."""
+        kwargs: dict[str, Any] = {}
+        if self.num_workers > 0:
+            kwargs["persistent_workers"] = True
+            kwargs["prefetch_factor"] = 4
+        if torch.cuda.is_available():
+            kwargs["pin_memory"] = True
+        return kwargs
+
     def _make_loader(self, dataset, shuffle: bool) -> DataLoader:
         """Build a DataLoader wired to this module's batch size and collate fn."""
         return DataLoader(
@@ -182,6 +230,7 @@ class BaseDataModule(ABC):
             shuffle=shuffle,
             num_workers=self.num_workers,
             collate_fn=self._collate_fn,
+            **self._loader_kwargs(),
         )
 
     def _build_label_maps(self, classes: list[str]) -> None:
@@ -228,11 +277,32 @@ class ImageClassificationDataModule(BaseDataModule):
             hf_model_id=hf_model_id,
         )
 
+    def _draft_decode_enabled(self) -> bool:
+        """Whether draft-mode JPEG decoding may be used for this task.
+
+        Subclasses whose targets are pixel-aligned (segmentation masks,
+        keypoints) disable it to avoid any resampling of the source image.
+        """
+        return True
+
     def setup(self) -> None:
         """Split the CSV, build the image datasets, and load the image processor."""
         df = self._read_csv(self.csv_file)
         train_df, val_df, test_df = self._split_df(
             df, self.val_split, self.test_split, self.seed, stratify_col=self.label_col
+        )
+
+        try:
+            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load processor from %s: %s", self.hf_model_id, e)
+            raise
+        logger.info("Loaded processor from: %s", self.hf_model_id)
+
+        decode_size = (
+            _processor_draft_size(self.processor)
+            if self._draft_decode_enabled()
+            else None
         )
 
         try:
@@ -242,6 +312,7 @@ class ImageClassificationDataModule(BaseDataModule):
                 img_col=self.img_col,
                 label_col=self.label_col,
                 transform=self.transform,
+                decode_size=decode_size,
             )
             self.val_dataset = ImageClassificationFromCSVDataset(
                 csv_file=val_df,
@@ -249,6 +320,7 @@ class ImageClassificationDataModule(BaseDataModule):
                 img_col=self.img_col,
                 label_col=self.label_col,
                 transform=self.transform,
+                decode_size=decode_size,
             )
             self.test_dataset = ImageClassificationFromCSVDataset(
                 csv_file=test_df,
@@ -256,19 +328,13 @@ class ImageClassificationDataModule(BaseDataModule):
                 img_col=self.img_col,
                 label_col=self.label_col,
                 transform=self.transform,
+                decode_size=decode_size,
             )
         except Exception as e:
             logger.error("Failed to create datasets: %s", e)
             raise
 
         self._build_label_maps(self.train_dataset.classes)
-
-        try:
-            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
-        except Exception as e:
-            logger.error("Failed to load processor from %s: %s", self.hf_model_id, e)
-            raise
-        logger.info("Loaded processor from: %s", self.hf_model_id)
 
     def _collate_fn(self, batch: list[tuple[Any, Any]]) -> dict[str, torch.Tensor]:
         """Pixel-ize a batch of PIL images and stack the labels into a tensor."""
@@ -401,6 +467,15 @@ class MultimodalClassificationDataModule(BaseDataModule):
         test_df = self._encode_auxiliary(test_df, fit=False)
 
         try:
+            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error("Failed to load processor from %s: %s", self.hf_model_id, e)
+            raise
+        logger.info("Loaded processor from: %s", self.hf_model_id)
+
+        decode_size = _processor_draft_size(self.processor)
+
+        try:
             self.train_dataset = MultimodalClassificationDataset(
                 csv_file=train_df,
                 root_dir=self.root_dir,
@@ -408,6 +483,7 @@ class MultimodalClassificationDataModule(BaseDataModule):
                 label_col=self.label_col,
                 auxiliary_columns=self.auxiliary_columns,
                 transform=self.transform,
+                decode_size=decode_size,
             )
             self.val_dataset = MultimodalClassificationDataset(
                 csv_file=val_df,
@@ -416,6 +492,7 @@ class MultimodalClassificationDataModule(BaseDataModule):
                 label_col=self.label_col,
                 auxiliary_columns=self.auxiliary_columns,
                 transform=self.transform,
+                decode_size=decode_size,
             )
             self.test_dataset = MultimodalClassificationDataset(
                 csv_file=test_df,
@@ -424,19 +501,13 @@ class MultimodalClassificationDataModule(BaseDataModule):
                 label_col=self.label_col,
                 auxiliary_columns=self.auxiliary_columns,
                 transform=self.transform,
+                decode_size=decode_size,
             )
         except Exception as e:
             logger.error("Failed to create datasets: %s", e)
             raise
 
         self._build_label_maps(self.train_dataset.classes)
-
-        try:
-            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
-        except Exception as e:
-            logger.error("Failed to load processor from %s: %s", self.hf_model_id, e)
-            raise
-        logger.info("Loaded processor from: %s", self.hf_model_id)
 
     def _encode_auxiliary(self, df: pd.DataFrame, fit: bool) -> pd.DataFrame:
         """Encode auxiliary columns in-place.  If *fit* is True, fit the
@@ -552,6 +623,10 @@ class ImageSegmentationDataModule(ImageClassificationDataModule):
             seed=seed,
             hf_model_id=hf_model_id,
         )
+
+    def _draft_decode_enabled(self) -> bool:
+        """Disabled: masks must stay pixel-aligned with the source image."""
+        return False
 
     def _collate_fn(self, batch: list[tuple[Any, Any]]) -> dict[str, torch.Tensor]:
         images, labels = zip(*batch)
@@ -686,28 +761,68 @@ class ObjectDetectionDataModule(BaseDataModule):
         encoding = self.processor(images=list(images), return_tensors="pt")
         return {"pixel_values": encoding.pixel_values, "labels": list(targets)}
 
-    def _make_loader(self, df: pd.DataFrame, shuffle: bool) -> DataLoader:
+    def _make_df_loader(self, df: pd.DataFrame, shuffle: bool) -> DataLoader:
         return DataLoader(
             self._make_dataset(df),
             batch_size=self.batch_size,
             shuffle=shuffle,
             num_workers=self.num_workers,
             collate_fn=self._collate_fn,
+            **self._loader_kwargs(),
         )
 
     def train_dataloader(self) -> DataLoader:
-        return self._make_loader(self.train_df, shuffle=True)
+        return self._make_df_loader(self.train_df, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
-        return self._make_loader(self.val_df, shuffle=False)
+        return self._make_df_loader(self.val_df, shuffle=False)
 
     def test_dataloader(self) -> DataLoader:
-        return self._make_loader(self.test_df, shuffle=False)
+        return self._make_df_loader(self.test_df, shuffle=False)
 
 
 # ---------------------------------------------------------------------------
 # Video classification
 # ---------------------------------------------------------------------------
+
+
+def _evenly_spaced_timestamps(duration: float, n: int) -> list[float]:
+    """Return ``n`` timestamps evenly spread across [0, duration)."""
+    if n <= 0:
+        return []
+    if n == 1:
+        return [0.0]
+    step = duration / n
+    return [i * step for i in range(n)]
+
+
+def _decode_clip_streaming(video_path: str, num_frames: int) -> torch.Tensor:
+    """Decode only the sampled frames via ``torchvision.io.VideoReader``.
+
+    Raises on any failure (missing PyAV, no duration metadata, decode
+    errors) so callers can fall back to a full ``read_video`` decode.
+    """
+    from torchvision.io import VideoReader
+
+    reader = VideoReader(video_path, stream="video")
+    metadata = reader.get_metadata()
+    duration = metadata.get("video", {}).get("duration", [None])[0]
+    if not duration or duration <= 0:
+        raise ValueError(f"No duration metadata for {video_path}")
+
+    frames: list[torch.Tensor] = []
+    last: torch.Tensor | None = None
+    for ts in _evenly_spaced_timestamps(float(duration), num_frames):
+        reader.seek(ts)
+        frame = next(reader, None)
+        if frame is not None:
+            last = frame["data"]  # (C, H, W) uint8
+        if last is not None:
+            frames.append(last)
+
+    if not frames:
+        raise ValueError(f"No frames decoded from {video_path}")
+    return torch.stack(frames)  # (T, C, H, W)
 
 
 class VideoClassificationDataModule(BaseDataModule):
@@ -822,6 +937,21 @@ class VideoClassificationDataModule(BaseDataModule):
         video_col = self.video_col
         label_col = self.label_col
 
+        def _decode_clip(video_path: str) -> torch.Tensor:
+            """Decode ``num_frames`` evenly-spaced frames as (T, C, H, W)."""
+            try:
+                return _decode_clip_streaming(video_path, num_frames)
+            except Exception as e:
+                # Streaming decode needs PyAV + valid duration metadata; fall
+                # back to a full decode when either is unavailable.
+                logger.debug("Streaming video decode failed for %s: %s", video_path, e)
+                frames, _, _ = read_video(
+                    video_path, output_format="TCHW", pts_unit="sec"
+                )
+                total = frames.shape[0]
+                indices = torch.linspace(0, total - 1, num_frames).long()
+                return frames[indices]  # (T, C, H, W)
+
         class _VideoDataset(Dataset):
             def __init__(self, df):
                 self.df = df
@@ -832,13 +962,7 @@ class VideoClassificationDataModule(BaseDataModule):
             def __getitem__(self, idx):
                 row = self.df.iloc[idx]
                 video_path = str(root / str(row[video_col]))
-                frames, _, _ = read_video(
-                    video_path, output_format="TCHW", pts_unit="sec"
-                )
-                # Sample num_frames evenly
-                total = frames.shape[0]
-                indices = torch.linspace(0, total - 1, num_frames).long()
-                frames = frames[indices]  # (T, C, H, W)
+                frames = _decode_clip(video_path)
                 return frames.float() / 255.0, torch.tensor(
                     int(row[label_col]), dtype=torch.long
                 )
@@ -852,23 +976,24 @@ class VideoClassificationDataModule(BaseDataModule):
             "labels": torch.tensor(labels, dtype=torch.long),
         }
 
-    def _make_loader(self, df: pd.DataFrame, shuffle: bool) -> DataLoader:
+    def _make_df_loader(self, df: pd.DataFrame, shuffle: bool) -> DataLoader:
         return DataLoader(
             self._make_dataset(df),
             batch_size=self.batch_size,
             shuffle=shuffle,
             num_workers=self.num_workers,
             collate_fn=self._collate_fn,
+            **self._loader_kwargs(),
         )
 
     def train_dataloader(self) -> DataLoader:
-        return self._make_loader(self.train_df, shuffle=True)
+        return self._make_df_loader(self.train_df, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
-        return self._make_loader(self.val_df, shuffle=False)
+        return self._make_df_loader(self.val_df, shuffle=False)
 
     def test_dataloader(self) -> DataLoader:
-        return self._make_loader(self.test_df, shuffle=False)
+        return self._make_df_loader(self.test_df, shuffle=False)
 
 
 # ---------------------------------------------------------------------------
@@ -911,6 +1036,10 @@ class KeypointDetectionDataModule(ImageClassificationDataModule):
             seed=seed,
             hf_model_id=hf_model_id,
         )
+
+    def _draft_decode_enabled(self) -> bool:
+        """Disabled: keypoint coordinates are absolute pixels."""
+        return False
 
     def _collate_fn(self, batch):
         images, labels = zip(*batch)
@@ -1051,23 +1180,24 @@ class AudioClassificationDataModule(BaseDataModule):
             "labels": torch.tensor(labels, dtype=torch.long),
         }
 
-    def _make_loader(self, df: pd.DataFrame, shuffle: bool) -> DataLoader:
+    def _make_df_loader(self, df: pd.DataFrame, shuffle: bool) -> DataLoader:
         return DataLoader(
             self._make_dataset(df),
             batch_size=self.batch_size,
             shuffle=shuffle,
             num_workers=self.num_workers,
             collate_fn=self._collate_fn,
+            **self._loader_kwargs(),
         )
 
     def train_dataloader(self) -> DataLoader:
-        return self._make_loader(self.train_df, shuffle=True)
+        return self._make_df_loader(self.train_df, shuffle=True)
 
     def val_dataloader(self) -> DataLoader:
-        return self._make_loader(self.val_df, shuffle=False)
+        return self._make_df_loader(self.val_df, shuffle=False)
 
     def test_dataloader(self) -> DataLoader:
-        return self._make_loader(self.test_df, shuffle=False)
+        return self._make_df_loader(self.test_df, shuffle=False)
 
 
 # ---------------------------------------------------------------------------

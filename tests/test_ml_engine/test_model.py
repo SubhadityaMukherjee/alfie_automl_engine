@@ -66,6 +66,22 @@ def test_is_nn_module(classification_model):
     assert isinstance(classification_model, nn.Module)
 
 
+def test_frozen_backbone_stays_in_eval_mode(classification_model):
+    """train() must not flip a frozen backbone (BatchNorm stats) to train."""
+    classification_model.train()
+    classification_model.model.eval.assert_called_once()
+
+
+def test_backbone_train_mode_allowed_when_not_frozen(mock_hf_model):
+    with patch(
+        "app.ml_engine.model.AutoModelForImageClassification.from_pretrained",
+        return_value=mock_hf_model,
+    ):
+        model = ClassificationModel(freeze_backbone=False)
+    model.train()
+    model.model.eval.assert_not_called()
+
+
 def test_from_pretrained_called_with_correct_model_id():
     model_id = "google/efficientnet-b0"
     with patch(
