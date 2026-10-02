@@ -187,12 +187,12 @@ alfie_automl_engine/
 │   └── automlplus/            # AutoML+ service
 │       ├── tools/             # static (readability), text (LLM), vlm tools
 │       └── website_accessibility/
-├── docs/                      # mkdocs site (this documentation)
+├── docs/                      # zensical site (this documentation)
 ├── tests/                     # pytest suite (mirrors the app/ layout)
 ├── sample_data/               # datasets fetched by download_sample_data.py
 ├── docker-compose.yml         # single API container
 ├── Dockerfile
-├── mkdocs.yml
+├── mkdocs.yml                 # docs config (read by zensical)
 └── pyproject.toml
 ```
 
