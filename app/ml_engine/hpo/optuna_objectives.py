@@ -2,8 +2,8 @@
 
 Each objective trains one candidate model for a trial (sampling model id,
 learning rate, batch size, and weight decay from the task config) and returns
-its test loss. ``OBJECTIVE_REGISTRY`` maps task type slugs to their objective
-so ``run_optuna_search`` can dispatch dynamically.
+its best validation loss. ``OBJECTIVE_REGISTRY`` maps task type slugs to their
+objective so ``run_optuna_search`` can dispatch dynamically.
 """
 
 import json
@@ -33,6 +33,7 @@ from app.ml_engine.datamodule import (
     Seq2SeqLMDataModule,
     SequenceClassificationDataModule,
     VideoClassificationDataModule,
+    auto_num_workers,
 )
 from app.ml_engine.model import (
     AudioClassificationModel,
@@ -113,8 +114,8 @@ def _optuna_objective_base(
     Suggests hyperparameters (model id, learning rate, batch size, weight
     decay) from the task config, builds the given datamodule/model pair, saves
     the trial's feature mapping before training (so it survives pruning), and
-    saves the model after a successful fit. Returns the test loss Optuna
-    minimizes.
+    saves the model after a successful fit. Returns the best validation loss
+    Optuna minimizes; the test split is never touched during the search.
     """
     models: list[str] = config[f"{model_size}_models"]
     model_id: str = str(trial.suggest_categorical("model_id", models))
@@ -130,9 +131,14 @@ def _optuna_objective_base(
     )
 
     resolved_cpus: int | None = num_cpus if isinstance(num_cpus, int) else None
+    # "auto" CPUs still get parallel data loading — image decode / feature
+    # extraction otherwise runs inline with training and starves the device.
+    num_workers: int = (
+        resolved_cpus if resolved_cpus is not None else auto_num_workers()
+    )
+
     dm_kwargs_full: dict[str, Any] = dict(dm_kwargs)
-    if resolved_cpus is not None:
-        dm_kwargs_full["num_workers"] = resolved_cpus
+    dm_kwargs_full["num_workers"] = num_workers
 
     datamodule = datamodule_class(
         **dm_kwargs_full,
@@ -163,14 +169,14 @@ def _optuna_objective_base(
     if trial_dir is not None and task_type is not None:
         _save_trial_feature_mapping(trial_dir, datamodule, task_type, trainer.model)
 
-    test_loss: float
-    test_loss, _ = trainer.fit(trial=trial)
+    best_val_loss: float
+    best_val_loss, _ = trainer.fit(trial=trial)
 
     # Reached only on successful completion (TrialPruned raises mid-fit).
     if trial_dir is not None:
         _save_trial_model(trial_dir, trainer.model)
 
-    return test_loss
+    return best_val_loss
 
 
 def optuna_objective_image_classification(
@@ -188,7 +194,7 @@ def optuna_objective_image_classification(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
-    """Optuna objective for image classification; returns the test loss."""
+    """Optuna objective for image classification; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -232,7 +238,7 @@ def optuna_objective_image_classification_multimodal(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
-    """Optuna objective for multimodal image classification; returns the test loss."""
+    """Optuna objective for multimodal image classification; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -277,7 +283,7 @@ def optuna_objective_image_segmentation(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
-    """Optuna objective for image segmentation; returns the test loss."""
+    """Optuna objective for image segmentation; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -319,7 +325,7 @@ def optuna_objective_object_detection(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
-    """Optuna objective for object detection; returns the test loss."""
+    """Optuna objective for object detection; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -358,7 +364,7 @@ def optuna_objective_video_classification(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
-    """Optuna objective for video classification; returns the test loss."""
+    """Optuna objective for video classification; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -401,7 +407,7 @@ def optuna_objective_keypoint_detection(
     workdir: Path | None = None,
     task_type: str | None = None,
 ) -> float:
-    """Optuna objective for keypoint detection; returns the test loss."""
+    """Optuna objective for keypoint detection; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -439,7 +445,7 @@ def optuna_objective_audio_classification(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
-    """Optuna objective for audio classification; returns the test loss.
+    """Optuna objective for audio classification; returns the best validation loss.
 
     ``audio_dir`` may also arrive via the generic ``images_dir`` kwarg that
     ``run_optuna_search`` passes for every media-backed task.
@@ -487,7 +493,7 @@ def optuna_objective_text_classification(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
-    """Optuna objective for text classification; returns the test loss."""
+    """Optuna objective for text classification; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -527,7 +533,7 @@ def optuna_objective_question_answering(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
-    """Optuna objective for extractive question answering; returns the test loss."""
+    """Optuna objective for extractive question answering; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -557,7 +563,7 @@ def optuna_objective_causal_lm(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
-    """Optuna objective for causal language modelling; returns the test loss."""
+    """Optuna objective for causal language modelling; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -587,7 +593,7 @@ def optuna_objective_seq2seq_lm(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
-    """Optuna objective for seq2seq language modelling; returns the test loss."""
+    """Optuna objective for seq2seq language modelling; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,
@@ -617,7 +623,7 @@ def optuna_objective_masked_lm(
     task_type: str | None = None,
     **_kwargs: Any,
 ) -> float:
-    """Optuna objective for masked language modelling; returns the test loss."""
+    """Optuna objective for masked language modelling; returns the best validation loss."""
     return _optuna_objective_base(
         trial=trial,
         model_size=model_size,

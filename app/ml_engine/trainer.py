@@ -7,10 +7,11 @@ tabular trainer (``AutoGluonTrainer``).
 
 import functools
 import logging
+import math
 import shutil
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import lightning as L
 import optuna
@@ -38,6 +39,19 @@ logger = logging.getLogger(__name__)
 
 # Keys whose tensors should be treated as target/label dtype
 _TARGET_KEYS: frozenset[str] = frozenset({"labels", "start_positions", "end_positions"})
+
+
+def _resolve_precision(precision: str) -> str:
+    """Resolve the Fabric precision string, honouring "auto".
+
+    "auto" picks bf16-mixed on CUDA hardware that supports it, 16-mixed on
+    older CUDA GPUs, and full precision everywhere else (CPU / MPS).
+    """
+    if precision != "auto":
+        return precision
+    if torch.cuda.is_available():
+        return "bf16-mixed" if torch.cuda.is_bf16_supported() else "16-mixed"
+    return "32-true"
 
 
 class EarlyStopping:
@@ -103,6 +117,7 @@ class FabricTrainer:
         input_dtype: torch.dtype = torch.float32,
         target_dtype: torch.dtype = torch.long,
         model_computes_loss: bool = False,
+        precision: str | None = None,
     ) -> None:
         self.datamodule: Any = datamodule
         self.model_class: type[nn.Module] = model_class
@@ -121,8 +136,25 @@ class FabricTrainer:
         if num_threads is not None:
             torch.set_num_threads(num_threads)
 
-        self.fabric: L.Fabric = L.Fabric(devices=self.device)
+        self._configure_backend()
+        self.precision: str = _resolve_precision(
+            precision if precision is not None else get_settings().training_precision
+        )
+        logger.info("Training with precision: %s", self.precision)
+        self.fabric: L.Fabric = L.Fabric(
+            devices=self.device, precision=cast(Any, self.precision)
+        )
         self._setup_model_optimizer()
+
+    @staticmethod
+    def _configure_backend() -> None:
+        """Enable fast matmul paths (TF32 on Ampere+, cuDNN autotuning)."""
+        try:
+            torch.set_float32_matmul_precision("high")
+        except Exception as e:  # pragma: no cover - very old torch versions
+            logger.debug("Could not set float32 matmul precision: %s", e)
+        if torch.cuda.is_available():
+            torch.backends.cudnn.benchmark = True
 
     def _setup_model_optimizer(self) -> None:
         """Instantiate model and optimizer and prepare loaders with Fabric."""
@@ -157,18 +189,26 @@ class FabricTrainer:
                 if not isinstance(v, torch.Tensor):
                     moved[k] = v  # keep non-tensors (e.g. list of dicts)
                 elif k in _TARGET_KEYS:
-                    moved[k] = v.to(self.fabric.device, dtype=self.target_dtype)
+                    moved[k] = v.to(
+                        self.fabric.device, dtype=self.target_dtype, non_blocking=True
+                    )
                 elif v.dtype.is_floating_point:
-                    moved[k] = v.to(self.fabric.device, dtype=self.input_dtype)
+                    moved[k] = v.to(
+                        self.fabric.device, dtype=self.input_dtype, non_blocking=True
+                    )
                 else:
                     # int/long tensors (input_ids, etc.) — preserve dtype
-                    moved[k] = v.to(self.fabric.device)
+                    moved[k] = v.to(self.fabric.device, non_blocking=True)
             return moved
         else:
             imgs, batch_labels = batch
             return {
-                "pixel_values": imgs.to(self.fabric.device, dtype=self.input_dtype),
-                "labels": batch_labels.to(self.fabric.device, dtype=self.target_dtype),
+                "pixel_values": imgs.to(
+                    self.fabric.device, dtype=self.input_dtype, non_blocking=True
+                ),
+                "labels": batch_labels.to(
+                    self.fabric.device, dtype=self.target_dtype, non_blocking=True
+                ),
             }
 
     def _check_time_limit(self, start_time: float) -> bool:
@@ -182,7 +222,12 @@ class FabricTrainer:
     def _compute_loss_and_logits(
         self, moved: dict[str, Any]
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
-        """Run forward pass, return (loss, logits_or_None)."""
+        """Run forward pass, return (loss, logits_or_None).
+
+        Under mixed precision the module forward runs inside Fabric's
+        autocast context, but this loss computation does not — upcast the
+        logits so the loss is computed in float32.
+        """
         if self.model_computes_loss:
             outputs = self.model(**moved)
             loss = outputs if isinstance(outputs, torch.Tensor) else outputs.loss
@@ -190,37 +235,41 @@ class FabricTrainer:
         else:
             labels = moved.pop("labels")
             outputs = self.model(**moved)
-            loss = self.loss_fn(outputs, labels)
+            loss = self.loss_fn(outputs.float(), labels)
             return loss, outputs
 
     def train_epoch(self, epoch: int, start_time: float) -> float:
         """Train for a single epoch and return average training loss."""
         self.model.train()
-        running_loss: float = 0.0
-        batch_count: int = len(self.train_loader)
+        # Accumulate on-device and sync once per epoch (per-batch .item()
+        # would force a device synchronization every step).
+        loss_sum = torch.zeros((), device=self.fabric.device)
+        batch_count: int = 0
 
         for batch in tqdm(
             self.train_loader, desc=f"Epoch {epoch + 1} Training", leave=False
         ):
             if self._check_time_limit(start_time):
-                return running_loss / max(1, batch_count)
+                break
 
             moved = self._move_batch(batch)
             self.optimizer.zero_grad()
             loss, _ = self._compute_loss_and_logits(moved)
             self.fabric.backward(loss)
             self.optimizer.step()
-            running_loss += loss.item()
+            loss_sum += loss.detach().float()
+            batch_count += 1
 
-        avg_loss: float = running_loss / batch_count
-        logger.info(f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}")
+        avg_loss: float = (loss_sum / max(1, batch_count)).item()
+        if batch_count:
+            logger.info(f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}")
         return avg_loss
 
     def validate(self, start_time: float) -> tuple[float, float]:
         """Evaluate on validation set; return (avg_loss, accuracy)."""
         self.model.eval()
-        val_loss: float = 0.0
-        correct: int = 0
+        val_loss = torch.zeros((), device=self.fabric.device)
+        correct = torch.zeros((), device=self.fabric.device)
         total: int = 0
 
         with torch.no_grad():
@@ -235,26 +284,26 @@ class FabricTrainer:
                     loss = (
                         outputs if isinstance(outputs, torch.Tensor) else outputs.loss
                     )
-                    val_loss += loss.item()
+                    val_loss += loss.detach().float()
                 else:
                     labels = moved.pop("labels")
                     outputs = self.model(**moved)
-                    loss = self.loss_fn(outputs, labels)
-                    val_loss += loss.item()
+                    loss = self.loss_fn(outputs.float(), labels)
+                    val_loss += loss.detach().float()
                     preds = outputs.argmax(dim=1)
-                    correct += (preds == labels).sum().item()
+                    correct += (preds == labels).sum()
                     total += labels.size(0)
 
-        avg_loss: float = val_loss / max(1, len(self.val_loader))
-        accuracy: float = correct / max(1, total)
+        avg_loss: float = (val_loss / max(1, len(self.val_loader))).item()
+        accuracy: float = (correct / max(1, total)).item() if total else 0.0
         logger.info(f"Validation - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
         return avg_loss, accuracy
 
     def test(self) -> tuple[float, float]:
         """Evaluate on test set; return (avg_loss, accuracy)."""
         self.model.eval()
-        test_loss: float = 0.0
-        correct: int = 0
+        test_loss = torch.zeros((), device=self.fabric.device)
+        correct = torch.zeros((), device=self.fabric.device)
         total: int = 0
 
         with torch.no_grad():
@@ -266,35 +315,44 @@ class FabricTrainer:
                     loss = (
                         outputs if isinstance(outputs, torch.Tensor) else outputs.loss
                     )
-                    test_loss += loss.item()
+                    test_loss += loss.detach().float()
                 else:
                     labels = moved.pop("labels")
                     outputs = self.model(**moved)
-                    loss = self.loss_fn(outputs, labels)
-                    test_loss += loss.item()
+                    loss = self.loss_fn(outputs.float(), labels)
+                    test_loss += loss.detach().float()
                     preds = outputs.argmax(dim=1)
-                    correct += (preds == labels).sum().item()
+                    correct += (preds == labels).sum()
                     total += labels.size(0)
 
-        avg_loss: float = test_loss / len(self.test_loader)
-        accuracy: float = correct / max(1, total)
+        avg_loss: float = (test_loss / len(self.test_loader)).item()
+        accuracy: float = (correct / max(1, total)).item() if total else 0.0
         logger.info(f"Test Results - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
         return avg_loss, accuracy
 
     def fit(self, trial: optuna.Trial | None = None) -> tuple[float, float]:
-        """Run the full train/validate loop, then evaluate on the test set.
+        """Run the full train/validate loop; return best (val_loss, val_acc).
 
         Each epoch reports validation loss back to the Optuna trial (so bad
         trials get pruned early), gives callbacks a chance to stop training,
-        and checks the wall-clock time limit. Returns the test loss and
-        accuracy of the final model.
+        and checks the wall-clock time limit. The best validation metrics are
+        returned so hyperparameter search selects on validation performance
+        (the test split stays untouched for final evaluation via ``test()``).
         """
         logger.info("Starting training loop.")
         start_time: float = time.time()
 
+        best_val_loss: float = float("inf")
+        best_val_acc: float = 0.0
+        last_val: tuple[float, float] = (float("inf"), 0.0)
+
         for epoch in range(self.epochs):
             train_loss = self.train_epoch(epoch, start_time)
             val_loss, val_acc = self.validate(start_time)
+            last_val = (val_loss, val_acc)
+
+            if val_loss < best_val_loss:
+                best_val_loss, best_val_acc = val_loss, val_acc
 
             if trial is not None:
                 trial.report(val_loss, step=epoch)
@@ -313,7 +371,9 @@ class FabricTrainer:
             if self._check_time_limit(start_time):
                 break
 
-        return self.test()
+        if not math.isfinite(best_val_loss):
+            best_val_loss, best_val_acc = last_val
+        return best_val_loss, best_val_acc
 
 
 # ---------------------------------------------------------------------------

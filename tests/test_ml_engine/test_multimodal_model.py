@@ -90,6 +90,18 @@ def test_is_nn_module(multimodal_model):
     assert isinstance(multimodal_model, nn.Module)
 
 
+def test_frozen_backbone_stays_in_eval_mode(multimodal_model):
+    """train() must keep the frozen vision backbone in eval mode."""
+    multimodal_model.train()
+    multimodal_model.backbone.eval.assert_called_once()
+
+
+def test_backbone_train_mode_allowed_when_not_frozen():
+    model = _build_model(freeze_backbone=False)
+    model.train()
+    model.backbone.eval.assert_not_called()
+
+
 def test_aux_feature_dim_stored(multimodal_model):
     assert multimodal_model.aux_feature_dim == 3
 
