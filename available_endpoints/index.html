@@ -1,0 +1,1880 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="API and developer documentation for the ALFIE AutoML Engine">
+      
+      
+      
+      
+        <link rel="prev" href="../autodw/">
+      
+      
+        <link rel="next" href="../docker_instructions/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="zensical-0.0.67">
+    
+    
+      
+        <title>Available endpoints - ALFIE AutoML Engine Docs</title>
+      
+    
+    
+      
+        
+      
+      <link rel="stylesheet" href="../assets/stylesheets/modern/main.4ae390e2.min.css">
+      
+        
+          
+        
+        <link rel="stylesheet" href="../assets/stylesheets/modern/palette.96d1a7e4.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,300i,400,400i,500,500i,700,700i%7CJetBrains+Mono:400,400i,700,700i&amp;display=fallback">
+        <style>:root{--md-text-font:"Inter";--md-code-font:"JetBrains Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_scope.pathname.endsWith("/")||(__md_scope=new URL(__md_scope.pathname+"/",location)),__md_hash=e=>[...e].reduce(((e,t)=>(e<<5)-e+t.charCodeAt(0)),0),__md_get=(e,t=localStorage,_=__md_scope)=>JSON.parse(t.getItem(_.pathname+"."+e)),__md_set=(e,t,_=localStorage,a=__md_scope)=>{try{_.setItem(a.pathname+"."+e,JSON.stringify(t))}catch(e){}},document.documentElement.setAttribute("data-platform",navigator.platform)</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer" aria-label="Navigation"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#available-endpoints" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="./.." title="ALFIE AutoML Engine Docs" class="md-header__button md-logo" aria-label="ALFIE AutoML Engine Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer" aria-label="Navigation">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-menu" viewBox="0 0 24 24"><path d="M4 5h16M4 12h16M4 19h16"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ALFIE AutoML Engine Docs
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Available endpoints
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 6H7c-3.31 0-6 2.69-6 6s2.69 6 6 6h10c3.31 0 6-2.69 6-6s-2.69-6-6-6m0 10H7c-2.21 0-4-1.79-4-4s1.79-4 4-4h10c2.21 0 4 1.79 4 4s-1.79 4-4 4M7 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M17 7H7a5 5 0 0 0-5 5 5 5 0 0 0 5 5h10a5 5 0 0 0 5-5 5 5 0 0 0-5-5m0 8a3 3 0 0 1-3-3 3 3 0 0 1 3-3 3 3 0 0 1 3 3 3 3 0 0 1-3 3"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search" aria-label="Search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-search" viewBox="0 0 24 24"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog" aria-label="Search">
+  <button type="button" class="md-search__button">
+    Search
+  </button>
+</div>
+      
+    
+    <div class="md-header__source">
+      
+        <a href="https://github.com/SubhadityaMukherjee/alfie_automl_engine" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+      
+    </div>
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="./.." title="ALFIE AutoML Engine Docs" class="md-nav__button md-logo" aria-label="ALFIE AutoML Engine Docs" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" class="lucide lucide-book-open" viewBox="0 0 24 24"><path d="M12 5v16M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>
+
+    </a>
+    ALFIE AutoML Engine Docs
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/SubhadityaMukherjee/alfie_automl_engine" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.3.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2026 Fonticons, Inc.--><path fill="currentColor" d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    GitHub
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="./.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  ALFIE AutoML Engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Architecture
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../autodw/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  AutoDW Setup
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Available endpoints
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="././" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Available endpoints
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#health-root-prefix" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Health (root prefix)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#endpoint-listing-automlendpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Endpoint listing (<code>/automl/endpoints</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tabular-automl-automltabular" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Tabular AutoML (<code>/automl/tabular</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tabular AutoML (&#x2f;automl&#x2f;tabular)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#best_model-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>best_model</code> parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vision-automl-automlvision" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Vision AutoML (<code>/automl/vision</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Vision AutoML (&#x2f;automl&#x2f;vision)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#best_model-parameters_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>best_model</code> parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multimodal_best_model-additional-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>multimodal_best_model</code> additional parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audio-automl-automlaudio" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Audio AutoML (<code>/automl/audio</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Audio AutoML (&#x2f;automl&#x2f;audio)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#best_model-parameters_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>best_model</code> parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#text-automl-automltext" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Text AutoML (<code>/automl/text</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Text AutoML (&#x2f;automl&#x2f;text)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#best_model-parameters_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>best_model</code> parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automl-automlautoml_plus" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        AutoML+ (<code>/automl/automl_plus</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AutoML+ (&#x2f;automl&#x2f;automl_plus)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Key parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Common conventions
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../docker_instructions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Docker instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ideas/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Ideas for the project
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Installation Instructions
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../loading_model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Loading and/or Deploying a trained model
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../running_the_services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Running and Testing AutoML Services
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../testing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Testing
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_11" >
+        
+          
+          <label class="md-nav__link" for="__nav_11" id="__nav_11_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Api
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        
+          <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_11_label" aria-expanded="false">
+            <label class="md-nav__title" for="__nav_11">
+              <span class="md-nav__icon md-icon"></span>
+              
+  
+  Api
+
+            </label>
+            <ul class="md-nav__list" data-md-scrollfix>
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/audio_automl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Audio AutoML
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/automlplus/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  AutoML+
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/core/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Core
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/ml_engine/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  ML Engine
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/tabular_automl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Tabular AutoML
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/text_automl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Text AutoML
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api/vision_automl/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  Vision AutoML
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+            </ul>
+          </nav>
+        
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  
+                    
+                    
+                    
+                      
+                    
+                    
+                      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+                      <div class="md-sidebar-button__wrapper">
+                        <label class="md-sidebar-button" for="__toc"></label>
+                      </div>
+                    
+                  
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--secondary" aria-label="On this page">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      On this page
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#health-root-prefix" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Health (root prefix)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#endpoint-listing-automlendpoints" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Endpoint listing (<code>/automl/endpoints</code>)
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tabular-automl-automltabular" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Tabular AutoML (<code>/automl/tabular</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Tabular AutoML (&#x2f;automl&#x2f;tabular)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#best_model-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>best_model</code> parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vision-automl-automlvision" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Vision AutoML (<code>/automl/vision</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Vision AutoML (&#x2f;automl&#x2f;vision)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#best_model-parameters_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>best_model</code> parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#multimodal_best_model-additional-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>multimodal_best_model</code> additional parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audio-automl-automlaudio" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Audio AutoML (<code>/automl/audio</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Audio AutoML (&#x2f;automl&#x2f;audio)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#best_model-parameters_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>best_model</code> parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#text-automl-automltext" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Text AutoML (<code>/automl/text</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Text AutoML (&#x2f;automl&#x2f;text)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#best_model-parameters_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code>best_model</code> parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#automl-automlautoml_plus" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        AutoML+ (<code>/automl/automl_plus</code>)
+      </span>
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="AutoML+ (&#x2f;automl&#x2f;automl_plus)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#key-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Key parameters
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Common conventions
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="available-endpoints">Available endpoints<a class="headerlink" href="#available-endpoints" title="Permanent link">&para;</a></h1>
+<p>All services are exposed by a single FastAPI app behind the unified <code>/automl</code>
+router (see <a href="../architecture/">architecture</a>). The app listens on
+<code>AUTOML_ENGINE_PORT</code> (default <code>8001</code>), so the base URL is typically
+<code>http://localhost:8001</code>. Interactive OpenAPI docs are served at <code>/docs</code> and
+<code>/redoc</code>, and <code>GET /automl/endpoints</code> returns a compact, LLM-readable JSON
+listing of every endpoint.</p>
+<p>All service endpoints are <code>POST</code> (the endpoint listing and health checks are
+<code>GET</code>). Parameters are sent as
+<code>multipart/form-data</code> form fields (file uploads included) unless noted
+otherwise.</p>
+<hr />
+<h2 id="health-root-prefix">Health (root prefix)<a class="headerlink" href="#health-root-prefix" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/health</code></td>
+<td>Liveness probe — reports that the service process is up.</td>
+</tr>
+<tr>
+<td>GET</td>
+<td><code>/ready</code></td>
+<td>Readiness probe — reports that the service can handle requests.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="endpoint-listing-automlendpoints">Endpoint listing (<code>/automl/endpoints</code>)<a class="headerlink" href="#endpoint-listing-automlendpoints" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>GET</td>
+<td><code>/automl/endpoints</code></td>
+<td>List every endpoint in the running service as structured JSON (path, HTTP methods, function name, summary, docstring-derived description, tags) — a compact, LLM-readable alternative to the raw OpenAPI spec. Useful for agents deciding which endpoint to call.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="tabular-automl-automltabular">Tabular AutoML (<code>/automl/tabular</code>)<a class="headerlink" href="#tabular-automl-automltabular" title="Permanent link">&para;</a></h2>
+<p>Trains AutoGluon models on CSV/TSV/Parquet datasets fetched from AutoDW.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/automl/tabular/deployment_instructions/</code></td>
+<td>Return rendered deployment instructions for using a trained tabular model (Jinja2 template).</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/tabular/accepted_format/</code></td>
+<td>Return the accepted tabular dataset formats (CSV, TSV, Parquet) and required column structure.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/tabular/best_model/</code></td>
+<td>Fetch a dataset from AutoDW, run AutoML training within a time budget, and upload the best model + leaderboard back to AutoDW.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="best_model-parameters"><code>best_model</code> parameters<a class="headerlink" href="#best_model-parameters" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>user_id</code></td>
+<td>str</td>
+<td><em>required</em></td>
+<td>AutoDW user identifier</td>
+</tr>
+<tr>
+<td><code>dataset_id</code></td>
+<td>str</td>
+<td><em>required</em></td>
+<td>AutoDW dataset identifier</td>
+</tr>
+<tr>
+<td><code>dataset_version</code></td>
+<td>str</td>
+<td><code>v1</code></td>
+<td>Dataset version</td>
+</tr>
+<tr>
+<td><code>target_column_name</code></td>
+<td>str</td>
+<td><em>required</em></td>
+<td>Column to predict</td>
+</tr>
+<tr>
+<td><code>time_stamp_column_name</code></td>
+<td>str</td>
+<td><code>None</code></td>
+<td>Timestamp column (required for time-series tasks)</td>
+</tr>
+<tr>
+<td><code>task_type</code></td>
+<td>str</td>
+<td><code>classification</code></td>
+<td>One of the supported tabular task types (see OpenAPI docs)</td>
+</tr>
+<tr>
+<td><code>time_budget</code></td>
+<td>int</td>
+<td><code>10</code></td>
+<td>Training time budget in seconds</td>
+</tr>
+<tr>
+<td><code>num_cpus</code></td>
+<td>int | <code>auto</code></td>
+<td><code>auto</code></td>
+<td>CPU count for AutoML</td>
+</tr>
+<tr>
+<td><code>num_gpus</code></td>
+<td>int | <code>auto</code></td>
+<td><code>auto</code></td>
+<td>GPU count for AutoML</td>
+</tr>
+<tr>
+<td><code>dataset_split</code></td>
+<td>str</td>
+<td><code>None</code></td>
+<td>AutoDW dataset split to train on (e.g. <code>train</code>)</td>
+</tr>
+</tbody>
+</table>
+<p>Responses: <code>200</code> success (message + leaderboard), <code>400</code> validation error,
+<code>502</code> AutoDW communication failure, <code>500</code> unexpected error.</p>
+<hr />
+<h2 id="vision-automl-automlvision">Vision AutoML (<code>/automl/vision</code>)<a class="headerlink" href="#vision-automl-automlvision" title="Permanent link">&para;</a></h2>
+<p>Optuna hyperparameter search + Lightning Fabric training over Hugging Face
+models, on image/video ZIP datasets fetched from AutoDW. Training is delegated
+to the consolidated ML engine (<code>app/ml_engine</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/automl/vision/deployment_instructions/</code></td>
+<td>Return rendered deployment instructions for using a trained vision model.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/vision/accepted_format/</code></td>
+<td>Return the accepted vision dataset format (ZIP structure + labels CSV).</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/vision/best_model/</code></td>
+<td>Fetch a vision dataset from AutoDW, train image/video models within a time budget, and upload the best model + leaderboard to AutoDW.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/vision/multimodal_best_model/</code></td>
+<td>Same pipeline, but trains on images <strong>plus</strong> auxiliary tabular CSV columns (auto-detected) as extra features.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="best_model-parameters_1"><code>best_model</code> parameters<a class="headerlink" href="#best_model-parameters_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>user_id</code></td>
+<td>str</td>
+<td><em>required</em></td>
+<td>AutoDW user identifier</td>
+</tr>
+<tr>
+<td><code>dataset_id</code></td>
+<td>str</td>
+<td><em>required</em></td>
+<td>AutoDW dataset identifier</td>
+</tr>
+<tr>
+<td><code>dataset_version</code></td>
+<td>str</td>
+<td><code>v1</code></td>
+<td>Dataset version</td>
+</tr>
+<tr>
+<td><code>filename_column</code></td>
+<td>str</td>
+<td><code>filename</code></td>
+<td>CSV column holding image filenames</td>
+</tr>
+<tr>
+<td><code>label_column</code></td>
+<td>str</td>
+<td><code>label</code></td>
+<td>CSV column holding class labels</td>
+</tr>
+<tr>
+<td><code>task_type</code></td>
+<td>str</td>
+<td><code>image_classification</code></td>
+<td>One of the image/video task types: <code>image_classification</code>, <code>image_segmentation</code>, <code>object_detection</code>, <code>video_classification</code>, <code>keypoint_detection</code></td>
+</tr>
+<tr>
+<td><code>time_budget</code></td>
+<td>int</td>
+<td><code>60</code></td>
+<td>Training time budget in seconds</td>
+</tr>
+<tr>
+<td><code>model_size</code></td>
+<td>str</td>
+<td><code>small</code></td>
+<td><code>small</code> (≤ 50M params), <code>medium</code> (≤ 200M), or <code>large</code></td>
+</tr>
+<tr>
+<td><code>num_cpus</code></td>
+<td>int | <code>auto</code></td>
+<td><code>auto</code></td>
+<td>CPU count for AutoML</td>
+</tr>
+<tr>
+<td><code>num_gpus</code></td>
+<td>int | <code>auto</code></td>
+<td><code>auto</code></td>
+<td>GPU count for AutoML</td>
+</tr>
+<tr>
+<td><code>dataset_split</code></td>
+<td>str</td>
+<td><code>None</code></td>
+<td>AutoDW dataset split to train on</td>
+</tr>
+</tbody>
+</table>
+<h3 id="multimodal_best_model-additional-parameters"><code>multimodal_best_model</code> additional parameters<a class="headerlink" href="#multimodal_best_model-additional-parameters" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exclude_columns</code></td>
+<td>str</td>
+<td><code>None</code></td>
+<td>Comma-separated CSV columns to exclude from auxiliary features (all other non-filename/label columns are used; numeric columns are scaled, categorical columns encoded)</td>
+</tr>
+</tbody>
+</table>
+<p>Responses for both endpoints: <code>200</code> success (message + leaderboard;
+multimodal also returns the detected <code>auxiliary_columns</code>), <code>400</code> validation
+error, <code>502</code> AutoDW communication failure, <code>500</code> unexpected error.</p>
+<blockquote>
+<p><strong>Note:</strong> audio and text task types are no longer accepted on the vision
+endpoint — use <code>/automl/audio/best_model/</code> and <code>/automl/text/best_model/</code>
+instead.</p>
+</blockquote>
+<hr />
+<h2 id="audio-automl-automlaudio">Audio AutoML (<code>/automl/audio</code>)<a class="headerlink" href="#audio-automl-automlaudio" title="Permanent link">&para;</a></h2>
+<p>Audio classification with the same Optuna + Lightning Fabric pipeline over
+Hugging Face models, on audio ZIP datasets fetched from AutoDW.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/automl/audio/deployment_instructions/</code></td>
+<td>Return rendered deployment instructions for using a trained audio model.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/audio/accepted_format/</code></td>
+<td>Return the accepted audio dataset format (ZIP structure + labels CSV + audio folder).</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/audio/best_model/</code></td>
+<td>Fetch an audio dataset from AutoDW, train an audio model within a time budget, and upload the best model + leaderboard to AutoDW.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="best_model-parameters_2"><code>best_model</code> parameters<a class="headerlink" href="#best_model-parameters_2" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>user_id</code></td>
+<td>str</td>
+<td><em>required</em></td>
+<td>AutoDW user identifier</td>
+</tr>
+<tr>
+<td><code>dataset_id</code></td>
+<td>str</td>
+<td><em>required</em></td>
+<td>AutoDW dataset identifier</td>
+</tr>
+<tr>
+<td><code>dataset_version</code></td>
+<td>str</td>
+<td><code>v1</code></td>
+<td>Dataset version</td>
+</tr>
+<tr>
+<td><code>filename_column</code></td>
+<td>str</td>
+<td><code>filename</code></td>
+<td>CSV column holding audio filenames</td>
+</tr>
+<tr>
+<td><code>label_column</code></td>
+<td>str</td>
+<td><code>label</code></td>
+<td>CSV column holding class labels</td>
+</tr>
+<tr>
+<td><code>task_type</code></td>
+<td>str</td>
+<td><code>audio_classification</code></td>
+<td>Audio task type (<code>audio_classification</code>)</td>
+</tr>
+<tr>
+<td><code>time_budget</code></td>
+<td>int</td>
+<td><code>60</code></td>
+<td>Training time budget in seconds</td>
+</tr>
+<tr>
+<td><code>model_size</code></td>
+<td>str</td>
+<td><code>small</code></td>
+<td><code>small</code> (≤ 50M params), <code>medium</code> (≤ 200M), or <code>large</code></td>
+</tr>
+<tr>
+<td><code>num_cpus</code></td>
+<td>int | <code>auto</code></td>
+<td><code>auto</code></td>
+<td>CPU count for AutoML</td>
+</tr>
+<tr>
+<td><code>num_gpus</code></td>
+<td>int | <code>auto</code></td>
+<td><code>auto</code></td>
+<td>GPU count for AutoML</td>
+</tr>
+<tr>
+<td><code>dataset_split</code></td>
+<td>str</td>
+<td><code>None</code></td>
+<td>AutoDW dataset split to train on</td>
+</tr>
+</tbody>
+</table>
+<p>Responses: <code>200</code> success (message + leaderboard), <code>400</code> validation error,
+<code>502</code> AutoDW communication failure, <code>500</code> unexpected error.</p>
+<hr />
+<h2 id="text-automl-automltext">Text AutoML (<code>/automl/text</code>)<a class="headerlink" href="#text-automl-automltext" title="Permanent link">&para;</a></h2>
+<p>Text tasks with the same Optuna + Lightning Fabric pipeline over Hugging Face
+models, on CSV-in-ZIP datasets fetched from AutoDW.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/automl/text/deployment_instructions/</code></td>
+<td>Return rendered deployment instructions for using a trained text model.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/text/accepted_format/</code></td>
+<td>Return the accepted text dataset formats per task type.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/text/best_model/</code></td>
+<td>Fetch a text dataset from AutoDW, train a text model within a time budget, and upload the best model + leaderboard to AutoDW.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="best_model-parameters_3"><code>best_model</code> parameters<a class="headerlink" href="#best_model-parameters_3" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>user_id</code></td>
+<td>str</td>
+<td><em>required</em></td>
+<td>AutoDW user identifier</td>
+</tr>
+<tr>
+<td><code>dataset_id</code></td>
+<td>str</td>
+<td><em>required</em></td>
+<td>AutoDW dataset identifier</td>
+</tr>
+<tr>
+<td><code>dataset_version</code></td>
+<td>str</td>
+<td><code>v1</code></td>
+<td>Dataset version</td>
+</tr>
+<tr>
+<td><code>text_column</code></td>
+<td>str</td>
+<td><code>text</code></td>
+<td>CSV column holding the input text (used for <code>text_classification</code>)</td>
+</tr>
+<tr>
+<td><code>label_column</code></td>
+<td>str</td>
+<td><code>label</code></td>
+<td>CSV column holding class labels (used for <code>text_classification</code>)</td>
+</tr>
+<tr>
+<td><code>task_type</code></td>
+<td>str</td>
+<td><code>text_classification</code></td>
+<td>One of: <code>text_classification</code>, <code>question_answering</code>, <code>causal_lm</code>, <code>seq2seq_lm</code>, <code>masked_lm</code></td>
+</tr>
+<tr>
+<td><code>time_budget</code></td>
+<td>int</td>
+<td><code>60</code></td>
+<td>Training time budget in seconds</td>
+</tr>
+<tr>
+<td><code>model_size</code></td>
+<td>str</td>
+<td><code>small</code></td>
+<td><code>small</code> (≤ 50M params), <code>medium</code> (≤ 200M), or <code>large</code></td>
+</tr>
+<tr>
+<td><code>num_cpus</code></td>
+<td>int | <code>auto</code></td>
+<td><code>auto</code></td>
+<td>CPU count for AutoML</td>
+</tr>
+<tr>
+<td><code>num_gpus</code></td>
+<td>int | <code>auto</code></td>
+<td><code>auto</code></td>
+<td>GPU count for AutoML</td>
+</tr>
+<tr>
+<td><code>dataset_split</code></td>
+<td>str</td>
+<td><code>None</code></td>
+<td>AutoDW dataset split to train on</td>
+</tr>
+</tbody>
+</table>
+<p>Required CSV columns per task type: <code>text</code> + <code>label</code> for
+<code>text_classification</code> (the text column name is configurable via
+<code>text_column</code>); <code>question</code>, <code>context</code>, <code>answer_start</code>, <code>answer_text</code> for
+<code>question_answering</code>; <code>text</code> for <code>causal_lm</code> / <code>masked_lm</code>; <code>input_text</code> +
+<code>target_text</code> for <code>seq2seq_lm</code>.</p>
+<p>Responses: <code>200</code> success (message + leaderboard), <code>400</code> validation error,
+<code>502</code> AutoDW communication failure, <code>500</code> unexpected error.</p>
+<hr />
+<h2 id="automl-automlautoml_plus">AutoML+ (<code>/automl/automl_plus</code>)<a class="headerlink" href="#automl-automlautoml_plus" title="Permanent link">&para;</a></h2>
+<p>LLM/VLM-powered tools — no model training.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Path</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>POST</td>
+<td><code>/automl/automl_plus/accepted_format/</code></td>
+<td>Return the accepted input formats for the AutoML+ tools (images, HTML files, URLs).</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/automl_plus/image_tools/image_to_website/</code></td>
+<td>Convert an uploaded image into a basic HTML website structure. <strong>Currently returns 501 Not implemented.</strong></td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/automl_plus/image_tools/run_on_image/</code></td>
+<td>Run a vision-language model on an image (file upload or URL) with a prompt and return the text output as JSON.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/automl_plus/image_tools/run_on_image_stream/</code></td>
+<td>Same as <code>run_on_image</code>, but streams the model output as plain text (<code>text/plain</code>) instead of returning a single JSON blob.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/automl_plus/web_access/check-alt-text/</code></td>
+<td>Evaluate a provided alt-text string against the referenced image using an LLM.</td>
+</tr>
+<tr>
+<td>POST</td>
+<td><code>/automl/automl_plus/web_access/analyze/</code></td>
+<td>Run WCAG-inspired accessibility checks (and optional readability analysis) on a website, given an uploaded HTML file or a URL. Returns per-element results and an average accessibility score.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="key-parameters">Key parameters<a class="headerlink" href="#key-parameters" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Endpoint</th>
+<th>Fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>image_tools/run_on_image/</code> (and <code>_stream/</code>)</td>
+<td><code>prompt</code> (required), <code>model</code> (optional override), and exactly one of <code>image_file</code> (upload) or <code>image_url</code></td>
+</tr>
+<tr>
+<td><code>web_access/check-alt-text/</code></td>
+<td><code>image_url</code> (required), <code>alt_text</code> (required)</td>
+</tr>
+<tr>
+<td><code>web_access/analyze/</code></td>
+<td><code>file</code> (HTML upload) and/or <code>url</code> (website to fetch); optional <code>extra_file_input</code> for extra LLM context (e.g. WCAG guidelines)</td>
+</tr>
+</tbody>
+</table>
+<p>Responses: <code>400</code> missing/invalid input, <code>500</code> internal error (LLM/VLM or
+fetch failure).</p>
+<hr />
+<h2 id="common-conventions">Common conventions<a class="headerlink" href="#common-conventions" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Trailing slashes matter</strong>: endpoints are registered with a trailing
+  slash; omitting it triggers a <code>307</code> redirect.</li>
+<li><strong><code>X-Task-ID</code> header</strong>: the five training endpoints (<code>tabular/best_model</code>,
+  <code>vision/best_model</code>, <code>vision/multimodal_best_model</code>, <code>audio/best_model</code>,
+  <code>text/best_model</code>) accept an optional <code>X-Task-ID</code> header used for request
+  tracking.</li>
+<li><strong>Error shape</strong>: errors are returned as <code>{"error": "&lt;message&gt;"}</code> with the
+  status codes listed per service above.</li>
+<li>Runnable <code>curl</code> examples live in
+  <a href="../running_the_services/">running the services</a>; Docker smoke tests in
+  <code>test_services_docker.sh</code>.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://zensical.org/" target="_blank" rel="noopener">
+      Zensical
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog" role="status" aria-atomic="true">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      
+      
+        
+        
+      <script id="__config" type="application/json">{"annotate":null,"base":"..","features":["content.code.copy"],"redirect":null,"search":"../assets/javascripts/workers/search.7d14d953.min.js","tags":null,"translations":{"clipboard.copied":"Copied to clipboard","clipboard.copy":"Copy to clipboard","clipboard.error":"Could not copy to clipboard","search.result.more.one":"1 more on this page","search.result.more.other":"# more on this page","search.result.none":"No matching documents","search.result.one":"1 matching document","search.result.other":"# matching documents","search.result.placeholder":"Type to start searching","search.result.term.missing":"Missing","select.version":"Select version"},"version":null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.67a597eb.min.js"></script>
+      
+    
+  </body>
+</html>
