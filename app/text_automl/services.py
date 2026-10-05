@@ -21,6 +21,7 @@ from app.core.service_helpers import (  # noqa: F401 – re-exported for orchest
     build_upload_payload as _core_build_upload_payload,
     download_dataset as _core_download_dataset,
     fetch_dataset_metadata,
+    metadata_indicates_zip_download,
     resolve_download_url,
     upload_model,
 )

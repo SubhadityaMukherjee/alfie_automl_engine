@@ -10,6 +10,8 @@ import logging
 import os
 import pickle
 import shutil
+import zipfile
+from io import BytesIO
 from pathlib import Path
 
 import pandas as pd
@@ -40,41 +42,94 @@ UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
 
 SUPPORTED_FILE_TYPES = {"csv", "tsv", "parquet"}
 
+_TABLE_MEMBER_SUFFIXES = {".csv", ".tsv", ".xlsx", ".xls", ".parquet", ".pq", ".json"}
+
+
+def _first_table_member(member_names: list[str]) -> str | None:
+    """Return the first ZIP member that looks like a tabular file, if any."""
+    for name in member_names:
+        if name.endswith("/"):
+            continue
+        if "__MACOSX" in name:
+            continue
+        base = name.rsplit("/", 1)[-1]
+        if base.startswith("."):
+            continue
+        if Path(name).suffix.lower() in _TABLE_MEMBER_SUFFIXES:
+            return name
+    return None
+
+
+def _load_table_by_suffix(suffix: str, source: Path | BytesIO) -> pd.DataFrame:
+    """Load a table from a path or file-like object by its suffix."""
+    if suffix in [".csv"]:
+        logging.debug("csv file loaded")
+        return pd.read_csv(source)
+    if suffix in [".tsv"]:
+        logging.debug("tsv file loaded")
+        return pd.read_csv(source, sep="\t")
+    if suffix in [".xlsx"]:
+        logging.debug("excel file loaded")
+        return pd.read_excel(source)
+    if suffix in [".parquet", ".pq"]:
+        logging.debug("Parquet file loaded")
+        return pd.read_parquet(source)
+    if suffix in [".json"]:
+        logging.debug("Json file loaded")
+        return pd.read_json(source)
+    # Fallback: try csv to keep previous behavior
+    return pd.read_csv(source)
+
+
+def _load_table_from_zip(file_path: Path) -> pd.DataFrame:
+    """Load the first tabular file inside a ZIP archive.
+
+    AutoDW returns split downloads (and some folder datasets) as ZIP bytes even
+    when metadata reports ``file_type=csv`` / a ``.csv`` ``original_filename``.
+    Detect that case by content, not by extension.
+    """
+    with zipfile.ZipFile(file_path) as archive:
+        member = _first_table_member(archive.namelist())
+        if member is None:
+            raise AutoMLDataError(
+                f"ZIP archive contains no tabular files (.csv/.tsv/.parquet/...): {file_path}"
+            )
+        logger.info(
+            "Loading tabular member '%s' from ZIP archive %s", member, file_path
+        )
+        suffix = Path(member).suffix.lower()
+        with archive.open(member) as handle:
+            payload = BytesIO(handle.read())
+        return _load_table_by_suffix(suffix, payload)
+
 
 def load_table(file_path: Path) -> pd.DataFrame:
-    """Load a table file into a DataFrame based on file extension."""
+    """Load a table file into a DataFrame based on file extension.
+
+    Also accepts ZIP archives that wrap a single tabular file (AutoDW split
+    downloads), regardless of whether the on-disk name ends in ``.zip``.
+    """
     if not file_path.exists():
         raise AutoMLDataError(f"File not found: {file_path}")
 
     if not file_path.is_file():
         raise AutoMLDataError(f"Path is not a file: {file_path}")
 
-    suffix = file_path.suffix.lower()
-
     try:
-        if suffix in [".csv"]:
-            logging.debug("csv file loaded")
-            return pd.read_csv(file_path)
-        if suffix in [".tsv"]:
-            logging.debug("tsv file loaded")
-            return pd.read_csv(file_path, sep="\t")
-        if suffix in [".xlsx"]:
-            logging.debug("excel file loaded")
-            return pd.read_excel(file_path)
-        if suffix in [".parquet", ".pq"]:
-            logging.debug("Parquet file loaded")
-            return pd.read_parquet(file_path)
-        if suffix in [".json"]:
-            logging.debug("Json file loaded")
-            return pd.read_json(file_path)
-        # Fallback: try csv to keep previous behavior
-        return pd.read_csv(file_path)
+        # OOXML formats (.xlsx/…) are ZIP containers themselves — only sniff
+        # for a wrapped table when the name does not already say spreadsheet.
+        suffix = file_path.suffix.lower()
+        if suffix not in (".xlsx", ".xlsm", ".xlsb") and zipfile.is_zipfile(file_path):
+            return _load_table_from_zip(file_path)
+        return _load_table_by_suffix(suffix, file_path)
     except pd.errors.EmptyDataError:
         logging.error(f"File is empty: {file_path}")
         raise AutoMLDataError(f"File is empty: {file_path}") from None
     except pd.errors.ParserError as e:
         logging.error(f"Failed to parse file {file_path}: {e}")
         raise AutoMLDataError(f"Failed to parse file: {e}") from e
+    except AutoMLDataError:
+        raise
     except Exception as e:
         logging.error(f"Unexpected error loading table from {file_path}: {e}")
         raise AutoMLRuntimeError(f"Failed to load table: {e}") from e
