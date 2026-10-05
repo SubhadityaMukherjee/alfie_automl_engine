@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     image_prompt_model: str = "gpt-4o-mini"
     chunk_size_for_accessibility: int = 3000
     concurrency_num_for_accessibility: int = 4
+    # Number of HTML chunks combined into a single LLM request. 1 restores the
+    # one-request-per-chunk behaviour; higher values reduce request count and
+    # are safe on large-context models (e.g. GPT-5, 400K input tokens).
+    chunks_per_llm_request: int = 4
     web_accessibility_url_retry_timeout: int = 10
     web_accessibility_crawl_depth: int = 2
     web_accessibility_max_pages: int = 25

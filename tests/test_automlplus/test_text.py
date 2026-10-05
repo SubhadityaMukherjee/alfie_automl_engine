@@ -1,4 +1,4 @@
-"""Tests for app.automlplus.tools.text (_process_single_chunk, ChunkResult, summarize)."""
+"""Tests for app.automlplus.tools.text (_process_single_chunk, _process_chunk_batch, ChunkResult, summarize)."""
 
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -7,6 +7,8 @@ import pytest
 
 from app.automlplus.tools.text import (
     ChunkResult,
+    _parse_batch_sections,
+    _process_chunk_batch,
     _process_single_chunk,
     summarize_accessibility_results,
 )
@@ -201,6 +203,140 @@ async def test_whitespace_normalization(
     )
     assert result.score == 75.0
     assert "  " not in (result.llm_response or "")
+
+
+# ---------------------------------------------------------------------------
+# _process_chunk_batch
+# ---------------------------------------------------------------------------
+
+
+def _batch_item(i: int, chunk: str, start: int = 1, end: int = 10):
+    return (i, chunk, start, end)
+
+
+def _batch_response(*reviews: str) -> str:
+    return " ".join(
+        f"=== CHUNK {n + 1} REVIEW START === {review} === CHUNK {n + 1} REVIEW END ==="
+        for n, review in enumerate(reviews)
+    )
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.tools.text.AltTextChecker")
+@patch("app.automlplus.tools.text.ChatHandler")
+@patch("app.automlplus.tools.text.render_template", return_value="rendered prompt")
+async def test_batch_singleton_uses_single_prompt(
+    mock_render, mock_chat, mock_alt, mock_jinja, sem
+):
+    mock_chat.chat = AsyncMock(return_value="Score: 85.")
+
+    results = await _process_chunk_batch(
+        [_batch_item(0, "<p>Hello</p>")], 1, "test.html", mock_jinja, sem, ""
+    )
+
+    assert len(results) == 1
+    assert results[0].score == 85.0
+    assert mock_render.call_args.kwargs["template_name"] == "build_chunk_prompt.txt"
+    mock_chat.chat.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.tools.text.AltTextChecker")
+@patch("app.automlplus.tools.text.ChatHandler")
+@patch("app.automlplus.tools.text.render_template", return_value="rendered prompt")
+async def test_batch_sends_one_request_for_multiple_chunks(
+    mock_render, mock_chat, mock_alt, mock_jinja, sem
+):
+    mock_chat.chat = AsyncMock(
+        return_value=_batch_response("Score: 8. Good.", "Score: 5. Missing alt texts.")
+    )
+
+    batch = [_batch_item(0, "<p>One</p>"), _batch_item(1, "<p>Two</p>")]
+    results = await _process_chunk_batch(batch, 2, "test.html", mock_jinja, sem, "")
+
+    assert mock_render.call_args.kwargs["template_name"] == (
+        "build_batched_chunk_prompt.txt"
+    )
+    assert mock_render.call_args.kwargs["num_chunks"] == 2
+    mock_chat.chat.assert_awaited_once()
+    assert len(results) == 2
+    assert [r.chunk for r in results] == [0, 1]
+    assert results[0].score == 8.0
+    assert results[1].score == 5.0
+    assert "Good." in (results[0].llm_response or "")
+    assert "Missing alt texts." in (results[1].llm_response or "")
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.tools.text.AltTextChecker")
+@patch("app.automlplus.tools.text.ChatHandler")
+@patch("app.automlplus.tools.text.render_template", return_value="rendered prompt")
+async def test_batch_missing_section_marks_chunk(
+    mock_render, mock_chat, mock_alt, mock_jinja, sem
+):
+    mock_chat.chat = AsyncMock(return_value=_batch_response("Score: 8. Good."))
+
+    batch = [_batch_item(0, "<p>One</p>"), _batch_item(1, "<p>Two</p>")]
+    results = await _process_chunk_batch(batch, 2, "test.html", mock_jinja, sem, "")
+
+    assert results[0].score == 8.0
+    assert results[0].error is None
+    assert results[1].score is None
+    assert results[1].error == "No review section for chunk in batched response"
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.tools.text.AltTextChecker")
+@patch("app.automlplus.tools.text.ChatHandler")
+@patch("app.automlplus.tools.text.render_template", return_value="rendered prompt")
+async def test_batch_error_marks_all_chunks(
+    mock_render, mock_chat, mock_alt, mock_jinja, sem
+):
+    mock_chat.chat = AsyncMock(side_effect=Exception("LLM down"))
+
+    batch = [_batch_item(0, "<p>One</p>"), _batch_item(1, "<p>Two</p>")]
+    results = await _process_chunk_batch(batch, 2, "test.html", mock_jinja, sem, "")
+
+    assert len(results) == 2
+    assert all(r.error == "LLM down" for r in results)
+    assert all(r.score is None for r in results)
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.tools.text.AltTextChecker")
+@patch("app.automlplus.tools.text.ChatHandler")
+@patch("app.automlplus.tools.text.render_template", return_value="rendered prompt")
+async def test_batch_skips_empty_chunks(
+    mock_render, mock_chat, mock_alt, mock_jinja, sem
+):
+    # Only chunk index 1 is sent; the prompt labels it "chunk 2", so the
+    # review section comes back numbered 2.
+    mock_chat.chat = AsyncMock(
+        return_value=(
+            "=== CHUNK 2 REVIEW START === Score: 7. === CHUNK 2 REVIEW END ==="
+        )
+    )
+
+    batch = [_batch_item(0, "   "), _batch_item(1, "<p>Two</p>")]
+    results = await _process_chunk_batch(batch, 2, "test.html", mock_jinja, sem, "")
+
+    assert results[0].error == "Empty chunk provided"
+    assert mock_render.call_args.kwargs["num_chunks"] == 1
+    assert results[1].score == 7.0
+
+
+def test_parse_batch_sections_numbers_and_normalization():
+    response = (
+        "=== CHUNK 2 REVIEW START ===  Score:   9.  Great   === CHUNK 2 REVIEW END === "
+        "=== CHUNK 1 REVIEW START === Score: 4 === CHUNK 1 REVIEW END ==="
+    )
+    sections = _parse_batch_sections(response)
+    assert sections[2] == "Score: 9. Great"
+    assert sections[1] == "Score: 4"
+
+
+def test_parse_batch_sections_no_matches():
+    assert _parse_batch_sections("no sections here") == {}
 
 
 # ---------------------------------------------------------------------------
