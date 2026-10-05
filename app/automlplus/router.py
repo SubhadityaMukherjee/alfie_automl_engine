@@ -361,8 +361,13 @@ async def analyze_web_accessibility_and_readability(
     # --- Run accessibility pipeline per page ---
     chunk_size: int = settings.chunk_size_for_accessibility
     concurrency_num: int = settings.concurrency_num_for_accessibility
+    chunks_per_request: int = settings.chunks_per_llm_request
     logger.debug(
-        f"Running accessibility pipeline with chunk size {chunk_size}, concurrency {concurrency_num}"
+        "Running accessibility pipeline with chunk size %s, concurrency %s, "
+        "%s chunk(s) per LLM request",
+        chunk_size,
+        concurrency_num,
+        chunks_per_request,
     )
 
     all_results: list[ChunkResult] = []
@@ -378,6 +383,7 @@ async def analyze_web_accessibility_and_readability(
                 context=context_str,
                 page=page_name,
                 chunk_offset=chunk_offset,
+                chunks_per_request=chunks_per_request,
             )
             chunk_offset += len(page_results)
             all_results.extend(page_results)
