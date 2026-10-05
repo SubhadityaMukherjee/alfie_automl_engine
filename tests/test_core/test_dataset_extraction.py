@@ -193,6 +193,25 @@ def test_find_valid_dataset_root_raises_when_no_valid_dirs(tmp_path):
         _find_valid_dataset_root(tmp_path)
 
 
+def test_find_valid_dataset_root_flat_csv_layout(tmp_path):
+    (tmp_path / "annotations_new.csv").touch()
+    result = _find_valid_dataset_root(tmp_path)
+    assert result == tmp_path
+
+
+def test_find_valid_dataset_root_flat_images_dir(tmp_path):
+    (tmp_path / "images").mkdir()
+    result = _find_valid_dataset_root(tmp_path)
+    assert result == tmp_path
+
+
+def test_find_valid_dataset_root_multiple_dirs_uses_extract_dir(tmp_path):
+    (tmp_path / "train").mkdir()
+    (tmp_path / "extras").mkdir()
+    result = _find_valid_dataset_root(tmp_path)
+    assert result == tmp_path
+
+
 # ---------------------------------------------------------------------------
 # _find_csv_file
 # ---------------------------------------------------------------------------
@@ -211,16 +230,48 @@ def test_find_csv_file_finds_metadata_csv(tmp_path):
 
 
 def test_find_csv_file_raises_when_not_found(tmp_path):
-    with pytest.raises(AutoMLDataError, match="labels.csv or metadata.csv"):
+    with pytest.raises(AutoMLDataError, match="No CSV label/metadata file"):
         _find_csv_file(tmp_path)
 
 
 def test_find_csv_file_prefers_labels_csv(tmp_path):
-    # Both exist - we don't guarantee order, but we just need it to succeed
     (tmp_path / "labels.csv").touch()
     (tmp_path / "metadata.csv").touch()
     result = _find_csv_file(tmp_path)
-    assert result.name in ("labels.csv", "metadata.csv")
+    assert result == tmp_path / "labels.csv"
+
+
+def test_find_csv_file_case_insensitive(tmp_path):
+    (tmp_path / "Labels.CSV").touch()
+    result = _find_csv_file(tmp_path)
+    assert result == tmp_path / "Labels.CSV"
+
+
+def test_find_csv_file_annotations_match(tmp_path):
+    (tmp_path / "annotations_new.csv").touch()
+    result = _find_csv_file(tmp_path)
+    assert result == tmp_path / "annotations_new.csv"
+
+
+def test_find_csv_file_single_non_canonical_csv(tmp_path):
+    (tmp_path / "train_data.csv").touch()
+    result = _find_csv_file(tmp_path)
+    assert result == tmp_path / "train_data.csv"
+
+
+def test_find_csv_file_multiple_ambiguous_csvs_raise(tmp_path):
+    (tmp_path / "one.csv").touch()
+    (tmp_path / "two.csv").touch()
+    with pytest.raises(AutoMLDataError, match="Multiple CSV files found"):
+        _find_csv_file(tmp_path)
+
+
+def test_find_csv_file_ignores_macosx_junk(tmp_path):
+    (tmp_path / "__MACOSX").mkdir()
+    (tmp_path / "__MACOSX" / "._labels.csv").touch()
+    (tmp_path / "annotations.csv").touch()
+    result = _find_csv_file(tmp_path)
+    assert result == tmp_path / "annotations.csv"
 
 
 # ---------------------------------------------------------------------------
@@ -287,8 +338,28 @@ def test_extract_and_locate_dataset_missing_csv_raises(tmp_path):
 
     workdir = tmp_path / "work"
     workdir.mkdir()
-    with pytest.raises(AutoMLDataError, match="labels.csv or metadata.csv"):
+    with pytest.raises(AutoMLDataError, match="No CSV label/metadata file"):
         extract_and_locate_dataset(zip_path, workdir)
+
+
+def test_extract_and_locate_dataset_flat_zip(tmp_path):
+    buf = io.BytesIO()
+    Image.new("RGB", (10, 10)).save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    zip_path = tmp_path / "dataset.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr(
+            "annotations_new.csv", "filename,label\nimg0.png,cat\nimg1.png,dog\n"
+        )
+        zf.writestr("images/img0.png", png_bytes)
+        zf.writestr("images/img1.png", png_bytes)
+
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    csv_path, images_dir = extract_and_locate_dataset(zip_path, workdir)
+    assert csv_path.name == "annotations_new.csv"
+    assert images_dir.exists()
 
 
 def test_extract_and_locate_dataset_no_valid_root_raises(tmp_path):

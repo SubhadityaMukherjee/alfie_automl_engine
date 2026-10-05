@@ -93,6 +93,37 @@ def test_load_table_unsupported_extension_fallback(tmp_path, fake_data):
     assert list(df["col_1"]) == list(fake_data["col_1"])
 
 
+def test_load_table_zip_wrapped_csv(tmp_path, fake_data):
+    # AutoDW split downloads: ZIP bytes even though metadata says csv.
+    csv_buf = tmp_path / "inner.csv"
+    fake_data.to_csv(csv_buf, index=False)
+    zip_path = tmp_path / "download.csv"  # extension lies; content is ZIP
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.write(csv_buf, arcname="train.csv")
+    df = load_table(zip_path)
+    assert list(df["col_1"]) == list(fake_data["col_1"])
+
+
+def test_load_table_zip_skips_macosx_members(tmp_path, fake_data):
+    csv_buf = tmp_path / "inner.csv"
+    fake_data.to_csv(csv_buf, index=False)
+    zip_path = tmp_path / "download.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("__MACOSX/._junk.csv", "junk")
+        zf.writestr("._junk2.csv", "junk")
+        zf.write(csv_buf, arcname="train.csv")
+    df = load_table(zip_path)
+    assert list(df["col_1"]) == list(fake_data["col_1"])
+
+
+def test_load_table_zip_without_tabular_member_raises(tmp_path):
+    zip_path = tmp_path / "no_tables.csv"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("readme.txt", "no tables here")
+    with pytest.raises(AutoMLDataError, match="no tabular files"):
+        load_table(zip_path)
+
+
 # ---------------------------------------------------------------------------
 # validate_tabular_inputs
 # ---------------------------------------------------------------------------
