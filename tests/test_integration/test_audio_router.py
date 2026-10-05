@@ -23,10 +23,10 @@ _AUDIO_PARAMS = {
 }
 
 
-def _make_metadata(file_type="zip"):
+def _make_metadata(file_type="zip", original_filename="dataset.zip"):
     return {
         "file_type": file_type,
-        "original_filename": "dataset.zip",
+        "original_filename": original_filename,
     }
 
 
@@ -69,7 +69,9 @@ def test_best_model_metadata_error_returns_500(mock_fetch):
 
 @patch("app.audio_automl.orchestrator.fetch_dataset_metadata")
 def test_best_model_non_zip_returns_400(mock_fetch):
-    mock_fetch.return_value = _make_metadata(file_type="csv")
+    mock_fetch.return_value = _make_metadata(
+        file_type="csv", original_filename="data.csv"
+    )
     resp = client.post("/automl/audio/best_model/", data=_AUDIO_PARAMS)
     assert resp.status_code == 400
     assert "ZIP" in resp.json()["error"]

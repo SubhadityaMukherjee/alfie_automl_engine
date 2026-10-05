@@ -32,6 +32,7 @@ from app.audio_automl.services import (
     download_dataset,
     extract_and_locate_dataset,
     fetch_dataset_metadata,
+    metadata_indicates_zip_download,
     resolve_download_url,
     serialize_and_zip_model,
     train_automl,
@@ -82,8 +83,8 @@ class AudioTrainingResult:
 
 
 def _require_zip(metadata: dict) -> None:
-    """Reject datasets whose AutoDW metadata does not describe a ZIP file."""
-    if metadata.get("file_type") != "zip":
+    """Reject datasets AutoDW will not serve as a ZIP download."""
+    if not metadata_indicates_zip_download(metadata):
         raise AutoMLValidationError("Audio AutoML requires a ZIP dataset.")
 
 
