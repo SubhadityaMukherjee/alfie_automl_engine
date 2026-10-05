@@ -27,6 +27,32 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def metadata_indicates_zip_download(metadata: dict) -> bool:
+    """Return True when AutoDW will serve this dataset as a ZIP download.
+
+    AutoDW's ``file_type`` is often the *contents* type after indexing a
+    folder upload (e.g. ``"csv, jpg"`` or ``"jpg, csv"``), even though
+    ``GET .../download`` still returns a ZIP. Treat a dataset as ZIP-backed
+    when any of these hold:
+
+    * ``file_type`` is exactly ``zip``
+    * ``original_filename`` ends with ``.zip``
+    * ``is_folder`` is true (folder/media uploads are packaged as ZIP on download)
+    """
+    if not isinstance(metadata, dict):
+        return False
+
+    file_type = str(metadata.get("file_type") or "").strip().lower()
+    if file_type == "zip":
+        return True
+
+    original = str(metadata.get("original_filename") or "").strip().lower()
+    if original.endswith(".zip"):
+        return True
+
+    return bool(metadata.get("is_folder"))
+
+
 def build_metadata_url(
     autodw_base: str, user_id: str, dataset_id: str, dataset_version: str | None
 ) -> str:

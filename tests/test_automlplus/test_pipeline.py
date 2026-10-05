@@ -51,6 +51,14 @@ async def test_invalid_concurrency_raises():
 
 
 @pytest.mark.asyncio
+async def test_invalid_chunks_per_request_raises():
+    with pytest.raises(AutoMLValidationError, match="chunks_per_request must be > 0"):
+        await run_accessibility_pipeline(
+            "content", "test.html", MagicMock(), chunk_size=10, chunks_per_request=0
+        )
+
+
+@pytest.mark.asyncio
 @patch("app.automlplus.website_accessibility.pipeline.split_chunks")
 async def test_split_failure_raises(mock_split):
     mock_split.side_effect = Exception("split failed")
@@ -61,7 +69,7 @@ async def test_split_failure_raises(mock_split):
 
 
 @pytest.mark.asyncio
-@patch("app.automlplus.website_accessibility.pipeline._process_single_chunk")
+@patch("app.automlplus.website_accessibility.pipeline._process_chunk_batch")
 @patch(
     "app.automlplus.website_accessibility.pipeline.split_chunks",
     return_value=([], []),
@@ -73,32 +81,25 @@ async def test_no_chunks_returns_empty(mock_split, mock_process):
     assert result == []
 
 
+def _result(i: int, score: float) -> ChunkResult:
+    return ChunkResult(
+        chunk=i,
+        start_line=1,
+        end_line=10,
+        score=score,
+        image_feedback=[],
+        llm_response="ok",
+    )
+
+
 @pytest.mark.asyncio
-@patch("app.automlplus.website_accessibility.pipeline._process_single_chunk")
+@patch("app.automlplus.website_accessibility.pipeline._process_chunk_batch")
 @patch(
     "app.automlplus.website_accessibility.pipeline.split_chunks",
     return_value=(["chunk1", "chunk2"], [(1, 10), (11, 20)]),
 )
 async def test_processes_chunks(mock_split, mock_process):
-    chunk_results = [
-        ChunkResult(
-            chunk=0,
-            start_line=1,
-            end_line=10,
-            score=85.0,
-            image_feedback=[],
-            llm_response="ok",
-        ),
-        ChunkResult(
-            chunk=1,
-            start_line=11,
-            end_line=20,
-            score=70.0,
-            image_feedback=[],
-            llm_response="ok2",
-        ),
-    ]
-    mock_process.side_effect = chunk_results
+    mock_process.side_effect = [[_result(0, 85.0)], [_result(1, 70.0)]]
 
     result = await run_accessibility_pipeline(
         "content", "test.html", MagicMock(), chunk_size=100
@@ -109,7 +110,7 @@ async def test_processes_chunks(mock_split, mock_process):
 
 
 @pytest.mark.asyncio
-@patch("app.automlplus.website_accessibility.pipeline._process_single_chunk")
+@patch("app.automlplus.website_accessibility.pipeline._process_chunk_batch")
 @patch(
     "app.automlplus.website_accessibility.pipeline.split_chunks",
     return_value=(["chunk1"], [(1, 10)]),
@@ -123,20 +124,15 @@ async def test_process_failure_raises(mock_split, mock_process):
 
 
 @pytest.mark.asyncio
-@patch("app.automlplus.website_accessibility.pipeline._process_single_chunk")
+@patch("app.automlplus.website_accessibility.pipeline._process_chunk_batch")
 @patch(
     "app.automlplus.website_accessibility.pipeline.split_chunks",
     return_value=(["chunk1", "chunk2"], [(1, 10), (11, 20)]),
 )
 async def test_tags_results_with_page_and_chunk_offset(mock_split, mock_process):
-    mock_process.side_effect = lambda i, *a, **kw: ChunkResult(
-        chunk=i,
-        start_line=1,
-        end_line=10,
-        score=80.0,
-        image_feedback=[],
-        llm_response="ok",
-    )
+    mock_process.side_effect = lambda batch, *a, **kw: [
+        _result(i, 80.0) for i, _, _, _ in batch
+    ]
 
     result = await run_accessibility_pipeline(
         "content",
@@ -148,6 +144,46 @@ async def test_tags_results_with_page_and_chunk_offset(mock_split, mock_process)
     )
     assert [r.chunk for r in result] == [5, 6]
     assert all(r.page == "https://example.com" for r in result)
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.website_accessibility.pipeline._process_chunk_batch")
+@patch(
+    "app.automlplus.website_accessibility.pipeline.split_chunks",
+    return_value=(["c1", "c2", "c3", "c4", "c5"], [(1, 5)] * 5),
+)
+async def test_batches_chunks_per_request(mock_split, mock_process):
+    mock_process.side_effect = lambda batch, *a, **kw: [
+        _result(i, 80.0) for i, _, _, _ in batch
+    ]
+
+    result = await run_accessibility_pipeline(
+        "content", "test.html", MagicMock(), chunk_size=100, chunks_per_request=2
+    )
+
+    assert mock_process.call_count == 3
+    batch_sizes = [len(call.args[0]) for call in mock_process.call_args_list]
+    assert batch_sizes == [2, 2, 1]
+    assert [r.chunk for r in result] == [0, 1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
+@patch("app.automlplus.website_accessibility.pipeline._process_chunk_batch")
+@patch(
+    "app.automlplus.website_accessibility.pipeline.split_chunks",
+    return_value=(["c1", "c2"], [(1, 5)] * 2),
+)
+async def test_default_one_request_per_chunk(mock_split, mock_process):
+    mock_process.side_effect = lambda batch, *a, **kw: [
+        _result(i, 80.0) for i, _, _, _ in batch
+    ]
+
+    await run_accessibility_pipeline(
+        "content", "test.html", MagicMock(), chunk_size=100
+    )
+
+    assert mock_process.call_count == 2
+    assert all(len(call.args[0]) == 1 for call in mock_process.call_args_list)
 
 
 # ---------------------------------------------------------------------------
