@@ -382,6 +382,21 @@ def _find_ngram_generators(root) -> list:
     return found
 
 
+def _json_safe_vocab(vocab) -> dict[str, int]:
+    """Convert a sklearn ``vocabulary_`` mapping to plain JSON-serializable types.
+
+    Vectorizers often store ``numpy.int64`` indices; those break ``json.dump``
+    mid-write and can leave a truncated ``text_feature_mapping.json`` that still
+    gets packaged into ``automl_predictor.zip``.
+    """
+    if not vocab:
+        return {}
+    safe: dict[str, int] = {}
+    for key, value in dict(vocab).items():
+        safe[str(key)] = int(value)
+    return safe
+
+
 def _extract_ngram_vocab(predictor) -> dict:
     """Pull word/n-gram -> column-index vocabularies out of any fitted n-gram generators."""
     feature_generator = _get_feature_generator(predictor)
@@ -406,14 +421,46 @@ def _extract_ngram_vocab(predictor) -> dict:
         for feat_name, vectorizer in zip(feature_names, vectorizers):
             vocab = getattr(vectorizer, "vocabulary_", None)
             try:
-                vocab_features = list(vectorizer.get_feature_names_out())
+                vocab_features = [
+                    str(name) for name in vectorizer.get_feature_names_out()
+                ]
             except Exception:
                 vocab_features = []
-            out[feat_name] = {
-                "vocabulary": dict(vocab) if vocab else {},
+            out[str(feat_name)] = {
+                "vocabulary": _json_safe_vocab(vocab),
                 "feature_names": vocab_features,
             }
     return out
+
+
+def _write_text_feature_mapping_atomic(mapping: dict, mapping_path: Path) -> None:
+    """Serialize ``mapping`` to JSON, validate it, then atomically replace ``mapping_path``.
+
+    Builds the full payload in memory first so a serialization failure never
+    leaves a half-written sidecar next to the predictor (which
+    ``shutil.make_archive`` would otherwise zip into ``automl_predictor.zip``).
+    """
+    payload = json.dumps(mapping, indent=2, sort_keys=True, ensure_ascii=False)
+    # Round-trip before touching disk so consumers never see invalid JSON.
+    json.loads(payload)
+
+    tmp_path = mapping_path.with_suffix(mapping_path.suffix + ".tmp")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, mapping_path)
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+    # Confirm the on-disk sidecar is complete before the zip step.
+    with open(mapping_path, encoding="utf-8") as handle:
+        json.load(handle)
 
 
 def _scan_multimodal_tokenizer_dirs(save_model_path: Path) -> list:
@@ -464,14 +511,23 @@ def serialize_and_zip_predictor(
     except Exception as e:
         logger.debug(f"No deployment_instructions found, {e}")
 
+    mapping_path = save_model_path / "text_feature_mapping.json"
     try:
         mapping = extract_text_feature_mapping(predictor, save_model_path)
-        mapping_path = save_model_path / "text_feature_mapping.json"
-        with open(mapping_path, "w") as f:
-            json.dump(mapping, f, indent=2, sort_keys=True)
-        logger.debug(f"Text feature mapping written to {mapping_path}")
+        _write_text_feature_mapping_atomic(mapping, mapping_path)
+        logger.debug(
+            "Text feature mapping written to %s (%s bytes)",
+            mapping_path,
+            mapping_path.stat().st_size,
+        )
     except Exception as e:
-        logger.warning(f"Failed to write text feature mapping: {e}")
+        # Never ship a truncated/invalid sidecar inside automl_predictor.zip.
+        if mapping_path.exists():
+            try:
+                mapping_path.unlink()
+            except OSError:
+                pass
+        logger.warning("Failed to write text feature mapping (omitted from zip): %s", e)
 
     zip_path = tmp_path / "automl_predictor.zip"
 
