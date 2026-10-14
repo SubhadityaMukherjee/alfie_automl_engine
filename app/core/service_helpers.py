@@ -8,6 +8,7 @@ import datetime
 import json
 import logging
 from pathlib import Path
+import os
 
 import requests
 
@@ -20,6 +21,19 @@ from app.core.exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+"""AUTODW_DOWNLOAD_CONNECT_TIMEOUT_SECONDS = float(
+    os.getenv(
+        "AUTODW_DOWNLOAD_CONNECT_TIMEOUT_SECONDS",
+        "10",
+    )
+)
+
+AUTODW_DOWNLOAD_READ_TIMEOUT_SECONDS = float(
+    os.getenv(
+        "AUTODW_DOWNLOAD_READ_TIMEOUT_SECONDS",
+        "7200",
+    )
+)"""
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +68,7 @@ def metadata_indicates_zip_download(metadata: dict) -> bool:
 
 
 def build_metadata_url(
-    autodw_base: str, user_id: str, dataset_id: str, dataset_version: str | None
+        autodw_base: str, user_id: str, dataset_id: str, dataset_version: str | None
 ) -> str:
     """Assemble the AutoDW metadata URL for a dataset, including version if given."""
     url = f"{autodw_base}/datasets/{user_id}/{dataset_id}"
@@ -64,10 +78,10 @@ def build_metadata_url(
 
 
 def fetch_dataset_metadata(
-    autodw_base: str,
-    user_id: str,
-    dataset_id: str,
-    dataset_version: str | None,
+        autodw_base: str,
+        user_id: str,
+        dataset_id: str,
+        dataset_version: str | None,
 ) -> dict:
     """Fetch and return dataset metadata from AutoDW."""
 
@@ -117,12 +131,12 @@ def fetch_dataset_metadata(
 
 
 def resolve_download_url(
-    autodw_base: str,
-    user_id: str,
-    dataset_id: str,
-    dataset_version: str | None,
-    metadata: dict,
-    split: str | None,
+        autodw_base: str,
+        user_id: str,
+        dataset_id: str,
+        dataset_version: str | None,
+        metadata: dict,
+        split: str | None,
 ) -> str:
     """Determine the correct dataset download URL, accounting for splits."""
     base_url = build_metadata_url(autodw_base, user_id, dataset_id, dataset_version)
@@ -162,7 +176,7 @@ def download_dataset(download_url: str, dest_path: Path) -> Path:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        with requests.get(download_url, stream=True, timeout=30) as resp:
+        with requests.get(download_url, stream=True, timeout=(10, 720), ) as resp:
             resp.raise_for_status()
             with open(dest_path, "wb") as f:
                 for chunk in resp.iter_content(8192):
@@ -204,10 +218,10 @@ def download_dataset(download_url: str, dest_path: Path) -> Path:
 
 
 def upload_model(
-    upload_url: str,
-    zip_path: Path,
-    payload: dict,
-    task_id: str | None,
+        upload_url: str,
+        zip_path: Path,
+        payload: dict,
+        task_id: str | None,
 ) -> requests.Response:
     """Upload the zipped model to AutoDW. Returns the raw response."""
 
@@ -257,17 +271,17 @@ def upload_model(
 
 
 def build_upload_payload(
-    dataset_id: str,
-    dataset_version: str | None,
-    metadata: dict,
-    task_type: str,
-    leaderboard_json: list | dict,
-    *,
-    model_id_prefix: str = "automl",
-    name: str | None = None,
-    description: str = "AutoML trained model",
-    framework: str = "sklearn",
-    extra_fields: dict | None = None,
+        dataset_id: str,
+        dataset_version: str | None,
+        metadata: dict,
+        task_type: str,
+        leaderboard_json: list | dict,
+        *,
+        model_id_prefix: str = "automl",
+        name: str | None = None,
+        description: str = "AutoML trained model",
+        framework: str = "sklearn",
+        extra_fields: dict | None = None,
 ) -> tuple[str, dict]:
     """Return ``(model_id, form_data_dict)`` for the AutoDW upload request."""
 

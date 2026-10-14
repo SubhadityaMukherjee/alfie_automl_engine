@@ -295,7 +295,11 @@ def optuna_objective_image_segmentation(
             "csv_file": csv_path,
             "root_dir": images_dir,
             "img_col": filename_column,
-            "label_col": label_column,
+
+            # For image segmentation the generic
+            # Vision API label_column identifies
+            # the pixel-mask filename column.
+            "mask_col": label_column,
         },
         model_class=ImageSegmentationModel,
         build_model_kwargs=lambda dm, mid: {

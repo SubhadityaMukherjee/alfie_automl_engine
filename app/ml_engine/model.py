@@ -16,7 +16,7 @@ from transformers import (
     AutoModelForAudioClassification,
     AutoModelForCausalLM,
     AutoModelForImageClassification,
-    AutoModelForImageSegmentation,
+    AutoModelForSemanticSegmentation,
     AutoModelForKeypointDetection,
     AutoModelForMaskedLM,
     AutoModelForObjectDetection,
@@ -211,7 +211,10 @@ class MultimodalClassificationModel(nn.Module):
 
 
 class ImageSegmentationModel(nn.Module):
-    """Thin nn.Module wrapping HF AutoModelForImageSegmentation."""
+    """
+    Thin nn.Module wrapping a Hugging Face
+    semantic-segmentation model.
+    """
 
     def __init__(
         self,
@@ -221,26 +224,67 @@ class ImageSegmentationModel(nn.Module):
         label2id: dict | None = None,
     ):
         super().__init__()
+
         try:
-            self.model = AutoModelForImageSegmentation.from_pretrained(
-                model_id,
-                ignore_mismatched_sizes=True,
-                num_labels=num_classes,
-                id2label=id2label or {i: str(i) for i in range(num_classes)},
-                label2id=label2id or {str(i): i for i in range(num_classes)},
+            self.model = (
+                AutoModelForSemanticSegmentation
+                .from_pretrained(
+                    model_id,
+                    ignore_mismatched_sizes=True,
+                    num_labels=num_classes,
+                    id2label=(
+                        id2label
+                        or {
+                            i: str(i)
+                            for i
+                            in range(num_classes)
+                        }
+                    ),
+                    label2id=(
+                        label2id
+                        or {
+                            str(i): i
+                            for i
+                            in range(num_classes)
+                        }
+                    ),
+                )
             )
+
         except Exception as e:
             logger.error(
-                "Failed to load image segmentation model from %s: %s", model_id, e
+                "Failed to load semantic "
+                "segmentation model from %s: %s",
+                model_id,
+                e,
             )
+
             raise AutoMLTrainingError(
-                f"Failed to load image segmentation model from {model_id}: {e}"
+                "Failed to load semantic "
+                f"segmentation model from "
+                f"{model_id}: {e}"
             ) from e
 
-    def forward(self, pixel_values: torch.Tensor, labels: torch.Tensor | None = None):
-        """Returns loss (scalar) when labels provided, else logits."""
-        output = self.model(pixel_values=pixel_values, labels=labels)
-        return output.loss if labels is not None else output.logits
+    def forward(
+        self,
+        pixel_values: torch.Tensor,
+        labels: torch.Tensor | None = None,
+    ):
+        """
+        Return scalar loss when labels are supplied;
+        otherwise return semantic-segmentation logits.
+        """
+
+        output = self.model(
+            pixel_values=pixel_values,
+            labels=labels,
+        )
+
+        return (
+            output.loss
+            if labels is not None
+            else output.logits
+        )
 
 
 class ObjectDetectionModel(nn.Module):
