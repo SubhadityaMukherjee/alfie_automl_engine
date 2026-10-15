@@ -587,6 +587,258 @@ ClassificationData = ImageClassificationDataModule
 # ---------------------------------------------------------------------------
 
 
+class ImageSegmentationFromCSVDataset(Dataset):
+    """
+    Dataset for semantic image segmentation.
+
+    Each CSV row points to:
+        - an RGB source image
+        - a single-channel integer class-ID mask
+
+    Supported layouts include:
+
+        root/
+            images/
+                image_0001.png
+            masks/
+                mask_0001.png
+
+    and paths already containing their subdirectory:
+
+        filename = images/image_0001.png
+        mask_filename = masks/mask_0001.png
+    """
+
+    def __init__(
+        self,
+        csv_file,
+        root_dir: Path,
+        img_col: str = "filename",
+        mask_col: str = "mask_filename",
+    ) -> None:
+
+        self.root_dir = Path(
+            root_dir
+        )
+
+        self.img_col = img_col
+        self.mask_col = mask_col
+
+        if isinstance(
+            csv_file,
+            pd.DataFrame,
+        ):
+            self.df = csv_file.reset_index(
+                drop=True
+            ).copy()
+        else:
+            self.df = pd.read_csv(
+                csv_file
+            )
+
+        required_columns = {
+            self.img_col,
+            self.mask_col,
+        }
+
+        missing_columns = (
+            required_columns
+            - set(self.df.columns)
+        )
+
+        if missing_columns:
+            raise ValueError(
+                "Segmentation dataset is missing "
+                f"required columns: "
+                f"{sorted(missing_columns)}"
+            )
+
+    def __len__(self) -> int:
+        return len(
+            self.df
+        )
+
+    def _resolve_file(
+            self,
+            raw_value,
+            preferred_dir: str,
+    ) -> Path:
+        raw_path = Path(str(raw_value))
+
+        # Absolute path supplied directly.
+        if raw_path.is_absolute():
+            if raw_path.exists() and raw_path.is_file():
+                return raw_path
+
+        candidates = [
+            # root/<value>
+            self.root_dir / raw_path,
+
+            # root/<preferred_dir>/<basename>
+            self.root_dir
+            / preferred_dir
+            / raw_path.name,
+
+            # Production AutoML may give us:
+            #
+            #   root_dir = dataset/images
+            #
+            # while segmentation masks live at:
+            #
+            #   dataset/masks
+            #
+            # so also search relative to root_dir.parent.
+            self.root_dir.parent
+            / raw_path,
+
+            self.root_dir.parent
+            / preferred_dir
+            / raw_path.name,
+        ]
+
+        for candidate in candidates:
+            if candidate.exists() and candidate.is_file():
+                return candidate
+
+        # Search below the supplied root first.
+        matches = list(
+            self.root_dir.rglob(
+                raw_path.name
+            )
+        )
+
+        if len(matches) == 1:
+            return matches[0]
+
+        if len(matches) > 1:
+            raise FileNotFoundError(
+                f"Multiple matches for "
+                f"{raw_value!r} under "
+                f"{self.root_dir}: "
+                f"{matches}"
+            )
+
+        # Then search from the dataset parent so sibling
+        # images/ and masks/ directories are visible.
+        parent_matches = list(
+            self.root_dir.parent.rglob(
+                raw_path.name
+            )
+        )
+
+        if len(parent_matches) == 1:
+            return parent_matches[0]
+
+        if len(parent_matches) > 1:
+            raise FileNotFoundError(
+                f"Multiple matches for "
+                f"{raw_value!r} under "
+                f"{self.root_dir.parent}: "
+                f"{parent_matches}"
+            )
+
+        raise FileNotFoundError(
+            f"Could not resolve "
+            f"{preferred_dir} file "
+            f"{raw_value!r} under "
+            f"{self.root_dir}"
+        )
+
+    def __getitem__(
+        self,
+        index: int,
+    ):
+
+        from PIL import Image as _Image
+        import numpy as _np
+
+        row = self.df.iloc[
+            index
+        ]
+
+        image_path = self._resolve_file(
+            row[self.img_col],
+            "images",
+        )
+
+        mask_path = self._resolve_file(
+            row[self.mask_col],
+            "masks",
+        )
+
+        with _Image.open(
+            image_path
+        ) as image_file:
+
+            image = image_file.convert(
+                "RGB"
+            ).copy()
+
+        with _Image.open(
+            mask_path
+        ) as mask_file:
+
+            mask_array = _np.asarray(
+                mask_file
+            ).copy()
+
+        if mask_array.ndim == 3:
+
+            if (
+                mask_array.shape[2]
+                == 1
+            ):
+                mask_array = (
+                    mask_array[..., 0]
+                )
+
+            else:
+                raise ValueError(
+                    "Segmentation mask must "
+                    "contain integer class IDs "
+                    "in a single channel: "
+                    f"{mask_path}, "
+                    f"shape={mask_array.shape}"
+                )
+
+        if mask_array.ndim != 2:
+            raise ValueError(
+                "Segmentation mask must "
+                f"be 2-D: {mask_path}, "
+                f"shape={mask_array.shape}"
+            )
+
+        expected_mask_size = (
+            image.height,
+            image.width,
+        )
+
+        if (
+            mask_array.shape
+            != expected_mask_size
+        ):
+            raise ValueError(
+                "Image and segmentation mask "
+                "dimensions do not match: "
+                f"image={image_path} "
+                f"size={image.size}, "
+                f"mask={mask_path} "
+                f"shape={mask_array.shape}"
+            )
+
+        mask_tensor = torch.from_numpy(
+            mask_array.astype(
+                _np.int64,
+                copy=False,
+            )
+        ).long()
+
+        return (
+            image,
+            mask_tensor,
+        )
+
+
 class ImageSegmentationDataModule(ImageClassificationDataModule):
     """Datamodule for image segmentation tasks.
 
@@ -627,6 +879,206 @@ class ImageSegmentationDataModule(ImageClassificationDataModule):
     def _draft_decode_enabled(self) -> bool:
         """Disabled: masks must stay pixel-aligned with the source image."""
         return False
+
+    def setup(self) -> None:
+        """
+        Prepare train/validation/test datasets for
+        semantic image segmentation.
+
+        Unlike image classification:
+          - do not stratify by a row-level label
+          - load mask images as pixel-level targets
+          - derive class IDs from mask pixel values
+        """
+
+        df = self._read_csv(
+            self.csv_file
+        )
+
+        required_columns = {
+            self.img_col,
+            self.mask_col,
+        }
+
+        missing_columns = (
+            required_columns
+            - set(df.columns)
+        )
+
+        if missing_columns:
+            raise AutoMLRuntimeError(
+                "Image segmentation dataset "
+                "is missing required columns: "
+                f"{sorted(missing_columns)}"
+            )
+
+        # Segmentation has no single row-level class
+        # suitable for stratification.
+        train_df, val_df, test_df = (
+            self._split_df(
+                df,
+                self.val_split,
+                self.test_split,
+                self.seed,
+            )
+        )
+
+        try:
+            self.processor = (
+                AutoImageProcessor
+                .from_pretrained(
+                    self.hf_model_id
+                )
+            )
+
+        except Exception as e:
+
+            logger.error(
+                "Failed to load segmentation "
+                "processor from %s: %s",
+                self.hf_model_id,
+                e,
+            )
+
+            raise
+
+        logger.info(
+            "Loaded segmentation processor "
+            "from: %s",
+            self.hf_model_id,
+        )
+
+        try:
+
+            self.train_dataset = (
+                ImageSegmentationFromCSVDataset(
+                    csv_file=train_df,
+                    root_dir=self.root_dir,
+                    img_col=self.img_col,
+                    mask_col=self.mask_col,
+                )
+            )
+
+            self.val_dataset = (
+                ImageSegmentationFromCSVDataset(
+                    csv_file=val_df,
+                    root_dir=self.root_dir,
+                    img_col=self.img_col,
+                    mask_col=self.mask_col,
+                )
+            )
+
+            self.test_dataset = (
+                ImageSegmentationFromCSVDataset(
+                    csv_file=test_df,
+                    root_dir=self.root_dir,
+                    img_col=self.img_col,
+                    mask_col=self.mask_col,
+                )
+            )
+
+        except Exception as e:
+
+            logger.error(
+                "Failed to create image "
+                "segmentation datasets: %s",
+                e,
+            )
+
+            raise
+
+        # --------------------------------------------------
+        # Determine the segmentation class IDs.
+        # --------------------------------------------------
+
+        class_ids = set()
+
+        full_dataset = (
+            ImageSegmentationFromCSVDataset(
+                csv_file=df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                mask_col=self.mask_col,
+            )
+        )
+
+        for index in range(
+            len(full_dataset)
+        ):
+
+            _, mask = (
+                full_dataset[index]
+            )
+
+            class_ids.update(
+                int(value)
+                for value
+                in torch.unique(
+                    mask
+                ).tolist()
+                if int(value) != 255
+            )
+
+        if not class_ids:
+            raise AutoMLRuntimeError(
+                "No segmentation class IDs "
+                "were found in the masks."
+            )
+
+        sorted_class_ids = sorted(
+            class_ids
+        )
+
+        # For the current ALFIE segmentation model,
+        # masks should use contiguous IDs:
+        # 0, 1, 2, ...
+        expected_class_ids = list(
+            range(
+                max(sorted_class_ids)
+                + 1
+            )
+        )
+
+        if (
+            sorted_class_ids
+            != expected_class_ids
+        ):
+            raise AutoMLRuntimeError(
+                "Segmentation mask class IDs "
+                "must be contiguous starting "
+                "from 0. "
+                f"Found={sorted_class_ids}, "
+                f"expected={expected_class_ids}"
+            )
+
+        self.num_classes = len(
+            sorted_class_ids
+        )
+
+        self.id2label = {
+            class_id: str(
+                class_id
+            )
+            for class_id
+            in sorted_class_ids
+        }
+
+        self.label2id = {
+            label: class_id
+            for class_id, label
+            in self.id2label.items()
+        }
+
+        logger.info(
+            "Image segmentation dataset ready: "
+            "train=%d val=%d test=%d "
+            "num_classes=%d class_ids=%s",
+            len(self.train_dataset),
+            len(self.val_dataset),
+            len(self.test_dataset),
+            self.num_classes,
+            sorted_class_ids,
+        )
 
     def _collate_fn(self, batch: list[tuple[Any, Any]]) -> dict[str, torch.Tensor]:
         images, labels = zip(*batch)

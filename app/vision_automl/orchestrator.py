@@ -105,6 +105,8 @@ class VisionTrainingResult:
 
     message: str
     leaderboard: str
+    model_id: str # Added for retraining
+    version: str # Added for retraining
 
 
 @dataclass(frozen=True)
@@ -235,7 +237,7 @@ async def run_vision_pipeline(
 
         # 8. Upload.
         with step("build_upload_payload"):
-            _, payload = build_upload_payload(
+            model_id, payload = build_upload_payload(
                 req.dataset_id,
                 req.dataset_version,
                 metadata,
@@ -246,6 +248,12 @@ async def run_vision_pipeline(
             upload_resp = await offload(
                 upload_model, upload_url, zip_path, payload, task_id
             )
+            upload_data = upload_resp.json()
+
+            new_version = upload_data.get(
+                "version",
+                "v1",
+            )
             if upload_resp.status_code >= 400:
                 logger.error("Model upload failed: %s", upload_resp.text)
                 raise AutoDWUploadError(
@@ -255,7 +263,7 @@ async def run_vision_pipeline(
 
     logger.info("Vision AutoML training completed and model uploaded successfully.")
     return VisionTrainingResult(
-        message=_VISION_SUCCESS_MESSAGE, leaderboard=leaderboard_str
+        message=_VISION_SUCCESS_MESSAGE, leaderboard=leaderboard_str, model_id=model_id, version=new_version,
     )
 
 
@@ -349,7 +357,7 @@ async def run_multimodal_pipeline(
 
         # 8. Upload.
         with step("build_upload_payload"):
-            _, payload = build_upload_payload(
+            model_id, payload = build_upload_payload(
                 req.dataset_id,
                 req.dataset_version,
                 metadata,
@@ -360,12 +368,25 @@ async def run_multimodal_pipeline(
             upload_resp = await offload(
                 upload_model, upload_url, zip_path, payload, task_id
             )
+            upload_data = upload_resp.json()
+
+            new_version = upload_data.get(
+                "version",
+                "v1",
+            )
+
             if upload_resp.status_code >= 400:
                 logger.error("Model upload failed: %s", upload_resp.text)
                 raise AutoDWUploadError(
                     f"Failed to upload model: {upload_resp.text}",
                     status_code=upload_resp.status_code,
                 )
+            return VisionTrainingResult(
+                message=_VISION_SUCCESS_MESSAGE,
+                leaderboard=leaderboard_str,
+                model_id=model_id,
+                version=new_version,
+            )
 
     logger.info(
         "Multimodal vision AutoML training completed and model uploaded successfully."
