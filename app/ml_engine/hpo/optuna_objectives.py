@@ -170,7 +170,12 @@ def _optuna_objective_base(
         _save_trial_feature_mapping(trial_dir, datamodule, task_type, trainer.model)
 
     best_val_loss: float
-    best_val_loss, _ = trainer.fit(trial=trial)
+    best_metrics: dict[str, float]
+    best_val_loss, best_metrics = trainer.fit(trial=trial)
+
+    # Attach the best epoch's metrics so run_optuna_search can report what
+    # the winning hyperparameters achieved (the objective value stays loss).
+    trial.set_user_attr("best_metrics", best_metrics)
 
     # Reached only on successful completion (TrialPruned raises mid-fit).
     if trial_dir is not None:

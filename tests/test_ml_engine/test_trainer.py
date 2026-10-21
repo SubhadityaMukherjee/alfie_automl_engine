@@ -1,8 +1,10 @@
 """Tests for app/ml_engine/trainer.py — EarlyStopping (fast, no ML)."""
 
+import math
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 import torch
 
@@ -11,6 +13,8 @@ from app.ml_engine.hpo.optuna_objectives import OBJECTIVE_REGISTRY
 from app.ml_engine.configs import SUPPORTED_TASK_TYPES
 from app.ml_engine.trainer import (
     EarlyStopping,
+    _compute_classification_metrics,
+    _compute_regression_metrics,
     _copy_best_trial_artifacts,
     _resolve_precision,
     run_optuna_search,
@@ -43,6 +47,113 @@ def test_resolve_precision_auto_cuda_fp16(monkeypatch):
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "is_bf16_supported", lambda: False)
     assert _resolve_precision("auto") == "16-mixed"
+
+
+# ---------------------------------------------------------------------------
+# _compute_classification_metrics
+# ---------------------------------------------------------------------------
+
+
+def test_classification_metrics_binary_perfect():
+    probs = torch.tensor([[0.9, 0.1], [0.2, 0.8]])
+    labels = torch.tensor([0, 1])
+
+    metrics = _compute_classification_metrics(probs, labels)
+
+    assert metrics["accuracy"] == 1.0
+    assert metrics["balanced_accuracy"] == 1.0
+    assert metrics["precision_macro"] == 1.0
+    assert metrics["recall_macro"] == 1.0
+    assert metrics["f1_macro"] == 1.0
+    assert metrics["f1_weighted"] == 1.0
+    assert metrics["cohen_kappa"] == 1.0
+    assert metrics["matthews_corrcoef"] == 1.0
+    assert metrics["roc_auc"] == 1.0
+    # Top-k is trivial for 2 classes, so it is not reported.
+    assert "top3_accuracy" not in metrics
+    assert "top5_accuracy" not in metrics
+
+
+def test_classification_metrics_multiclass_hand_computed():
+    # 3 classes, 5 samples: sample 1 is the only mistake (pred 1, true 0).
+    probs = torch.tensor(
+        [
+            [0.6, 0.2, 0.2],  # true 0 -> pred 0 (correct)
+            [0.2, 0.6, 0.2],  # true 0 -> pred 1 (wrong)
+            [0.2, 0.6, 0.2],  # true 1 -> pred 1 (correct)
+            [0.2, 0.6, 0.2],  # true 1 -> pred 1 (correct)
+            [0.2, 0.2, 0.6],  # true 2 -> pred 2 (correct)
+        ]
+    )
+    labels = torch.tensor([0, 0, 1, 1, 2])
+
+    metrics = _compute_classification_metrics(probs, labels)
+
+    assert metrics["accuracy"] == pytest.approx(0.8)
+    # Per-class F1: 2/3 (class 0), 0.8 (class 1), 1.0 (class 2).
+    assert metrics["f1_macro"] == pytest.approx(2 / 3 / 3 + 0.8 / 3 + 1 / 3)
+    # Macro OvR AUC: 3/4 (class 0), 5/6 (class 1), 1.0 (class 2).
+    assert metrics["roc_auc"] == pytest.approx(3 / 4 / 3 + 5 / 6 / 3 + 1 / 3)
+
+
+def test_classification_metrics_topk():
+    # 4 classes, all present in labels: top3 reported, top5 not.
+    probs = torch.tensor(
+        [
+            [0.6, 0.2, 0.15, 0.05],  # true 0 -> pred 0 (correct)
+            [0.1, 0.5, 0.3, 0.1],  # true 1 -> pred 1 (correct)
+            [0.4, 0.35, 0.2, 0.05],  # true 2 -> pred 0 (wrong); 2 in top-3
+            [0.55, 0.25, 0.15, 0.05],  # true 3 -> pred 0 (wrong); 3 not in top-3
+        ]
+    )
+    labels = torch.tensor([0, 1, 2, 3])
+
+    metrics = _compute_classification_metrics(probs, labels)
+
+    assert metrics["accuracy"] == pytest.approx(0.5)
+    assert metrics["top3_accuracy"] == pytest.approx(0.75)
+    assert "top5_accuracy" not in metrics
+    assert 0.0 <= metrics["roc_auc"] <= 1.0
+
+
+def test_classification_metrics_degenerate_single_class_labels():
+    # Only one class present in labels: ROC-AUC is undefined and must be
+    # skipped instead of raising or reporting a misleading value.
+    probs = torch.tensor([[0.9, 0.1], [0.8, 0.2], [0.7, 0.3]])
+    labels = torch.tensor([0, 0, 0])
+
+    metrics = _compute_classification_metrics(probs, labels)
+
+    assert metrics["accuracy"] == 1.0
+    assert "roc_auc" not in metrics
+
+
+# ---------------------------------------------------------------------------
+# _compute_regression_metrics
+# ---------------------------------------------------------------------------
+
+
+def test_regression_metrics_hand_computed():
+    y_true = np.array([1.0, 2.0, 3.0])
+    y_pred = np.array([1.0, 2.0, 5.0])
+
+    metrics = _compute_regression_metrics(y_true, y_pred)
+
+    assert metrics["r2"] == pytest.approx(-1.0)  # 1 - ss_res/ss_tot = 1 - 4/2
+    assert metrics["mae"] == pytest.approx(2 / 3)
+    assert metrics["rmse"] == pytest.approx(math.sqrt(4 / 3))
+    assert metrics["mape"] == pytest.approx((0.0 + 0.0 + 2 / 3) / 3)
+    assert metrics["median_absolute_error"] == pytest.approx(0.0)
+    assert "explained_variance" in metrics
+
+
+def test_regression_metrics_perfect_predictions():
+    y = np.array([1.5, -2.0, 7.25])
+    metrics = _compute_regression_metrics(y, y.copy())
+
+    assert metrics["r2"] == pytest.approx(1.0)
+    assert metrics["mae"] == 0.0
+    assert metrics["rmse"] == 0.0
 
 
 # ---------------------------------------------------------------------------

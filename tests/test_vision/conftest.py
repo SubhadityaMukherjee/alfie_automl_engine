@@ -56,6 +56,7 @@ def fake_optuna_result():
     return {
         "best_value": 0.123,
         "best_params": {"lr": 0.001, "model_id": "google/efficientnet-b0"},
+        "best_metrics": {"loss": 0.123, "accuracy": 0.87, "f1_macro": 0.85},
         "n_trials": 3,
         "model_dir": Path("/tmp/trial_0"),
     }

@@ -256,7 +256,7 @@ async def run_training_pipeline(
         save_model_path = tmp_path / "automl_model"
         try:
             with step("train"):
-                leaderboard, predictor = await offload(
+                leaderboard, predictor, test_metrics = await offload(
                     train_automl,
                     dataset_path=dataset_path,
                     save_model_path=save_model_path,
@@ -287,7 +287,7 @@ async def run_training_pipeline(
                     serialize_and_zip_predictor, predictor, save_model_path, tmp_path
                 )
                 leaderboard_json, leaderboard_str = convert_leaderboard_safely(
-                    leaderboard
+                    leaderboard, test_metrics
                 )
         except Exception as e:
             logger.error("Failed to serialize and zip model: %s", e)

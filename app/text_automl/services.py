@@ -185,6 +185,7 @@ def convert_leaderboard_safely(optuna_result: dict) -> tuple[dict, str]:
     """
     leaderboard_json = {
         "best_loss": optuna_result.get("best_value"),
+        "best_metrics": optuna_result.get("best_metrics") or {},
         "best_params": optuna_result.get("best_params"),
         "trials": optuna_result.get("n_trials"),
     }
