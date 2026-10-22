@@ -265,7 +265,12 @@ def stub_autodw(monkeypatch):
                 payload=payload,
                 task_id=task_id,
             )
-            return SimpleNamespace(status_code=upload_status, text="stub ok")
+            # AutoDW reports the created model version in its JSON body.
+            return SimpleNamespace(
+                status_code=upload_status,
+                text="stub ok",
+                json=lambda: {"version": "v1"},
+            )
 
         monkeypatch.setattr(orchestrator, "upload_model", _fake_upload)
         return calls

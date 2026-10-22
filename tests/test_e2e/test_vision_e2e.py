@@ -63,9 +63,11 @@ def test_image_classification_end_to_end(stub_autodw, vision_zip, zip_metadata):
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
-    # Success envelope.
+    # Success envelope: AutoDW-assigned identity used for retraining.
     assert "Vision AutoML training completed" in body["message"]
     assert "deployment_instructions" in body
+    assert body["model_id"].startswith("vision_automl_ds-vision_")
+    assert body["version"] == "v1"
 
     # Leaderboard: one completed trial with real metrics and params.
     leaderboard = json.loads(body["leaderboard"])
@@ -97,6 +99,8 @@ def test_image_classification_end_to_end(stub_autodw, vision_zip, zip_metadata):
     assert payload["training_dataset_version"] == "v1"
     assert payload["framework"] == "pytorch"
     assert payload["model_id"].startswith("vision_automl_ds-vision_")
+    # The reported model identity matches what was actually uploaded.
+    assert payload["model_id"] == body["model_id"]
     assert calls["upload_url"].endswith("/ai-models/upload/single/user1")
 
 
@@ -114,6 +118,9 @@ def test_multimodal_classification_end_to_end(
     assert "Multimodal" in body["message"]
     # Aux columns auto-discovered from the CSV (all but filename + label).
     assert body["auxiliary_columns"] == ["weight", "color"]
+    # AutoDW-assigned identity used for retraining.
+    assert body["model_id"].startswith("vision_automl_ds-multimodal_")
+    assert body["version"] == "v1"
 
     leaderboard = json.loads(body["leaderboard"])
     assert leaderboard["trials"] == 1

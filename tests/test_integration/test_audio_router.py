@@ -216,10 +216,15 @@ def test_best_model_success(
 
     upload_resp = MagicMock()
     upload_resp.status_code = 200
+    upload_resp.json.return_value = {"version": "v1"}
     mock_upload.return_value = upload_resp
 
     resp = client.post("/automl/audio/best_model/", data=_AUDIO_PARAMS)
     assert resp.status_code == 200
-    assert "Audio AutoML training completed" in resp.json()["message"]
-    assert resp.json()["leaderboard"] == "lb_str"
-    assert resp.json()["deployment_instructions"] == "deploy info"
+    body = resp.json()
+    assert "Audio AutoML training completed" in body["message"]
+    assert body["leaderboard"] == "lb_str"
+    assert body["deployment_instructions"] == "deploy info"
+    # The response reports the AutoDW-assigned model identity for retraining.
+    assert body["model_id"] == "model_id"
+    assert body["version"] == "v1"

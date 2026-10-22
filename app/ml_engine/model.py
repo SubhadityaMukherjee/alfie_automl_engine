@@ -16,11 +16,11 @@ from transformers import (
     AutoModelForAudioClassification,
     AutoModelForCausalLM,
     AutoModelForImageClassification,
-    AutoModelForImageSegmentation,
     AutoModelForKeypointDetection,
     AutoModelForMaskedLM,
     AutoModelForObjectDetection,
     AutoModelForQuestionAnswering,
+    AutoModelForSemanticSegmentation,
     AutoModelForSeq2SeqLM,
     AutoModelForSequenceClassification,
     AutoModelForVideoClassification,
@@ -211,7 +211,7 @@ class MultimodalClassificationModel(nn.Module):
 
 
 class ImageSegmentationModel(nn.Module):
-    """Thin nn.Module wrapping HF AutoModelForImageSegmentation."""
+    """Thin nn.Module wrapping HF AutoModelForSemanticSegmentation."""
 
     def __init__(
         self,
@@ -222,7 +222,7 @@ class ImageSegmentationModel(nn.Module):
     ):
         super().__init__()
         try:
-            self.model = AutoModelForImageSegmentation.from_pretrained(
+            self.model = AutoModelForSemanticSegmentation.from_pretrained(
                 model_id,
                 ignore_mismatched_sizes=True,
                 num_labels=num_classes,
@@ -231,10 +231,10 @@ class ImageSegmentationModel(nn.Module):
             )
         except Exception as e:
             logger.error(
-                "Failed to load image segmentation model from %s: %s", model_id, e
+                "Failed to load semantic segmentation model from %s: %s", model_id, e
             )
             raise AutoMLTrainingError(
-                f"Failed to load image segmentation model from {model_id}: {e}"
+                f"Failed to load semantic segmentation model from {model_id}: {e}"
             ) from e
 
     def forward(self, pixel_values: torch.Tensor, labels: torch.Tensor | None = None):

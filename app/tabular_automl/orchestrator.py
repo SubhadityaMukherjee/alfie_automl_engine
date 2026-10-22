@@ -39,6 +39,7 @@ from app.core.exceptions import (
     AutoMLValidationError,
 )
 from app.core.process_log import step
+from app.core.service_helpers import uploaded_model_version
 from app.ml_engine.model import SUPPORTED_TABULAR_TASK_TYPES
 from app.tabular_automl.services import (
     SUPPORTED_FILE_TYPES,
@@ -80,6 +81,9 @@ class TrainingResult:
 
     message: str
     leaderboard: str
+    # AutoDW-assigned identity of the uploaded model, needed for retraining.
+    model_id: str
+    version: str
 
 
 def _validate_request(req: TabularTrainingRequest) -> None:
@@ -299,7 +303,7 @@ async def run_training_pipeline(
         # 7. Upload the model and leaderboard back to AutoDW.
         try:
             with step("build_upload_payload"):
-                _, payload = build_upload_payload(
+                model_id, payload = build_upload_payload(
                     req.dataset_id,
                     req.dataset_version,
                     metadata,
@@ -321,6 +325,7 @@ async def run_training_pipeline(
                         f"Failed to upload model: {upload_resp.text}",
                         status_code=upload_resp.status_code,
                     )
+                version = uploaded_model_version(upload_resp)
         except AutoDWUploadError:
             raise
         except requests.RequestException as e:
@@ -331,4 +336,9 @@ async def run_training_pipeline(
             raise AutoMLRuntimeError(f"Unexpected error uploading model: {e}") from e
 
     logger.info("AutoML training completed and model uploaded successfully.")
-    return TrainingResult(message=_SUCCESS_MESSAGE, leaderboard=leaderboard_str)
+    return TrainingResult(
+        message=_SUCCESS_MESSAGE,
+        leaderboard=leaderboard_str,
+        model_id=model_id,
+        version=version,
+    )

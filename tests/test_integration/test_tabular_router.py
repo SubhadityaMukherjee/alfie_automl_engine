@@ -420,6 +420,7 @@ def test_best_model_success(
 
     mock_upload_response = MagicMock()
     mock_upload_response.status_code = 200
+    mock_upload_response.json.return_value = {"version": "v1"}
     mock_upload.return_value = mock_upload_response
 
     resp = client.post("/automl/tabular/best_model/", data=_VALID_PARAMS)
@@ -428,3 +429,6 @@ def test_best_model_success(
     assert "AutoML training completed" in body["message"]
     assert body["leaderboard"] == "leaderboard_str"
     assert body["deployment_instructions"] == "deploy info"
+    # The response reports the AutoDW-assigned model identity for retraining.
+    assert body["model_id"] == "model_id"
+    assert body["version"] == "v1"

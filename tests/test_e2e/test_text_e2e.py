@@ -55,6 +55,9 @@ def test_text_classification_end_to_end(stub_autodw, text_zip, zip_metadata):
     body = resp.json()
 
     assert "Text AutoML training completed" in body["message"]
+    # AutoDW-assigned identity used for retraining.
+    assert body["model_id"].startswith("text_automl_ds-text_")
+    assert body["version"] == "v1"
 
     leaderboard = json.loads(body["leaderboard"])
     assert leaderboard["trials"] == 1
@@ -84,6 +87,8 @@ def test_text_classification_end_to_end(stub_autodw, text_zip, zip_metadata):
     assert payload["training_dataset"] == "ds-text"
     assert payload["framework"] == "pytorch"
     assert payload["model_id"].startswith("text_automl_ds-text_")
+    # The reported model identity matches what was actually uploaded.
+    assert payload["model_id"] == body["model_id"]
     assert calls["upload_url"].endswith("/ai-models/upload/single/user1")
 
 
