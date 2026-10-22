@@ -185,15 +185,29 @@ def validate_tabular_inputs(
     return None
 
 
-def convert_leaderboard_safely(leaderboard) -> tuple[list | dict, str]:
+def convert_leaderboard_safely(
+    leaderboard, test_metrics: dict[str, float] | None = None
+) -> tuple[dict, str]:
     """Turn a leaderboard into a JSON-ready structure plus a markdown string.
 
-    DataFrames become a list of row dicts and a markdown table; anything else
-    falls back to its plain string form.
+    DataFrames become ``{"models": [...], "test_metrics": {...}}`` plus a
+    markdown table; when test metrics were computed a "Test metrics" section
+    is appended to the markdown. Anything else falls back to its plain string
+    form.
     """
+    test_metrics = test_metrics or {}
     if isinstance(leaderboard, pd.DataFrame):
-        leaderboard_json = leaderboard.to_dict(orient="records")
+        leaderboard_json: dict = {
+            "models": leaderboard.to_dict(orient="records"),
+            "test_metrics": test_metrics,
+        }
         leaderboard_str = str(leaderboard.to_markdown())
+        if test_metrics:
+            metrics_md = "\n".join(
+                f"- **{name}**: {value:.6g}"
+                for name, value in sorted(test_metrics.items())
+            )
+            leaderboard_str = f"{leaderboard_str}\n\n### Test metrics\n\n{metrics_md}"
     else:
         leaderboard_json = {"result": str(leaderboard)}
         leaderboard_str = str(leaderboard)
@@ -214,7 +228,7 @@ def train_automl(
     num_cpus: int | str = "auto",
     num_gpus: int | str = "auto",
 ):
-    """Train an AutoML model and return (leaderboard, predictor)."""
+    """Train an AutoML model and return (leaderboard, predictor, test_metrics)."""
 
     if not target_column_name or not isinstance(target_column_name, str):
         raise AutoMLDataError("target_column_name must be a non-empty string")

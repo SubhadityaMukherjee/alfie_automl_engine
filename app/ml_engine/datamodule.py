@@ -16,6 +16,7 @@ import numpy as np
 import pandas as pd
 import torch
 from dotenv import find_dotenv, load_dotenv
+from PIL import Image
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 from torch.utils.data import DataLoader, Dataset
@@ -587,13 +588,127 @@ ClassificationData = ImageClassificationDataModule
 # ---------------------------------------------------------------------------
 
 
-class ImageSegmentationDataModule(ImageClassificationDataModule):
-    """Datamodule for image segmentation tasks.
+class ImageSegmentationFromCSVDataset(Dataset):
+    """Dataset for semantic image segmentation.
 
-    Uses the same CSV + class-subdir image layout as image classification.
-    The collate function passes ``labels`` (pixel-level segmentation maps)
-    to the processor.  The labels CSV must contain a ``mask_filename``
-    column pointing to the segmentation mask image (same class-subdir layout).
+    Each CSV row points to an RGB source image and a single-channel
+    integer class-ID mask. Supported layouts include
+
+        root/
+            images/
+                image_0001.png
+            masks/
+                mask_0001.png
+
+    and rows whose paths already contain their subdirectory
+    (``filename = images/image_0001.png``).
+    """
+
+    def __init__(
+        self,
+        csv_file: Path | pd.DataFrame,
+        root_dir: Path,
+        img_col: str = "filename",
+        mask_col: str = "mask_filename",
+    ) -> None:
+        self.root_dir = Path(root_dir)
+        self.img_col = img_col
+        self.mask_col = mask_col
+
+        if isinstance(csv_file, pd.DataFrame):
+            self.df = csv_file.reset_index(drop=True).copy()
+        else:
+            self.df = pd.read_csv(csv_file)
+
+        missing_columns = {self.img_col, self.mask_col} - set(self.df.columns)
+        if missing_columns:
+            raise AutoMLDataError(
+                f"Segmentation dataset is missing required columns: "
+                f"{sorted(missing_columns)}"
+            )
+
+    def __len__(self) -> int:
+        return len(self.df)
+
+    def _resolve_file(self, raw_value: Any, preferred_dir: str) -> Path:
+        """Locate an image/mask referenced by a CSV row.
+
+        Tries direct, root-relative, and sibling-directory layouts before
+        falling back to a recursive search under ``root_dir`` (and its
+        parent, since production roots are often ``<dataset>/images`` while
+        masks live in ``<dataset>/masks``).
+        """
+        raw_path = Path(str(raw_value))
+
+        if raw_path.is_absolute() and raw_path.is_file():
+            return raw_path
+
+        candidates = [
+            self.root_dir / raw_path,
+            self.root_dir / preferred_dir / raw_path.name,
+            self.root_dir.parent / raw_path,
+            self.root_dir.parent / preferred_dir / raw_path.name,
+        ]
+        for candidate in candidates:
+            if candidate.is_file():
+                return candidate
+
+        for search_root in (self.root_dir, self.root_dir.parent):
+            matches = [p for p in search_root.rglob(raw_path.name) if p.is_file()]
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                raise AutoMLDataError(
+                    f"Multiple matches for {raw_value!r} under {search_root}: {matches}"
+                )
+
+        raise AutoMLDataError(
+            f"Could not resolve {preferred_dir} file {raw_value!r} under {self.root_dir}"
+        )
+
+    def __getitem__(self, index: int) -> tuple[Image.Image, torch.Tensor]:
+        row = self.df.iloc[index]
+
+        image_path = self._resolve_file(row[self.img_col], "images")
+        mask_path = self._resolve_file(row[self.mask_col], "masks")
+
+        with Image.open(image_path) as image_file:
+            image = image_file.convert("RGB").copy()
+        with Image.open(mask_path) as mask_file:
+            mask_array = np.asarray(mask_file).copy()
+
+        if mask_array.ndim == 3:
+            if mask_array.shape[2] == 1:
+                mask_array = mask_array[..., 0]
+            else:
+                raise AutoMLDataError(
+                    f"Segmentation mask must contain integer class IDs in a "
+                    f"single channel: {mask_path}, shape={mask_array.shape}"
+                )
+        if mask_array.ndim != 2:
+            raise AutoMLDataError(
+                f"Segmentation mask must be 2-D: {mask_path}, shape={mask_array.shape}"
+            )
+        if mask_array.shape != (image.height, image.width):
+            raise AutoMLDataError(
+                f"Image and segmentation mask dimensions do not match: "
+                f"image={image_path} size={image.size}, "
+                f"mask={mask_path} shape={mask_array.shape}"
+            )
+
+        mask_tensor = torch.from_numpy(mask_array.astype(np.int64)).long()
+        return image, mask_tensor
+
+
+class ImageSegmentationDataModule(BaseDataModule):
+    """Datamodule for semantic image segmentation tasks.
+
+    The labels CSV identifies the source image (``img_col``) and the
+    pixel-mask file (``mask_col``); there is no row-level label to
+    stratify on. Class IDs are derived from the mask pixel values, so
+    masks must use contiguous integer IDs starting at 0. During collation
+    masks are nearest-neighbour resized to the processed image size, so a
+    batch may mix source resolutions.
     """
 
     def __init__(
@@ -610,12 +725,17 @@ class ImageSegmentationDataModule(ImageClassificationDataModule):
         seed: int = 42,
         hf_model_id: str = DEFAULT_IMAGE_CLASSIFIER_HF_ID,
     ) -> None:
-        self.mask_col = mask_col
+        self.root_dir = Path(root_dir)
+        self.img_col: str = img_col
+        self.label_col: str = label_col
+        self.mask_col: str = mask_col
+        self.processor: AutoImageProcessor | None = None
+        # Segmentation samples are (image, mask) pairs, not classification rows.
+        self.train_dataset: ImageSegmentationFromCSVDataset | None = None
+        self.val_dataset: ImageSegmentationFromCSVDataset | None = None
+        self.test_dataset: ImageSegmentationFromCSVDataset | None = None
         super().__init__(
             csv_file=csv_file,
-            root_dir=root_dir,
-            img_col=img_col,
-            label_col=label_col,
             batch_size=batch_size,
             num_workers=num_workers,
             val_split=val_split,
@@ -624,24 +744,151 @@ class ImageSegmentationDataModule(ImageClassificationDataModule):
             hf_model_id=hf_model_id,
         )
 
-    def _draft_decode_enabled(self) -> bool:
-        """Disabled: masks must stay pixel-aligned with the source image."""
-        return False
+    def setup(self) -> None:
+        """Build train/val/test datasets and derive class IDs from the masks."""
+        df = self._read_csv(self.csv_file)
+
+        missing_columns = {self.img_col, self.mask_col} - set(df.columns)
+        if missing_columns:
+            raise AutoMLDataError(
+                f"Image segmentation dataset is missing required columns: "
+                f"{sorted(missing_columns)}"
+            )
+
+        # Segmentation has no row-level class suitable for stratification.
+        train_df, val_df, test_df = self._split_df(
+            df, self.val_split, self.test_split, self.seed
+        )
+
+        try:
+            self.processor = AutoImageProcessor.from_pretrained(self.hf_model_id)
+        except Exception as e:
+            logger.error(
+                "Failed to load segmentation processor from %s: %s",
+                self.hf_model_id,
+                e,
+            )
+            raise
+        logger.info("Loaded segmentation processor from: %s", self.hf_model_id)
+
+        try:
+            self.train_dataset = ImageSegmentationFromCSVDataset(
+                csv_file=train_df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                mask_col=self.mask_col,
+            )
+            self.val_dataset = ImageSegmentationFromCSVDataset(
+                csv_file=val_df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                mask_col=self.mask_col,
+            )
+            self.test_dataset = ImageSegmentationFromCSVDataset(
+                csv_file=test_df,
+                root_dir=self.root_dir,
+                img_col=self.img_col,
+                mask_col=self.mask_col,
+            )
+        except Exception as e:
+            logger.error("Failed to create image segmentation datasets: %s", e)
+            raise
+
+        class_ids: set[int] = set()
+        full_dataset = ImageSegmentationFromCSVDataset(
+            csv_file=df,
+            root_dir=self.root_dir,
+            img_col=self.img_col,
+            mask_col=self.mask_col,
+        )
+        for index in range(len(full_dataset)):
+            _, mask = full_dataset[index]
+            class_ids.update(
+                int(value)
+                for value in torch.unique(mask).tolist()
+                if int(value) != 255  # 255 is the conventional "unlabeled" ID
+            )
+
+        if not class_ids:
+            raise AutoMLDataError("No segmentation class IDs were found in the masks.")
+
+        sorted_class_ids = sorted(class_ids)
+        # Masks must use contiguous IDs (0, 1, 2, ...) so the model's
+        # classification head lines up with the observed classes.
+        expected_class_ids = list(range(max(sorted_class_ids) + 1))
+        if sorted_class_ids != expected_class_ids:
+            raise AutoMLDataError(
+                f"Segmentation mask class IDs must be contiguous starting from 0. "
+                f"Found={sorted_class_ids}, expected={expected_class_ids}"
+            )
+
+        self.num_classes = len(sorted_class_ids)
+        self.id2label = {class_id: str(class_id) for class_id in sorted_class_ids}
+        self.label2id = {label: class_id for class_id, label in self.id2label.items()}
+
+        logger.info(
+            "Image segmentation dataset ready: train=%d val=%d test=%d "
+            "num_classes=%d class_ids=%s",
+            len(self.train_dataset),
+            len(self.val_dataset),
+            len(self.test_dataset),
+            self.num_classes,
+            sorted_class_ids,
+        )
 
     def _collate_fn(self, batch: list[tuple[Any, Any]]) -> dict[str, torch.Tensor]:
-        images, labels = zip(*batch)
+        images, masks = zip(*batch)
         if self.processor is None:
             raise AutoMLRuntimeError("Processor not initialized.")
-        encoding = self.processor(images=list(images), return_tensors="pt")
+        pixel_values = self.processor(
+            images=list(images), return_tensors="pt"
+        ).pixel_values
+
+        # Resize masks to the processed image size so batches can mix source
+        # resolutions. Nearest-neighbour only: interpolating class IDs would
+        # fabricate labels. HF segmentation models upsample their logits to
+        # the label size for the loss, so any uniform label size works.
+        target_hw = tuple(pixel_values.shape[-2:])
+        resized = [
+            (
+                torch.nn.functional.interpolate(
+                    mask[None, None].float(), size=target_hw, mode="nearest"
+                )[0, 0].long()
+                if tuple(mask.shape) != target_hw
+                else mask
+            )
+            for mask in masks
+        ]
         return {
-            "pixel_values": encoding.pixel_values,
+            "pixel_values": pixel_values,
             "labels": torch.stack(
                 [
-                    label if isinstance(label, torch.Tensor) else torch.tensor(label)
-                    for label in labels
+                    mask if isinstance(mask, torch.Tensor) else torch.tensor(mask)
+                    for mask in resized
                 ]
             ),
         }
+
+    def train_dataloader(self) -> DataLoader:
+        if self.train_dataset is None:
+            raise AutoMLRuntimeError(
+                "Train dataset not initialized. Call setup() first."
+            )
+        return self._make_loader(self.train_dataset, shuffle=self.shuffle)
+
+    def val_dataloader(self) -> DataLoader:
+        if self.val_dataset is None:
+            raise AutoMLRuntimeError(
+                "Validation dataset not initialized. Call setup() first."
+            )
+        return self._make_loader(self.val_dataset, shuffle=False)
+
+    def test_dataloader(self) -> DataLoader:
+        if self.test_dataset is None:
+            raise AutoMLRuntimeError(
+                "Test dataset not initialized. Call setup() first."
+            )
+        return self._make_loader(self.test_dataset, shuffle=False)
 
 
 # ---------------------------------------------------------------------------

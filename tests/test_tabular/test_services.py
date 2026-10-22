@@ -230,7 +230,7 @@ def test_validate_timestamp_column(file_fixture, ts_col, should_error):
 
 
 @pytest.mark.parametrize(
-    "input_val, expect_list, expect_str",
+    "input_val, expect_models, expect_str",
     [
         pytest.param(
             pd.DataFrame({"model": ["A", "B"], "score": [0.9, 0.8]}),
@@ -246,16 +246,30 @@ def test_validate_timestamp_column(file_fixture, ts_col, should_error):
         ),
     ],
 )
-def test_convert_leaderboard_safely(input_val, expect_list, expect_str):
+def test_convert_leaderboard_safely(input_val, expect_models, expect_str):
     json_out, str_out = convert_leaderboard_safely(input_val)
-    if expect_list:
-        assert isinstance(json_out, list)
-        assert len(json_out) == 2
+    if expect_models:
+        assert isinstance(json_out, dict)
+        assert len(json_out["models"]) == 2
+        assert json_out["test_metrics"] == {}
     else:
         assert isinstance(json_out, dict)
         assert "result" in json_out
     if expect_str:
         assert str_out == expect_str
+
+
+def test_convert_leaderboard_safely_with_test_metrics():
+    leaderboard = pd.DataFrame({"model": ["A"], "score": [0.9]})
+    test_metrics = {"accuracy": 0.87, "f1_macro": 0.85}
+
+    json_out, str_out = convert_leaderboard_safely(leaderboard, test_metrics)
+
+    assert json_out["models"] == [{"model": "A", "score": 0.9}]
+    assert json_out["test_metrics"] == test_metrics
+    assert "### Test metrics" in str_out
+    assert "**accuracy**: 0.87" in str_out
+    assert "**f1_macro**: 0.85" in str_out
 
 
 # ---------------------------------------------------------------------------

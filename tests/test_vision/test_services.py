@@ -337,6 +337,11 @@ def test_validate_vision_inputs_object_detection_with_annotation_columns(tmp_pat
 def test_convert_leaderboard_safely_complete(fake_optuna_result):
     lb_json, lb_str = convert_leaderboard_safely(fake_optuna_result)
     assert lb_json["best_loss"] == 0.123
+    assert lb_json["best_metrics"] == {
+        "loss": 0.123,
+        "accuracy": 0.87,
+        "f1_macro": 0.85,
+    }
     assert lb_json["best_params"] == {"lr": 0.001, "model_id": "google/efficientnet-b0"}
     assert lb_json["trials"] == 3
     parsed = json.loads(lb_str)
@@ -346,6 +351,7 @@ def test_convert_leaderboard_safely_complete(fake_optuna_result):
 def test_convert_leaderboard_safely_empty_dict():
     lb_json, lb_str = convert_leaderboard_safely({})
     assert lb_json["best_loss"] is None
+    assert lb_json["best_metrics"] == {}
     assert lb_json["best_params"] is None
     assert lb_json["trials"] is None
     assert json.loads(lb_str) == lb_json

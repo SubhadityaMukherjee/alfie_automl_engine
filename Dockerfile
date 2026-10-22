@@ -16,7 +16,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv
-RUN uv sync --frozen
+RUN uv sync --frozen --extra audio
 
 EXPOSE 8001
 

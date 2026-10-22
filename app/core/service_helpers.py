@@ -162,7 +162,9 @@ def download_dataset(download_url: str, dest_path: Path) -> Path:
         dest_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        with requests.get(download_url, stream=True, timeout=30) as resp:
+        # (connect, read) tuple: dataset ZIPs can be large, so give the
+        # read phase a generous budget while connect failures stay fast.
+        with requests.get(download_url, stream=True, timeout=(10, 720)) as resp:
             resp.raise_for_status()
             with open(dest_path, "wb") as f:
                 for chunk in resp.iter_content(8192):
@@ -249,6 +251,25 @@ def upload_model(
     except Exception as e:
         logger.error("Unexpected error uploading model: %s", e)
         raise AutoDWUploadError(f"Unexpected error uploading model: {e}") from e
+
+
+def uploaded_model_version(upload_resp: requests.Response) -> str:
+    """Extract the AutoDW-assigned version from a *successful* upload response.
+
+    AutoDW reports the created model version in its JSON body; anything
+    else (unexpected content type, malformed JSON) falls back to ``"v1"``
+    so a successful upload never fails at the parse step. Call this only
+    after the response's status code has been checked.
+    """
+    try:
+        upload_data = upload_resp.json()
+        version = upload_data.get("version")
+    except (ValueError, AttributeError):
+        logger.warning(
+            "Upload response carried no usable JSON body; defaulting version to v1."
+        )
+        return "v1"
+    return str(version) if version else "v1"
 
 
 # ---------------------------------------------------------------------------

@@ -25,6 +25,7 @@ from typing import Iterator
 from app.core.concurrency import offload
 from app.core.exceptions import AutoDWUploadError, AutoMLValidationError
 from app.core.process_log import step
+from app.core.service_helpers import uploaded_model_version
 from app.ml_engine.tasks import SUPPORTED_AUDIO_TASK_TYPES
 from app.audio_automl.services import (
     build_upload_payload,
@@ -80,6 +81,9 @@ class AudioTrainingResult:
 
     message: str
     leaderboard: str
+    # AutoDW-assigned identity of the uploaded model, needed for retraining.
+    model_id: str
+    version: str
 
 
 def _require_zip(metadata: dict) -> None:
@@ -201,7 +205,7 @@ async def run_audio_pipeline(
 
         # 8. Upload.
         with step("build_upload_payload"):
-            _, payload = build_upload_payload(
+            model_id, payload = build_upload_payload(
                 req.dataset_id,
                 req.dataset_version,
                 metadata,
@@ -218,8 +222,12 @@ async def run_audio_pipeline(
                     f"Failed to upload model: {upload_resp.text}",
                     status_code=upload_resp.status_code,
                 )
+            version = uploaded_model_version(upload_resp)
 
     logger.info("Audio AutoML training completed and model uploaded successfully.")
     return AudioTrainingResult(
-        message=_AUDIO_SUCCESS_MESSAGE, leaderboard=leaderboard_str
+        message=_AUDIO_SUCCESS_MESSAGE,
+        leaderboard=leaderboard_str,
+        model_id=model_id,
+        version=version,
     )

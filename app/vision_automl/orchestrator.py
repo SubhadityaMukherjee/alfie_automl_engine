@@ -28,6 +28,7 @@ from typing import Iterator
 from app.core.concurrency import offload
 from app.core.exceptions import AutoDWUploadError, AutoMLValidationError
 from app.core.process_log import step
+from app.core.service_helpers import uploaded_model_version
 from app.ml_engine.tasks import SUPPORTED_VISION_TASK_TYPES
 from app.vision_automl.services import (
     build_upload_payload,
@@ -105,6 +106,9 @@ class VisionTrainingResult:
 
     message: str
     leaderboard: str
+    # AutoDW-assigned identity of the uploaded model, needed for retraining.
+    model_id: str
+    version: str
 
 
 @dataclass(frozen=True)
@@ -114,6 +118,9 @@ class MultimodalTrainingResult:
     message: str
     leaderboard: str
     auxiliary_columns: list[str] = field(default_factory=list)
+    # AutoDW-assigned identity of the uploaded model, needed for retraining.
+    model_id: str = ""
+    version: str = ""
 
 
 def _require_zip(metadata: dict) -> None:
@@ -235,7 +242,7 @@ async def run_vision_pipeline(
 
         # 8. Upload.
         with step("build_upload_payload"):
-            _, payload = build_upload_payload(
+            model_id, payload = build_upload_payload(
                 req.dataset_id,
                 req.dataset_version,
                 metadata,
@@ -252,10 +259,14 @@ async def run_vision_pipeline(
                     f"Failed to upload model: {upload_resp.text}",
                     status_code=upload_resp.status_code,
                 )
+            version = uploaded_model_version(upload_resp)
 
     logger.info("Vision AutoML training completed and model uploaded successfully.")
     return VisionTrainingResult(
-        message=_VISION_SUCCESS_MESSAGE, leaderboard=leaderboard_str
+        message=_VISION_SUCCESS_MESSAGE,
+        leaderboard=leaderboard_str,
+        model_id=model_id,
+        version=version,
     )
 
 
@@ -349,7 +360,7 @@ async def run_multimodal_pipeline(
 
         # 8. Upload.
         with step("build_upload_payload"):
-            _, payload = build_upload_payload(
+            model_id, payload = build_upload_payload(
                 req.dataset_id,
                 req.dataset_version,
                 metadata,
@@ -366,6 +377,7 @@ async def run_multimodal_pipeline(
                     f"Failed to upload model: {upload_resp.text}",
                     status_code=upload_resp.status_code,
                 )
+            version = uploaded_model_version(upload_resp)
 
     logger.info(
         "Multimodal vision AutoML training completed and model uploaded successfully."
@@ -374,4 +386,6 @@ async def run_multimodal_pipeline(
         message=_MULTIMODAL_SUCCESS_MESSAGE,
         leaderboard=leaderboard_str,
         auxiliary_columns=auxiliary_columns,
+        model_id=model_id,
+        version=version,
     )

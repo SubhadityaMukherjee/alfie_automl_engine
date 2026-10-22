@@ -121,10 +121,16 @@ def test_convert_leaderboard_safely_complete():
     result = {
         "best_value": 0.05,
         "best_params": {"lr": 0.01},
+        "best_metrics": {"loss": 0.05, "accuracy": 0.95, "f1_weighted": 0.94},
         "n_trials": 2,
     }
     lb_json, lb_str = convert_leaderboard_safely(result)
     assert lb_json["best_loss"] == 0.05
+    assert lb_json["best_metrics"] == {
+        "loss": 0.05,
+        "accuracy": 0.95,
+        "f1_weighted": 0.94,
+    }
     assert json.loads(lb_str) == lb_json
 
 

@@ -10,15 +10,33 @@ import logging
 import math
 import shutil
 import time
+import warnings
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
 import lightning as L
+import numpy as np
 import optuna
 import pandas as pd
 import torch
 from autogluon.tabular import TabularDataset, TabularPredictor
 from dotenv import find_dotenv, load_dotenv
+from sklearn.metrics import (
+    balanced_accuracy_score,
+    cohen_kappa_score,
+    explained_variance_score,
+    f1_score,
+    matthews_corrcoef,
+    mean_absolute_error,
+    mean_absolute_percentage_error,
+    mean_squared_error,
+    median_absolute_error,
+    precision_score,
+    r2_score,
+    recall_score,
+    roc_auc_score,
+)
 from torch import nn, optim
 from tqdm import tqdm
 
@@ -52,6 +70,201 @@ def _resolve_precision(precision: str) -> str:
     if torch.cuda.is_available():
         return "bf16-mixed" if torch.cuda.is_bf16_supported() else "16-mixed"
     return "32-true"
+
+
+def _safe_metric(name: str, fn: Callable[[], float]) -> float | None:
+    """Evaluate one metric function; return None when it is not computable.
+
+    Degenerate validation batches (only one class present, a class missing
+    from the predictions) make some metrics undefined — skip them instead of
+    reporting misleading values.
+    """
+    try:
+        with warnings.catch_warnings():
+            # Degenerate batches are expected on tiny validation sets; the
+            # resulting sklearn warnings are noise (we skip the metric).
+            warnings.simplefilter("ignore")
+            value: float = float(fn())
+    except Exception as e:
+        logger.debug("Metric %s not computable, skipping: %s", name, e)
+        return None
+    if not math.isfinite(value):
+        logger.debug("Metric %s is non-finite, skipping", name)
+        return None
+    return value
+
+
+def _classification_metrics_from_arrays(
+    y_true: np.ndarray, y_proba: np.ndarray
+) -> dict[str, float]:
+    """General-purpose classification metrics on probability arrays.
+
+    ``y_proba`` is a ``[N, num_classes]`` matrix of class probabilities and
+    ``y_true`` integer class ids aligned with its column order. Shared by the
+    generic-engine eval loop and the AutoGluon tabular trainer. Metrics that
+    are undefined on the observed labels (e.g. ROC-AUC when a class is
+    missing) are omitted rather than reported as zero.
+    """
+    if y_proba.shape[0] == 0:
+        return {}
+    y_pred = y_proba.argmax(axis=1)
+    num_classes = int(y_proba.shape[1])
+
+    metrics: dict[str, float] = {"accuracy": float((y_pred == y_true).mean())}
+
+    candidates: dict[str, Callable[[], float]] = {
+        "balanced_accuracy": lambda: balanced_accuracy_score(y_true, y_pred),
+        "precision_macro": lambda: precision_score(
+            y_true, y_pred, average="macro", zero_division=0
+        ),
+        "precision_weighted": lambda: precision_score(
+            y_true, y_pred, average="weighted", zero_division=0
+        ),
+        "recall_macro": lambda: recall_score(
+            y_true, y_pred, average="macro", zero_division=0
+        ),
+        "recall_weighted": lambda: recall_score(
+            y_true, y_pred, average="weighted", zero_division=0
+        ),
+        "f1_macro": lambda: f1_score(y_true, y_pred, average="macro", zero_division=0),
+        "f1_weighted": lambda: f1_score(
+            y_true, y_pred, average="weighted", zero_division=0
+        ),
+        "cohen_kappa": lambda: cohen_kappa_score(y_true, y_pred),
+        "matthews_corrcoef": lambda: matthews_corrcoef(y_true, y_pred),
+    }
+    for name, fn in candidates.items():
+        if (value := _safe_metric(name, fn)) is not None:
+            metrics[name] = value
+
+    # Top-k accuracy is trivially 1.0 unless there are more classes than k.
+    for k in (3, 5):
+        if num_classes > k:
+            topk = np.argsort(-y_proba, axis=1, kind="stable")[:, :k]
+            metrics[f"top{k}_accuracy"] = float(
+                (topk == y_true[:, None]).any(axis=1).mean()
+            )
+
+    # ROC-AUC: positive-class score for binary, macro OvR for multiclass.
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            if num_classes == 2:
+                auc_value: float = float(roc_auc_score(y_true, y_proba[:, 1]))
+            else:
+                auc_value = float(
+                    roc_auc_score(y_true, y_proba, multi_class="ovr", average="macro")
+                )
+        if math.isfinite(auc_value):
+            metrics["roc_auc"] = auc_value
+    except Exception as e:
+        logger.debug("ROC-AUC not computable on this validation set: %s", e)
+
+    return metrics
+
+
+def _compute_classification_metrics(
+    probs: torch.Tensor, labels: torch.Tensor
+) -> dict[str, float]:
+    """Torch-tensor wrapper: softmax'd logits + label ids -> metrics dict."""
+    return _classification_metrics_from_arrays(
+        labels.detach().cpu().long().numpy(),
+        probs.detach().cpu().float().numpy(),
+    )
+
+
+def _compute_regression_metrics(
+    y_true: np.ndarray, y_pred: np.ndarray
+) -> dict[str, float]:
+    """General-purpose regression metrics on the held-out test set."""
+    candidates: dict[str, Callable[[], float]] = {
+        "r2": lambda: r2_score(y_true, y_pred),
+        "mae": lambda: mean_absolute_error(y_true, y_pred),
+        "rmse": lambda: math.sqrt(mean_squared_error(y_true, y_pred)),
+        "mape": lambda: mean_absolute_percentage_error(y_true, y_pred),
+        "median_absolute_error": lambda: median_absolute_error(y_true, y_pred),
+        "explained_variance": lambda: explained_variance_score(y_true, y_pred),
+    }
+    metrics: dict[str, float] = {}
+    for name, fn in candidates.items():
+        if (value := _safe_metric(name, fn)) is not None:
+            metrics[name] = value
+    return metrics
+
+
+def _compute_tabular_test_metrics(
+    predictor: Any, test_df: pd.DataFrame, target_column: str
+) -> dict[str, float]:
+    """Compute a metrics suite on the tabular test set (best-effort).
+
+    Dispatches on the AutoGluon predictor's problem type: classification
+    (binary/multiclass) gets the shared classification suite, regression gets
+    ``_compute_regression_metrics``. Anything else (quantile, unknown) and any
+    error degrade to an empty dict — extra metrics must never fail training.
+    """
+    try:
+        y_true = test_df[target_column]
+        problem_type = str(getattr(predictor, "problem_type", "") or "")
+
+        if problem_type in ("binary", "multiclass"):
+            proba = predictor.predict_proba(test_df)
+            if isinstance(proba, pd.Series):
+                proba = proba.to_frame()
+            if not isinstance(proba, pd.DataFrame) or proba.empty:
+                logger.warning("predict_proba returned no columns; skipping metrics")
+                return {}
+
+            if proba.shape[1] == 1:
+                # Single-column output: probability of the positive class.
+                positive_class = getattr(predictor, "positive_class", None)
+                negative_class = getattr(predictor, "negative_class", None)
+                names = (
+                    str(negative_class) if negative_class is not None else "0",
+                    str(positive_class) if positive_class is not None else "1",
+                )
+                positive = proba.iloc[:, 0].astype(float)
+                proba = pd.DataFrame({names[0]: 1.0 - positive, names[1]: positive})
+            else:
+                class_labels = getattr(predictor, "class_labels", None)
+                if class_labels is not None and len(class_labels) == proba.shape[1]:
+                    proba.columns = [str(c) for c in class_labels]
+                # Binary: the shared helper expects the positive class last.
+                positive_class = getattr(predictor, "positive_class", None)
+                if proba.shape[1] == 2 and positive_class is not None:
+                    cols = [str(c) for c in proba.columns]
+                    if cols[-1] != str(positive_class):
+                        proba = proba.iloc[:, [1, 0]]
+
+            # Map labels to column indices so y_true aligns with the column
+            # order of y_proba regardless of how classes were sorted.
+            columns = [str(c) for c in proba.columns]
+            codes = pd.Categorical(y_true.astype(str), categories=columns).codes
+            keep = codes >= 0
+            if not keep.all():
+                logger.warning(
+                    "%d test row(s) have labels outside the predictor's "
+                    "classes; excluded from test metrics",
+                    int((~keep).sum()),
+                )
+            return _classification_metrics_from_arrays(
+                codes[keep].astype(np.int64),
+                proba.to_numpy(dtype=float)[keep],
+            )
+
+        if problem_type == "regression":
+            y_pred = predictor.predict(test_df)
+            return _compute_regression_metrics(
+                y_true.to_numpy(dtype=float),
+                np.asarray(y_pred, dtype=float).ravel(),
+            )
+
+        logger.info(
+            "No extra test metrics computed for problem type '%s'", problem_type
+        )
+        return {}
+    except Exception as e:
+        logger.warning("Failed to compute tabular test metrics: %s", e)
+        return {}
 
 
 class EarlyStopping:
@@ -265,12 +478,18 @@ class FabricTrainer:
             logger.info(f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}")
         return avg_loss
 
-    def validate(self, start_time: float) -> tuple[float, float]:
-        """Evaluate on validation set; return (avg_loss, accuracy)."""
+    def validate(self, start_time: float) -> dict[str, float]:
+        """Evaluate on the validation set; return a metrics dict.
+
+        Always contains ``loss``. For classification tasks
+        (``model_computes_loss=False``) it also carries the general
+        classification metrics from ``_compute_classification_metrics``.
+        """
         self.model.eval()
         val_loss = torch.zeros((), device=self.fabric.device)
-        correct = torch.zeros((), device=self.fabric.device)
-        total: int = 0
+        all_probs: list[torch.Tensor] = []
+        all_labels: list[torch.Tensor] = []
+        batch_count: int = 0
 
         with torch.no_grad():
             for batch in tqdm(self.val_loader, desc="Validation", leave=False):
@@ -290,21 +509,37 @@ class FabricTrainer:
                     outputs = self.model(**moved)
                     loss = self.loss_fn(outputs.float(), labels)
                     val_loss += loss.detach().float()
-                    preds = outputs.argmax(dim=1)
-                    correct += (preds == labels).sum()
-                    total += labels.size(0)
+                    # CPU fp32 copies keep memory bounded; metrics are
+                    # computed once at the end of the epoch.
+                    all_probs.append(torch.softmax(outputs.float(), dim=1).cpu())
+                    all_labels.append(labels.detach().cpu())
+                batch_count += 1
 
-        avg_loss: float = (val_loss / max(1, len(self.val_loader))).item()
-        accuracy: float = (correct / max(1, total)).item() if total else 0.0
-        logger.info(f"Validation - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
-        return avg_loss, accuracy
+        avg_loss: float = (val_loss / max(1, batch_count)).item()
+        metrics: dict[str, float] = {"loss": avg_loss}
 
-    def test(self) -> tuple[float, float]:
-        """Evaluate on test set; return (avg_loss, accuracy)."""
+        if all_probs:
+            metrics.update(
+                _compute_classification_metrics(
+                    torch.cat(all_probs), torch.cat(all_labels)
+                )
+            )
+
+        logger.info(
+            "Validation - Loss: %.4f, Accuracy: %.4f, F1 (macro): %.4f",
+            avg_loss,
+            metrics.get("accuracy", 0.0),
+            metrics.get("f1_macro", 0.0),
+        )
+        return metrics
+
+    def test(self) -> dict[str, float]:
+        """Evaluate on the test set; returns the same metrics dict as validate()."""
         self.model.eval()
         test_loss = torch.zeros((), device=self.fabric.device)
-        correct = torch.zeros((), device=self.fabric.device)
-        total: int = 0
+        all_probs: list[torch.Tensor] = []
+        all_labels: list[torch.Tensor] = []
+        batch_count: int = 0
 
         with torch.no_grad():
             for batch in tqdm(self.test_loader, desc="Testing"):
@@ -321,48 +556,65 @@ class FabricTrainer:
                     outputs = self.model(**moved)
                     loss = self.loss_fn(outputs.float(), labels)
                     test_loss += loss.detach().float()
-                    preds = outputs.argmax(dim=1)
-                    correct += (preds == labels).sum()
-                    total += labels.size(0)
+                    all_probs.append(torch.softmax(outputs.float(), dim=1).cpu())
+                    all_labels.append(labels.detach().cpu())
+                batch_count += 1
 
-        avg_loss: float = (test_loss / len(self.test_loader)).item()
-        accuracy: float = (correct / max(1, total)).item() if total else 0.0
-        logger.info(f"Test Results - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.4f}")
-        return avg_loss, accuracy
+        avg_loss: float = (test_loss / max(1, batch_count)).item()
+        metrics: dict[str, float] = {"loss": avg_loss}
 
-    def fit(self, trial: optuna.Trial | None = None) -> tuple[float, float]:
-        """Run the full train/validate loop; return best (val_loss, val_acc).
+        if all_probs:
+            metrics.update(
+                _compute_classification_metrics(
+                    torch.cat(all_probs), torch.cat(all_labels)
+                )
+            )
+
+        logger.info(
+            "Test Results - Loss: %.4f, Accuracy: %.4f, F1 (macro): %.4f",
+            avg_loss,
+            metrics.get("accuracy", 0.0),
+            metrics.get("f1_macro", 0.0),
+        )
+        return metrics
+
+    def fit(self, trial: optuna.Trial | None = None) -> tuple[float, dict[str, float]]:
+        """Run the full train/validate loop; return (best_val_loss, best_metrics).
 
         Each epoch reports validation loss back to the Optuna trial (so bad
         trials get pruned early), gives callbacks a chance to stop training,
-        and checks the wall-clock time limit. The best validation metrics are
-        returned so hyperparameter search selects on validation performance
-        (the test split stays untouched for final evaluation via ``test()``).
+        and checks the wall-clock time limit. The metrics dict of the epoch
+        with the best validation loss is returned so hyperparameter search
+        selects on validation performance (the test split stays untouched for
+        final evaluation via ``test()``).
         """
         logger.info("Starting training loop.")
         start_time: float = time.time()
 
         best_val_loss: float = float("inf")
-        best_val_acc: float = 0.0
-        last_val: tuple[float, float] = (float("inf"), 0.0)
+        best_val_metrics: dict[str, float] = {}
+        last_val: tuple[float, dict[str, float]] = (float("inf"), {})
 
         for epoch in range(self.epochs):
             train_loss = self.train_epoch(epoch, start_time)
-            val_loss, val_acc = self.validate(start_time)
-            last_val = (val_loss, val_acc)
+            val_metrics = self.validate(start_time)
+            val_loss = val_metrics["loss"]
+            last_val = (val_loss, val_metrics)
 
             if val_loss < best_val_loss:
-                best_val_loss, best_val_acc = val_loss, val_acc
+                best_val_loss = val_loss
+                best_val_metrics = dict(val_metrics)
 
             if trial is not None:
                 trial.report(val_loss, step=epoch)
                 if trial.should_prune():
                     raise optuna.TrialPruned()
 
-            logs = {
+            logs: dict[str, float] = {
                 "train_loss": train_loss,
                 "val_loss": val_loss,
-                "val_acc": val_acc,
+                "val_acc": val_metrics.get("accuracy", 0.0),
+                "val_f1_macro": val_metrics.get("f1_macro", 0.0),
             }
 
             for cb in self.callbacks:
@@ -372,8 +624,8 @@ class FabricTrainer:
                 break
 
         if not math.isfinite(best_val_loss):
-            best_val_loss, best_val_acc = last_val
-        return best_val_loss, best_val_acc
+            best_val_loss, best_val_metrics = last_val
+        return best_val_loss, best_val_metrics
 
 
 # ---------------------------------------------------------------------------
@@ -457,9 +709,16 @@ def run_optuna_search(
     best_trial_dir = run_dir / f"trial_{study.best_trial.number}"
     _copy_best_trial_artifacts(best_trial_dir, workdir)
 
+    # Objectives attach their best-epoch metrics as a trial user attr, so the
+    # search can report what the winning hyperparameters actually achieved.
+    best_metrics: dict[str, float] = dict(
+        study.best_trial.user_attrs.get("best_metrics") or {}
+    )
+
     return {
         "best_value": study.best_value,
         "best_params": study.best_params,
+        "best_metrics": best_metrics,
         "n_trials": len(study.trials),
         "model_dir": best_trial_dir,
     }
@@ -546,13 +805,17 @@ class AutoGluonTrainer:
         time_limit: int,
         num_cpus: str | int = "auto",
         num_gpus: str | int = "auto",
-    ) -> tuple[pd.DataFrame, TabularPredictor]:
+    ) -> tuple[pd.DataFrame, TabularPredictor, dict[str, float]]:
         """Train an AutoGluon model on the given DataFrames.
 
         Validates the target column and time limit, splits train/test if no
         test set was supplied, fits the predictor within the time limit, then
         tries to clone the predictor for deployment (falling back to the
-        original on failure) and produces the leaderboard on the test set.
+        original on failure), produces the leaderboard on the test set, and
+        computes a metrics suite on the same test set (best-effort).
+
+        Returns ``(leaderboard, predictor, test_metrics)`` where
+        ``test_metrics`` is empty when the suite could not be computed.
         """
         if not isinstance(train_df, pd.DataFrame):
             raise AutoMLDataError("train_df is not a DataFrame")
@@ -620,10 +883,14 @@ class AutoGluonTrainer:
 
         try:
             leaderboard = predictor.leaderboard(test_dataset)
-            return leaderboard, predictor_clone_opt
         except Exception as e:
             logger.exception("Failed to generate leaderboard")
             raise AutoMLLeaderboardError(f"Leaderboard generation failed: {e}") from e
+
+        test_metrics: dict[str, float] = _compute_tabular_test_metrics(
+            predictor_clone_opt, final_test_df, target_column
+        )
+        return leaderboard, predictor_clone_opt, test_metrics
 
     def train_test_split(
         self, test_df: pd.DataFrame | None, train_df: pd.DataFrame | None = None

@@ -351,13 +351,18 @@ def test_best_model_success(
 
     upload_resp = MagicMock()
     upload_resp.status_code = 200
+    upload_resp.json.return_value = {"version": "v1"}
     mock_upload.return_value = upload_resp
 
     resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
     assert resp.status_code == 200
-    assert "Vision AutoML training completed" in resp.json()["message"]
-    assert resp.json()["leaderboard"] == "lb_str"
-    assert resp.json()["deployment_instructions"] == "deploy info"
+    body = resp.json()
+    assert "Vision AutoML training completed" in body["message"]
+    assert body["leaderboard"] == "lb_str"
+    assert body["deployment_instructions"] == "deploy info"
+    # The response reports the AutoDW-assigned model identity for retraining.
+    assert body["model_id"] == "model_id"
+    assert body["version"] == "v1"
 
 
 # ---------------------------------------------------------------------------
@@ -469,10 +474,15 @@ def test_multimodal_success(
 
     upload_resp = MagicMock()
     upload_resp.status_code = 200
+    upload_resp.json.return_value = {"version": "v1"}
     mock_upload.return_value = upload_resp
 
     resp = client.post("/automl/vision/multimodal_best_model/", data=_MULTIMODAL_PARAMS)
     assert resp.status_code == 200
-    assert "Multimodal" in resp.json()["message"]
-    assert resp.json()["auxiliary_columns"] == ["feature1", "feature2"]
-    assert resp.json()["deployment_instructions"] == "deploy info"
+    body = resp.json()
+    assert "Multimodal" in body["message"]
+    assert body["auxiliary_columns"] == ["feature1", "feature2"]
+    assert body["deployment_instructions"] == "deploy info"
+    # The response reports the AutoDW-assigned model identity for retraining.
+    assert body["model_id"] == "model_id"
+    assert body["version"] == "v1"

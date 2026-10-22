@@ -3,16 +3,18 @@
 import os
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 
-from app.core.exceptions import AutoMLRuntimeError
+from app.core.exceptions import AutoMLDataError, AutoMLRuntimeError
 from app.ml_engine.datamodule import (
     ClassificationData,
     ImageSegmentationDataModule,
+    ImageSegmentationFromCSVDataset,
     KeypointDetectionDataModule,
     _evenly_spaced_timestamps,
     _processor_draft_size,
@@ -319,9 +321,174 @@ def test_classification_draft_decode_enabled():
     assert dm._draft_decode_enabled() is True
 
 
-def test_segmentation_draft_decode_disabled():
+def test_segmentation_masks_stay_pixel_aligned(tmp_path):
+    """Segmentation has no draft-decode path: masks are read as-is, so they
+    stay pixel-aligned with the source image (the guarantee the old
+    ``_draft_decode_enabled`` flag provided for the classification layout).
+    """
+    images_dir = tmp_path / "images"
+    masks_dir = tmp_path / "masks"
+    images_dir.mkdir()
+    masks_dir.mkdir()
+    Image.new("RGB", (12, 8), color=(10, 20, 30)).save(images_dir / "img_00.png")
+    mask = np.zeros((8, 12), dtype=np.uint8)
+    mask[4:, 6:] = 1
+    Image.fromarray(mask).save(masks_dir / "mask_00.png")
+
+    df = pd.DataFrame([{"filename": "img_00.png", "mask_filename": "mask_00.png"}])
+    dataset = ImageSegmentationFromCSVDataset(
+        csv_file=df, root_dir=tmp_path, img_col="filename", mask_col="mask_filename"
+    )
+
+    image, mask_tensor = dataset[0]
+    assert image.size == (12, 8)
+    assert mask_tensor.shape == (8, 12)
+    assert mask_tensor.dtype == torch.long
+    assert sorted(torch.unique(mask_tensor).tolist()) == [0, 1]
+
+
+def test_segmentation_dataset_rejects_non_2d_mask(tmp_path):
+    images_dir = tmp_path / "images"
+    masks_dir = tmp_path / "masks"
+    images_dir.mkdir()
+    masks_dir.mkdir()
+    Image.new("RGB", (8, 8)).save(images_dir / "img_00.png")
+    Image.new("RGB", (8, 8)).save(masks_dir / "mask_00.png")  # 3-channel mask
+
+    df = pd.DataFrame([{"filename": "img_00.png", "mask_filename": "mask_00.png"}])
+    dataset = ImageSegmentationFromCSVDataset(
+        csv_file=df, root_dir=tmp_path, img_col="filename", mask_col="mask_filename"
+    )
+
+    with pytest.raises(AutoMLDataError, match="single channel"):
+        dataset[0]
+
+
+def test_segmentation_dataset_rejects_size_mismatch(tmp_path):
+    images_dir = tmp_path / "images"
+    masks_dir = tmp_path / "masks"
+    images_dir.mkdir()
+    masks_dir.mkdir()
+    Image.new("RGB", (8, 8)).save(images_dir / "img_00.png")
+    Image.new("L", (4, 4)).save(masks_dir / "mask_00.png")
+
+    df = pd.DataFrame([{"filename": "img_00.png", "mask_filename": "mask_00.png"}])
+    dataset = ImageSegmentationFromCSVDataset(
+        csv_file=df, root_dir=tmp_path, img_col="filename", mask_col="mask_filename"
+    )
+
+    with pytest.raises(AutoMLDataError, match="dimensions do not match"):
+        dataset[0]
+
+
+def test_segmentation_setup_derives_class_ids_from_masks(tmp_path):
+    images_dir = tmp_path / "images"
+    masks_dir = tmp_path / "masks"
+    images_dir.mkdir()
+    masks_dir.mkdir()
+
+    rows = []
+    for i in range(6):
+        Image.new("RGB", (8, 8)).save(images_dir / f"img_{i:02d}.png")
+        mask = np.full((8, 8), i % 2, dtype=np.uint8)  # alternating IDs 0 / 1
+        Image.fromarray(mask).save(masks_dir / f"mask_{i:02d}.png")
+        rows.append(
+            {"filename": f"img_{i:02d}.png", "mask_filename": f"mask_{i:02d}.png"}
+        )
+    csv_path = tmp_path / "labels.csv"
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+
+    with patch(
+        "app.ml_engine.datamodule.AutoImageProcessor.from_pretrained",
+        return_value=_make_mock_processor(),
+    ):
+        dm = ImageSegmentationDataModule(
+            csv_file=csv_path,
+            root_dir=tmp_path,
+            img_col="filename",
+            mask_col="mask_filename",
+            batch_size=2,
+            num_workers=0,
+        )
+
+    assert dm.num_classes == 2
+    assert dm.id2label == {0: "0", 1: "1"}
+    assert dm.label2id == {"0": 0, "1": 1}
+    batch = next(iter(dm.train_dataloader()))
+    assert batch["pixel_values"].shape[0] == batch["labels"].shape[0]
+
+
+def test_segmentation_setup_rejects_non_contiguous_class_ids(tmp_path):
+    images_dir = tmp_path / "images"
+    masks_dir = tmp_path / "masks"
+    images_dir.mkdir()
+    masks_dir.mkdir()
+
+    rows = []
+    for i in range(4):
+        Image.new("RGB", (8, 8)).save(images_dir / f"img_{i:02d}.png")
+        mask = np.full((8, 8), 2, dtype=np.uint8)  # only ID 2 → not contiguous
+        Image.fromarray(mask).save(masks_dir / f"mask_{i:02d}.png")
+        rows.append(
+            {"filename": f"img_{i:02d}.png", "mask_filename": f"mask_{i:02d}.png"}
+        )
+    csv_path = tmp_path / "labels.csv"
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+
+    with patch(
+        "app.ml_engine.datamodule.AutoImageProcessor.from_pretrained",
+        return_value=_make_mock_processor(),
+    ):
+        with pytest.raises(AutoMLDataError, match="contiguous"):
+            ImageSegmentationDataModule(
+                csv_file=csv_path,
+                root_dir=tmp_path,
+                img_col="filename",
+                mask_col="mask_filename",
+                batch_size=2,
+                num_workers=0,
+            )
+
+
+def test_segmentation_collate_resizes_mixed_size_masks():
+    """A batch may mix source resolutions: masks are nearest-resized to the
+    processed image size so they stack."""
     dm = ImageSegmentationDataModule.__new__(ImageSegmentationDataModule)
-    assert dm._draft_decode_enabled() is False
+    dm.processor = _make_mock_processor()  # pixel_values: (N, 3, 224, 224)
+
+    small_image, small_mask = (
+        torch.zeros(8, 8, 3),
+        torch.full((8, 8), 1, dtype=torch.long),
+    )
+    large_image, large_mask = (
+        torch.zeros(16, 16, 3),
+        torch.zeros((16, 16), dtype=torch.long),
+    )
+
+    batch = dm._collate_fn([(small_image, small_mask), (large_image, large_mask)])
+
+    assert batch["pixel_values"].shape == (2, 3, 224, 224)
+    assert batch["labels"].shape == (2, 224, 224)
+    assert batch["labels"].dtype == torch.long
+    # Nearest resize only fabricates no new class IDs.
+    assert set(torch.unique(batch["labels"]).tolist()) <= {0, 1}
+
+
+def test_segmentation_collate_keeps_aligned_masks_untouched():
+    """Masks already matching the processed size are stacked as-is."""
+    dm = ImageSegmentationDataModule.__new__(ImageSegmentationDataModule)
+    processor = MagicMock()
+    processor.side_effect = lambda images, return_tensors: MagicMock(
+        pixel_values=torch.zeros(len(images), 3, 8, 8)
+    )
+    dm.processor = processor
+
+    masks = [torch.full((8, 8), fill_value=i, dtype=torch.long) for i in range(2)]
+    batch = dm._collate_fn([(torch.zeros(8, 8, 3), m) for m in masks])
+
+    assert batch["labels"].shape == (2, 8, 8)
+    assert torch.equal(batch["labels"][0], masks[0])
+    assert torch.equal(batch["labels"][1], masks[1])
 
 
 def test_keypoint_draft_decode_disabled():
