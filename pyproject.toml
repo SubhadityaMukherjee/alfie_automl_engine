@@ -41,6 +41,15 @@ dependencies = [
   "pydantic-settings>=2.0,<3",
 ]
 
+[project.optional-dependencies]
+# Audio training is an optional feature: the engine imports torchaudio lazily
+# (app/ml_engine/datamodule.py), and soundfile is the WAV backend torchaudio
+# dispatches to. Enable with: uv sync --extra audio (or pip install .[audio]).
+audio = [
+  "torchaudio==2.7.1",
+  "soundfile>=0.14.0",
+]
+
 [dependency-groups]
 dev = [
   "black>=25.1,<26",
