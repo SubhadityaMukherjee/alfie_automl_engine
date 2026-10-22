@@ -450,6 +450,47 @@ def test_segmentation_setup_rejects_non_contiguous_class_ids(tmp_path):
             )
 
 
+def test_segmentation_collate_resizes_mixed_size_masks():
+    """A batch may mix source resolutions: masks are nearest-resized to the
+    processed image size so they stack."""
+    dm = ImageSegmentationDataModule.__new__(ImageSegmentationDataModule)
+    dm.processor = _make_mock_processor()  # pixel_values: (N, 3, 224, 224)
+
+    small_image, small_mask = (
+        torch.zeros(8, 8, 3),
+        torch.full((8, 8), 1, dtype=torch.long),
+    )
+    large_image, large_mask = (
+        torch.zeros(16, 16, 3),
+        torch.zeros((16, 16), dtype=torch.long),
+    )
+
+    batch = dm._collate_fn([(small_image, small_mask), (large_image, large_mask)])
+
+    assert batch["pixel_values"].shape == (2, 3, 224, 224)
+    assert batch["labels"].shape == (2, 224, 224)
+    assert batch["labels"].dtype == torch.long
+    # Nearest resize only fabricates no new class IDs.
+    assert set(torch.unique(batch["labels"]).tolist()) <= {0, 1}
+
+
+def test_segmentation_collate_keeps_aligned_masks_untouched():
+    """Masks already matching the processed size are stacked as-is."""
+    dm = ImageSegmentationDataModule.__new__(ImageSegmentationDataModule)
+    processor = MagicMock()
+    processor.side_effect = lambda images, return_tensors: MagicMock(
+        pixel_values=torch.zeros(len(images), 3, 8, 8)
+    )
+    dm.processor = processor
+
+    masks = [torch.full((8, 8), fill_value=i, dtype=torch.long) for i in range(2)]
+    batch = dm._collate_fn([(torch.zeros(8, 8, 3), m) for m in masks])
+
+    assert batch["labels"].shape == (2, 8, 8)
+    assert torch.equal(batch["labels"][0], masks[0])
+    assert torch.equal(batch["labels"][1], masks[1])
+
+
 def test_keypoint_draft_decode_disabled():
     dm = KeypointDetectionDataModule.__new__(KeypointDetectionDataModule)
     assert dm._draft_decode_enabled() is False

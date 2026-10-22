@@ -706,7 +706,9 @@ class ImageSegmentationDataModule(BaseDataModule):
     The labels CSV identifies the source image (``img_col``) and the
     pixel-mask file (``mask_col``); there is no row-level label to
     stratify on. Class IDs are derived from the mask pixel values, so
-    masks must use contiguous integer IDs starting at 0.
+    masks must use contiguous integer IDs starting at 0. During collation
+    masks are nearest-neighbour resized to the processed image size, so a
+    batch may mix source resolutions.
     """
 
     def __init__(
@@ -835,16 +837,34 @@ class ImageSegmentationDataModule(BaseDataModule):
         )
 
     def _collate_fn(self, batch: list[tuple[Any, Any]]) -> dict[str, torch.Tensor]:
-        images, labels = zip(*batch)
+        images, masks = zip(*batch)
         if self.processor is None:
             raise AutoMLRuntimeError("Processor not initialized.")
-        encoding = self.processor(images=list(images), return_tensors="pt")
+        pixel_values = self.processor(
+            images=list(images), return_tensors="pt"
+        ).pixel_values
+
+        # Resize masks to the processed image size so batches can mix source
+        # resolutions. Nearest-neighbour only: interpolating class IDs would
+        # fabricate labels. HF segmentation models upsample their logits to
+        # the label size for the loss, so any uniform label size works.
+        target_hw = tuple(pixel_values.shape[-2:])
+        resized = [
+            (
+                torch.nn.functional.interpolate(
+                    mask[None, None].float(), size=target_hw, mode="nearest"
+                )[0, 0].long()
+                if tuple(mask.shape) != target_hw
+                else mask
+            )
+            for mask in masks
+        ]
         return {
-            "pixel_values": encoding.pixel_values,
+            "pixel_values": pixel_values,
             "labels": torch.stack(
                 [
-                    label if isinstance(label, torch.Tensor) else torch.tensor(label)
-                    for label in labels
+                    mask if isinstance(mask, torch.Tensor) else torch.tensor(mask)
+                    for mask in resized
                 ]
             ),
         }
