@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
+import optuna
 import pytest
 import torch
 
@@ -13,6 +14,7 @@ from app.ml_engine.hpo.optuna_objectives import OBJECTIVE_REGISTRY
 from app.ml_engine.configs import SUPPORTED_TASK_TYPES
 from app.ml_engine.trainer import (
     EarlyStopping,
+    _clamp_per_trial_timeout,
     _compute_classification_metrics,
     _compute_regression_metrics,
     _copy_best_trial_artifacts,
@@ -326,3 +328,206 @@ def test_copy_best_trial_artifacts_handles_missing_trial_dir(tmp_path: Path):
     # Best-effort: should not raise even if the trial dir doesn't exist.
     _copy_best_trial_artifacts(tmp_path / "optuna" / "trial_99", tmp_path)
     assert (tmp_path / "model").exists()  # model dir still created
+
+
+# ---------------------------------------------------------------------------
+# per-trial timeout enforcement
+# ---------------------------------------------------------------------------
+
+
+class _StubTrainer:
+    """Captures constructor kwargs; fit() returns a fixed best-epoch result."""
+
+    last_kwargs: dict | None = None
+
+    def __init__(self, **kwargs):
+        type(self).last_kwargs = kwargs
+
+    def fit(self, trial=None):
+        return 0.5, {"loss": 0.5, "accuracy": 0.9}
+
+
+class _StubDataModule:
+    def __init__(self, **kwargs):
+        pass
+
+
+class _StubModel:
+    def __init__(self, **kwargs):
+        pass
+
+
+def _stub_config() -> dict:
+    return {
+        "small_models": ["stub-a", "stub-b"],
+        "medium_models": ["stub-a"],
+        "large_models": ["stub-a"],
+        "lr_low": 1e-5,
+        "lr_high": 1e-3,
+        "batch_sizes": [2],
+        "weight_decay_low": 1e-6,
+        "weight_decay_high": 0.1,
+        "max_epochs": 1,
+        "early_stopping_patience": 1,
+    }
+
+
+def test_clamp_per_trial_timeout_no_deadline():
+    assert _clamp_per_trial_timeout(30.0, None, now=1000.0) == 30.0
+    assert _clamp_per_trial_timeout(None, None, now=1000.0) is None
+
+
+def test_clamp_per_trial_timeout_even_split_binds():
+    assert _clamp_per_trial_timeout(30.0, deadline=1060.0, now=1000.0) == 30.0
+
+
+def test_clamp_per_trial_timeout_deadline_binds():
+    assert _clamp_per_trial_timeout(30.0, deadline=1010.0, now=1000.0) == 10.0
+
+
+def test_clamp_per_trial_timeout_no_even_split_uses_remaining():
+    assert _clamp_per_trial_timeout(None, deadline=1015.0, now=1000.0) == 15.0
+
+
+def test_clamp_per_trial_timeout_spent_deadline_prunes():
+    with pytest.raises(optuna.TrialPruned):
+        _clamp_per_trial_timeout(30.0, deadline=999.0, now=1000.0)
+
+
+def test_objective_base_hands_remaining_budget_to_trainer(monkeypatch):
+    from app.ml_engine.hpo import optuna_objectives
+    from app.ml_engine.hpo.optuna_objectives import _optuna_objective_base
+
+    monkeypatch.setattr(optuna_objectives, "FabricTrainer", _StubTrainer)
+    study = optuna.create_study(direction="minimize")
+    trial = study.ask()
+
+    best = _optuna_objective_base(
+        trial,
+        model_size="small",
+        config=_stub_config(),
+        datamodule_class=_StubDataModule,
+        dm_kwargs={},
+        model_class=_StubModel,
+        build_model_kwargs=lambda dm, mid: {"model_id": mid},
+        timeout_per_trial=60.0,
+        workdir=None,
+        task_type="image_classification",
+    )
+
+    assert best == 0.5
+    assert _StubTrainer.last_kwargs is not None
+    time_limit = _StubTrainer.last_kwargs["time_limit"]
+    assert time_limit is not None
+    assert 0 < time_limit <= 60.0
+
+
+def test_objective_base_prunes_when_budget_already_spent(monkeypatch):
+    from app.ml_engine.hpo import optuna_objectives
+    from app.ml_engine.hpo.optuna_objectives import _optuna_objective_base
+
+    monkeypatch.setattr(optuna_objectives, "FabricTrainer", _StubTrainer)
+    study = optuna.create_study(direction="minimize")
+    trial = study.ask()
+
+    with pytest.raises(optuna.TrialPruned):
+        _optuna_objective_base(
+            trial,
+            model_size="small",
+            config=_stub_config(),
+            datamodule_class=_StubDataModule,
+            dm_kwargs={},
+            model_class=_StubModel,
+            build_model_kwargs=lambda dm, mid: {"model_id": mid},
+            timeout_per_trial=0.0,
+            workdir=None,
+            task_type="image_classification",
+        )
+
+
+def test_objective_base_without_timeout_leaves_trainer_unbounded(monkeypatch):
+    from app.ml_engine.hpo import optuna_objectives
+    from app.ml_engine.hpo.optuna_objectives import _optuna_objective_base
+
+    monkeypatch.setattr(optuna_objectives, "FabricTrainer", _StubTrainer)
+    study = optuna.create_study(direction="minimize")
+    trial = study.ask()
+
+    _optuna_objective_base(
+        trial,
+        model_size="small",
+        config=_stub_config(),
+        datamodule_class=_StubDataModule,
+        dm_kwargs={},
+        model_class=_StubModel,
+        build_model_kwargs=lambda dm, mid: {"model_id": mid},
+        timeout_per_trial=None,
+        workdir=None,
+        task_type="image_classification",
+    )
+
+    assert _StubTrainer.last_kwargs is not None
+    assert "time_limit" not in _StubTrainer.last_kwargs
+
+
+def test_run_optuna_search_passes_per_trial_budget(monkeypatch, tmp_path):
+    from app.ml_engine.hpo import optuna_objectives as objectives_module
+
+    received: list[float | None] = []
+
+    def stub_objective(trial, **kwargs):
+        received.append(kwargs.get("timeout_per_trial"))
+        return 0.5
+
+    monkeypatch.setattr(
+        objectives_module,
+        "OBJECTIVE_REGISTRY",
+        {"image_classification": stub_objective},
+    )
+
+    result = run_optuna_search(
+        task_type="image_classification",
+        csv_path=tmp_path / "labels.csv",
+        images_dir=tmp_path / "images",
+        workdir=tmp_path,
+        n_trials=3,
+        timeout=90,
+    )
+
+    assert result["best_value"] == 0.5
+    assert len(received) == 3
+    # Even split: 90s / 3 trials = 30s each.
+    assert received[0] == pytest.approx(30.0, rel=0.05)
+    # Clamping to the study deadline is monotone non-increasing.
+    assert received[1] <= received[0] + 1e-9
+    assert received[2] <= received[1] + 1e-9
+
+
+def test_run_optuna_search_without_timeout_has_no_per_trial_budget(
+    monkeypatch, tmp_path
+):
+    from app.ml_engine.hpo import optuna_objectives as objectives_module
+
+    received: list[float | None] = []
+
+    def stub_objective(trial, **kwargs):
+        received.append(kwargs.get("timeout_per_trial"))
+        return 0.25
+
+    monkeypatch.setattr(
+        objectives_module,
+        "OBJECTIVE_REGISTRY",
+        {"image_classification": stub_objective},
+    )
+
+    result = run_optuna_search(
+        task_type="image_classification",
+        csv_path=tmp_path / "labels.csv",
+        images_dir=tmp_path / "images",
+        workdir=tmp_path,
+        n_trials=2,
+        timeout=None,
+    )
+
+    assert result["best_value"] == 0.25
+    assert received == [None, None]

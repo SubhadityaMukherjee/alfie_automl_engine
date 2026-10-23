@@ -8,6 +8,7 @@ objective so ``run_optuna_search`` can dispatch dynamically.
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -104,6 +105,7 @@ def _optuna_objective_base(
     build_model_kwargs: Callable[[Any, str], dict[str, Any]],
     model_computes_loss: bool = False,
     loss_fn: nn.Module | None = None,
+    timeout_per_trial: float | None = None,
     num_gpus: str | int = "auto",
     num_cpus: str | int = "auto",
     workdir: Path | None = None,
@@ -117,7 +119,13 @@ def _optuna_objective_base(
     saves the model after a successful fit. Returns the best validation loss
     Optuna minimizes; selection only ever uses validation performance (the
     final held-out test pass happens once, after the epoch loop).
+
+    ``timeout_per_trial`` is a hard wall-clock cap on the trial: whatever is
+    left of the budget after preprocessing is handed to the trainer, which
+    checks it between batches and epochs. A trial whose budget is already
+    spent before training starts is pruned instead of run.
     """
+    trial_start: float = time.time()
     models: list[str] = config[f"{model_size}_models"]
     model_id: str = str(trial.suggest_categorical("model_id", models))
     lr: float = trial.suggest_float("lr", config["lr_low"], config["lr_high"], log=True)
@@ -160,6 +168,15 @@ def _optuna_objective_base(
     }
     if loss_fn is not None:
         trainer_kwargs["loss_fn"] = loss_fn
+
+    if timeout_per_trial is not None:
+        # Enforce the trial's share of the study budget: preprocessing above
+        # already ate into it, so the trainer only gets what is left.
+        remaining: float = float(timeout_per_trial) - (time.time() - trial_start)
+        if remaining <= 0:
+            logger.info("Trial budget exhausted before training; pruning trial")
+            raise optuna.TrialPruned()
+        trainer_kwargs["time_limit"] = remaining
 
     trainer = FabricTrainer(**trainer_kwargs)
 
@@ -207,6 +224,7 @@ def optuna_objective_image_classification(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=ImageClassificationDataModule,
         dm_kwargs={
             "csv_file": csv_path,
@@ -251,6 +269,7 @@ def optuna_objective_image_classification_multimodal(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=MultimodalClassificationDataModule,
         dm_kwargs={
             "csv_file": csv_path,
@@ -296,6 +315,7 @@ def optuna_objective_image_segmentation(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=ImageSegmentationDataModule,
         dm_kwargs={
             "csv_file": csv_path,
@@ -340,6 +360,7 @@ def optuna_objective_object_detection(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=ObjectDetectionDataModule,
         dm_kwargs={
             "csv_file": csv_path,
@@ -379,6 +400,7 @@ def optuna_objective_video_classification(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=VideoClassificationDataModule,
         dm_kwargs={
             "csv_file": csv_path,
@@ -422,6 +444,7 @@ def optuna_objective_keypoint_detection(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=KeypointDetectionDataModule,
         dm_kwargs={
             "csv_file": csv_path,
@@ -465,6 +488,7 @@ def optuna_objective_audio_classification(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=AudioClassificationDataModule,
         dm_kwargs={
             "csv_file": csv_path,
@@ -508,6 +532,7 @@ def optuna_objective_text_classification(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=SequenceClassificationDataModule,
         dm_kwargs={
             "csv_file": csv_path,
@@ -548,6 +573,7 @@ def optuna_objective_question_answering(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=QuestionAnsweringDataModule,
         dm_kwargs={"csv_file": csv_path},
         model_class=QuestionAnsweringModel,
@@ -578,6 +604,7 @@ def optuna_objective_causal_lm(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=CausalLMDataModule,
         dm_kwargs={"csv_file": csv_path},
         model_class=CausalLMModel,
@@ -608,6 +635,7 @@ def optuna_objective_seq2seq_lm(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=Seq2SeqLMDataModule,
         dm_kwargs={"csv_file": csv_path},
         model_class=Seq2SeqLMModel,
@@ -638,6 +666,7 @@ def optuna_objective_masked_lm(
         num_gpus=num_gpus,
         num_cpus=num_cpus,
         config=config,
+        timeout_per_trial=timeout_per_trial,
         datamodule_class=MaskedLMDataModule,
         dm_kwargs={"csv_file": csv_path},
         model_class=MaskedLMModel,
