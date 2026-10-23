@@ -451,12 +451,19 @@ class FabricTrainer:
             loss = self.loss_fn(outputs.float(), labels)
             return loss, outputs
 
-    def train_epoch(self, epoch: int, start_time: float) -> float:
-        """Train for a single epoch and return average training loss."""
+    def train_epoch(self, epoch: int, start_time: float) -> tuple[float, float | None]:
+        """Train for a single epoch; return (average training loss, train accuracy).
+
+        Accuracy is a running argmax match over the epoch and is only
+        computed when logits and a label tensor are available
+        (``model_computes_loss=False``); LM-style tasks return ``None``.
+        """
         self.model.train()
         # Accumulate on-device and sync once per epoch (per-batch .item()
         # would force a device synchronization every step).
         loss_sum = torch.zeros((), device=self.fabric.device)
+        correct_sum = torch.zeros((), device=self.fabric.device)
+        total_count = torch.zeros((), device=self.fabric.device)
         batch_count: int = 0
 
         for batch in tqdm(
@@ -466,17 +473,37 @@ class FabricTrainer:
                 break
 
             moved = self._move_batch(batch)
+            # Labels must be referenced before _compute_loss_and_logits pops
+            # them off the batch dict.
+            labels = moved.get("labels")
             self.optimizer.zero_grad()
-            loss, _ = self._compute_loss_and_logits(moved)
+            loss, outputs = self._compute_loss_and_logits(moved)
             self.fabric.backward(loss)
             self.optimizer.step()
             loss_sum += loss.detach().float()
             batch_count += 1
 
+            if (
+                not self.model_computes_loss
+                and outputs is not None
+                and labels is not None
+            ):
+                preds = outputs.detach().argmax(dim=1)
+                correct_sum += (preds == labels).sum()
+                total_count += labels.size(0)
+
         avg_loss: float = (loss_sum / max(1, batch_count)).item()
+        total: int = int(total_count.item())
+        train_acc: float | None = int(correct_sum.item()) / total if total else None
         if batch_count:
-            logger.info(f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}")
-        return avg_loss
+            if train_acc is not None:
+                logger.info(
+                    f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}, "
+                    f"Training Accuracy: {train_acc:.4f}"
+                )
+            else:
+                logger.info(f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}")
+        return avg_loss, train_acc
 
     def validate(self, start_time: float) -> dict[str, float]:
         """Evaluate on the validation set; return a metrics dict.
@@ -585,8 +612,14 @@ class FabricTrainer:
         trials get pruned early), gives callbacks a chance to stop training,
         and checks the wall-clock time limit. The metrics dict of the epoch
         with the best validation loss is returned so hyperparameter search
-        selects on validation performance (the test split stays untouched for
-        final evaluation via ``test()``).
+        selects on validation performance (the test split is only touched
+        once, by the final evaluation after the loop).
+
+        The returned metrics dict carries the best epoch's validation suite
+        (``loss`` / ``accuracy`` / ...) plus ``train_loss`` and ``train_acc``
+        (both from the last epoch; ``train_acc`` is absent for LM-style
+        tasks), and ``val_loss`` / ``val_acc`` / ``test_loss`` / ``test_acc``
+        aliases for the AutoDW metadata upload.
         """
         logger.info("Starting training loop.")
         start_time: float = time.time()
@@ -594,9 +627,13 @@ class FabricTrainer:
         best_val_loss: float = float("inf")
         best_val_metrics: dict[str, float] = {}
         last_val: tuple[float, dict[str, float]] = (float("inf"), {})
+        last_train_loss: float = 0.0
+        last_train_acc: float | None = None
 
         for epoch in range(self.epochs):
-            train_loss = self.train_epoch(epoch, start_time)
+            train_loss, train_acc = self.train_epoch(epoch, start_time)
+            last_train_loss = train_loss
+            last_train_acc = train_acc
             val_metrics = self.validate(start_time)
             val_loss = val_metrics["loss"]
             last_val = (val_loss, val_metrics)
@@ -612,6 +649,7 @@ class FabricTrainer:
 
             logs: dict[str, float] = {
                 "train_loss": train_loss,
+                "train_acc": float(train_acc) if train_acc is not None else 0.0,
                 "val_loss": val_loss,
                 "val_acc": val_metrics.get("accuracy", 0.0),
                 "val_f1_macro": val_metrics.get("f1_macro", 0.0),
@@ -625,6 +663,30 @@ class FabricTrainer:
 
         if not math.isfinite(best_val_loss):
             best_val_loss, best_val_metrics = last_val
+
+        # Final held-out evaluation — once per fit, after selection. Extra
+        # metrics must never fail training, so a failure degrades to no test
+        # entries rather than raising.
+        try:
+            test_metrics: dict[str, float] = self.test()
+        except Exception as e:
+            logger.warning("Final test evaluation failed; skipping test metrics: %s", e)
+            test_metrics = {}
+
+        best_val_metrics["train_loss"] = float(last_train_loss)
+        if last_train_acc is not None:
+            best_val_metrics["train_acc"] = float(last_train_acc)
+        best_val_metrics["val_loss"] = float(best_val_loss)
+        best_val_metrics["val_acc"] = float(best_val_metrics.get("accuracy", 0.0))
+        best_val_metrics.update(
+            {
+                ("test_acc" if k == "accuracy" else f"test_{k}"): float(v)
+                for k, v in test_metrics.items()
+                if k != "loss"
+            }
+        )
+        if "loss" in test_metrics:
+            best_val_metrics["test_loss"] = float(test_metrics["loss"])
         return best_val_loss, best_val_metrics
 
 
@@ -805,7 +867,7 @@ class AutoGluonTrainer:
         time_limit: int,
         num_cpus: str | int = "auto",
         num_gpus: str | int = "auto",
-    ) -> tuple[pd.DataFrame, TabularPredictor, dict[str, float]]:
+    ) -> tuple[pd.DataFrame, TabularPredictor, dict[str, float], float | None]:
         """Train an AutoGluon model on the given DataFrames.
 
         Validates the target column and time limit, splits train/test if no
@@ -814,8 +876,10 @@ class AutoGluonTrainer:
         original on failure), produces the leaderboard on the test set, and
         computes a metrics suite on the same test set (best-effort).
 
-        Returns ``(leaderboard, predictor, test_metrics)`` where
-        ``test_metrics`` is empty when the suite could not be computed.
+        Returns ``(leaderboard, predictor, test_metrics, train_acc)`` where
+        ``test_metrics`` is empty when the suite could not be computed and
+        ``train_acc`` is the best model's training-set accuracy (``None``
+        for regression or when not computable).
         """
         if not isinstance(train_df, pd.DataFrame):
             raise AutoMLDataError("train_df is not a DataFrame")
@@ -890,7 +954,13 @@ class AutoGluonTrainer:
         test_metrics: dict[str, float] = _compute_tabular_test_metrics(
             predictor_clone_opt, final_test_df, target_column
         )
-        return leaderboard, predictor_clone_opt, test_metrics
+        # Accuracy of the best model on its own training data — best-effort
+        # (None for regression or when the suite could not be computed).
+        train_metrics: dict[str, float] = _compute_tabular_test_metrics(
+            predictor_clone_opt, final_train_df, target_column
+        )
+        train_acc: float | None = train_metrics.get("accuracy")
+        return leaderboard, predictor_clone_opt, test_metrics, train_acc
 
     def train_test_split(
         self, test_df: pd.DataFrame | None, train_df: pd.DataFrame | None = None

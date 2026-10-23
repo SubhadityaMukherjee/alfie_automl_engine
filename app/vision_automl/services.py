@@ -369,6 +369,8 @@ def build_upload_payload(
     metadata: dict,
     task_type: str,
     leaderboard_json: dict,
+    metrics: dict | None = None,
+    algorithm: str | None = None,
 ) -> tuple[str, dict]:
     """Return (model_id, form_data_dict) for the AutoDW upload request."""
     return _core_build_upload_payload(
@@ -381,4 +383,6 @@ def build_upload_payload(
         name=f"Vision AutoML Model - {dataset_id}",
         description="AutoML trained vision model",
         framework="pytorch",
+        metrics=metrics,
+        algorithm=algorithm,
     )

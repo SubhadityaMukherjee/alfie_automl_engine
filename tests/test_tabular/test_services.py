@@ -16,6 +16,7 @@ from app.core.exceptions import (
 from app.tabular_automl.services import (
     build_upload_payload,
     convert_leaderboard_safely,
+    extract_tabular_metrics_for_autodw,
     extract_text_feature_mapping,
     load_table,
     serialize_and_zip_predictor,
@@ -481,3 +482,80 @@ def test_build_upload_payload_raises(kwargs, expected_exc):
             metadata={},
             **kwargs,
         )
+
+
+# ---------------------------------------------------------------------------
+# extract_tabular_metrics_for_autodw
+# ---------------------------------------------------------------------------
+
+
+def test_extract_tabular_metrics_from_leaderboard_best_row():
+    leaderboard = pd.DataFrame(
+        [
+            {"model": "WeightedEnsemble_L2", "score_val": 0.91, "score_test": 0.88},
+            {"model": "LightGBM", "score_val": 0.85, "score_test": 0.83},
+        ]
+    )
+    metrics, algorithm = extract_tabular_metrics_for_autodw(leaderboard)
+    assert metrics == {"train_acc": None, "val_acc": 0.91, "test_acc": 0.88}
+    assert algorithm == "WeightedEnsemble_L2"
+
+
+def test_extract_tabular_metrics_includes_train_accuracy():
+    leaderboard = pd.DataFrame(
+        [{"model": "WeightedEnsemble_L2", "score_val": 0.91, "score_test": 0.88}]
+    )
+    metrics, _ = extract_tabular_metrics_for_autodw(leaderboard, train_acc=0.97)
+    assert metrics["train_acc"] == pytest.approx(0.97)
+
+
+def test_extract_tabular_metrics_falls_back_to_test_metrics_accuracy():
+    leaderboard = pd.DataFrame(
+        [{"model": "XGBoost", "score_val": 0.8}]  # no score_test column
+    )
+    metrics, algorithm = extract_tabular_metrics_for_autodw(
+        leaderboard, {"accuracy": 0.77, "f1_macro": 0.75}
+    )
+    assert metrics == {"train_acc": None, "val_acc": 0.8, "test_acc": 0.77}
+    assert algorithm == "XGBoost"
+
+
+def test_extract_tabular_metrics_missing_values_degrade_to_none():
+    leaderboard = pd.DataFrame([{"model": "RF", "score_val": None}])
+    metrics, algorithm = extract_tabular_metrics_for_autodw(leaderboard)
+    assert metrics == {"train_acc": None, "val_acc": None, "test_acc": None}
+    assert algorithm == "RF"
+
+
+def test_extract_tabular_metrics_empty_leaderboard():
+    metrics, algorithm = extract_tabular_metrics_for_autodw(pd.DataFrame())
+    assert metrics == {"train_acc": None, "val_acc": None, "test_acc": None}
+    assert algorithm is None
+
+
+def test_extract_tabular_metrics_numpy_scalars():
+    # pandas row dicts carry numpy scalars; they must survive float conversion.
+    leaderboard = pd.DataFrame(
+        [{"model": "CatBoost", "score_val": 0.5, "score_test": 0.4}]
+    )
+    metrics, _ = extract_tabular_metrics_for_autodw(leaderboard)
+    assert metrics["val_acc"] == 0.5
+    assert metrics["test_acc"] == 0.4
+    assert all(isinstance(v, float) for k, v in metrics.items() if k != "train_acc")
+
+
+def test_build_upload_payload_forwards_tabular_metrics():
+    metrics = {"train_acc": 0.97, "val_acc": 0.91, "test_acc": 0.88}
+    _, data = build_upload_payload(
+        "ds1",
+        "v1",
+        {},
+        "tabular_classification",
+        {"models": []},
+        metrics=metrics,
+        algorithm="WeightedEnsemble_L2",
+    )
+    assert data["training_accuracy"] == pytest.approx(0.97)
+    assert data["validation_accuracy"] == pytest.approx(0.91)
+    assert data["test_accuracy"] == pytest.approx(0.88)
+    assert data["algorithm"] == "WeightedEnsemble_L2"

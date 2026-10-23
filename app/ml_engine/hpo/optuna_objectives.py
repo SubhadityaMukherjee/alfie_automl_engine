@@ -115,7 +115,8 @@ def _optuna_objective_base(
     decay) from the task config, builds the given datamodule/model pair, saves
     the trial's feature mapping before training (so it survives pruning), and
     saves the model after a successful fit. Returns the best validation loss
-    Optuna minimizes; the test split is never touched during the search.
+    Optuna minimizes; selection only ever uses validation performance (the
+    final held-out test pass happens once, after the epoch loop).
     """
     models: list[str] = config[f"{model_size}_models"]
     model_id: str = str(trial.suggest_categorical("model_id", models))

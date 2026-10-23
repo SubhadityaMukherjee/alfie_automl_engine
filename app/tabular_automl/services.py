@@ -228,7 +228,7 @@ def train_automl(
     num_cpus: int | str = "auto",
     num_gpus: int | str = "auto",
 ):
-    """Train an AutoML model and return (leaderboard, predictor, test_metrics)."""
+    """Train an AutoML model and return (leaderboard, predictor, test_metrics, train_acc)."""
 
     if not target_column_name or not isinstance(target_column_name, str):
         raise AutoMLDataError("target_column_name must be a non-empty string")
@@ -569,6 +569,8 @@ def build_upload_payload(
     metadata: dict,
     task_type: str,
     leaderboard_json: list | dict,
+    metrics: dict | None = None,
+    algorithm: str | None = None,
 ) -> tuple[str, dict]:
     """Return (model_id, form_data_dict) for the AutoDW upload request."""
     instructions = deployment_instructions()
@@ -586,4 +588,50 @@ def build_upload_payload(
         description="AutoML trained model for tabular data",
         framework="sklearn",
         extra_fields=extra,
+        metrics=metrics,
+        algorithm=algorithm,
     )
+
+
+def to_float_or_none(value) -> float | None:
+    """Best-effort float conversion for AutoGluon / pandas scalar values."""
+    try:
+        if value is None:
+            return None
+        if hasattr(value, "item"):
+            value = value.item()
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def extract_tabular_metrics_for_autodw(
+    leaderboard,
+    test_metrics: dict[str, float] | None = None,
+    train_acc: float | None = None,
+) -> tuple[dict, str | None]:
+    """Pull best-row scores from an AutoGluon leaderboard for AutoDW fields.
+
+    Returns ``(metrics, algorithm)`` where ``metrics`` uses the internal keys
+    expected by ``build_upload_payload`` (``val_acc`` / ``test_acc`` /
+    ``train_acc``) and ``algorithm`` is the best model's name. ``score_val``
+    maps to the validation field, ``score_test`` to the test field (falling
+    back to the engine's computed test ``accuracy`` when AutoGluon did not
+    report a test score), and ``train_acc`` is the best model's accuracy on
+    its own training data. Missing values degrade to ``None`` — metadata
+    extraction must never fail an upload.
+    """
+    best_row: dict = {}
+    if isinstance(leaderboard, pd.DataFrame) and not leaderboard.empty:
+        best_row = leaderboard.iloc[0].to_dict()
+
+    algorithm = best_row.get("model")
+    test_acc = to_float_or_none(best_row.get("score_test"))
+    if test_acc is None and test_metrics:
+        test_acc = to_float_or_none(test_metrics.get("accuracy"))
+    metrics: dict = {
+        "train_acc": to_float_or_none(train_acc),
+        "val_acc": to_float_or_none(best_row.get("score_val")),
+        "test_acc": test_acc,
+    }
+    return metrics, str(algorithm) if algorithm is not None else None

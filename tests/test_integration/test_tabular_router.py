@@ -387,7 +387,7 @@ def test_best_model_training_unexpected_error(
 @patch("app.tabular_automl.orchestrator.serialize_and_zip_predictor")
 @patch(
     "app.tabular_automl.orchestrator.train_automl",
-    return_value=(MagicMock(), MagicMock(), {}),
+    return_value=(MagicMock(), MagicMock(), {}, None),
 )
 @patch("app.tabular_automl.orchestrator.validate_tabular_inputs", return_value=None)
 @patch(

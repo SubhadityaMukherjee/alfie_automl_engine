@@ -25,7 +25,10 @@ from typing import Iterator
 from app.core.concurrency import offload
 from app.core.exceptions import AutoDWUploadError, AutoMLValidationError
 from app.core.process_log import step
-from app.core.service_helpers import uploaded_model_version
+from app.core.service_helpers import (
+    extract_optuna_metrics_for_autodw,
+    uploaded_model_version,
+)
 from app.ml_engine.tasks import SUPPORTED_AUDIO_TASK_TYPES
 from app.audio_automl.services import (
     build_upload_payload,
@@ -205,12 +208,15 @@ async def run_audio_pipeline(
 
         # 8. Upload.
         with step("build_upload_payload"):
+            metrics, algorithm = extract_optuna_metrics_for_autodw(optuna_result)
             model_id, payload = build_upload_payload(
                 req.dataset_id,
                 req.dataset_version,
                 metadata,
                 req.task_type,
                 leaderboard_json,
+                metrics=metrics,
+                algorithm=algorithm,
             )
         with step("upload_model"):
             upload_resp = await offload(
