@@ -1,7 +1,9 @@
 """Tests for app/ml_engine/trainer.py — EarlyStopping (fast, no ML)."""
 
 import math
+import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -9,11 +11,12 @@ import optuna
 import pytest
 import torch
 
-from app.core.exceptions import AutoMLConfigError
+from app.core.exceptions import AutoMLConfigError, AutoMLTrainingError
 from app.ml_engine.hpo.optuna_objectives import OBJECTIVE_REGISTRY
 from app.ml_engine.configs import SUPPORTED_TASK_TYPES
 from app.ml_engine.trainer import (
     EarlyStopping,
+    FabricTrainer,
     _clamp_per_trial_timeout,
     _compute_classification_metrics,
     _compute_regression_metrics,
@@ -531,3 +534,78 @@ def test_run_optuna_search_without_timeout_has_no_per_trial_budget(
 
     assert result["best_value"] == 0.25
     assert received == [None, None]
+
+
+# ---------------------------------------------------------------------------
+# stopped-before-training guards (no fake metrics from empty passes)
+# ---------------------------------------------------------------------------
+
+
+def _bare_trainer(**attrs) -> FabricTrainer:
+    """A FabricTrainer built without __init__, stubbed for loop tests."""
+    trainer = FabricTrainer.__new__(FabricTrainer)
+    trainer.fabric = SimpleNamespace(device="cpu")
+    trainer.model = SimpleNamespace(train=lambda: None, eval=lambda: None)
+    trainer.model_computes_loss = False
+    trainer.loss_fn = None
+    trainer.time_limit = None
+    trainer.epochs = 1
+    trainer.callbacks = []
+    trainer.train_loader = []
+    trainer.val_loader = []
+    trainer.test_loader = []
+    for key, value in attrs.items():
+        setattr(trainer, key, value)
+    return trainer
+
+
+def test_train_epoch_without_batches_returns_none():
+    trainer = _bare_trainer()
+    assert trainer.train_epoch(0, start_time=time.time()) == (None, None)
+
+
+def test_validate_without_batches_reports_inf_loss():
+    trainer = _bare_trainer()
+    metrics = trainer.validate(start_time=time.time())
+    assert metrics["loss"] == math.inf
+
+
+def test_test_without_batches_returns_no_metrics():
+    trainer = _bare_trainer()
+    assert trainer.test() == {}
+
+
+def test_fit_returns_aliases_after_normal_training():
+    trainer = _bare_trainer(epochs=2)
+    trainer.train_epoch = lambda epoch, start_time: (0.5, 0.9)
+    trainer.validate = lambda start_time: {"loss": 0.4, "accuracy": 0.91}
+    trainer.test = lambda: {"loss": 0.45, "accuracy": 0.88, "f1_macro": 0.86}
+
+    best_loss, metrics = trainer.fit()
+
+    assert best_loss == 0.4
+    assert metrics["train_loss"] == pytest.approx(0.5)
+    assert metrics["train_acc"] == pytest.approx(0.9)
+    assert metrics["val_loss"] == pytest.approx(0.4)
+    assert metrics["val_acc"] == pytest.approx(0.91)
+    assert metrics["test_loss"] == pytest.approx(0.45)
+    assert metrics["test_acc"] == pytest.approx(0.88)
+    assert metrics["test_f1_macro"] == pytest.approx(0.86)
+
+
+def test_fit_raises_when_time_limit_fired_before_any_batch():
+    trainer = _bare_trainer()
+    trainer.train_epoch = lambda epoch, start_time: (None, None)
+
+    with pytest.raises(AutoMLTrainingError):
+        trainer.fit()
+
+
+def test_fit_prunes_trial_when_time_limit_fired_before_any_batch():
+    trainer = _bare_trainer()
+    trainer.train_epoch = lambda epoch, start_time: (None, None)
+    study = optuna.create_study(direction="minimize")
+    trial = study.ask()
+
+    with pytest.raises(optuna.TrialPruned):
+        trainer.fit(trial=trial)
