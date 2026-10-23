@@ -645,12 +645,19 @@ class FabricTrainer:
         ``AutoMLTrainingError`` (standalone) when the time limit fired before
         a single batch was trained — an untrained model must never be
         reported as a real result.
+
+        On return the model carries the best epoch's weights (snapshot on
+        each validation improvement, restored after the loop), so the final
+        test pass and any serialization describe the same checkpoint as the
+        reported metrics — including when training was stopped early by the
+        time limit.
         """
         logger.info("Starting training loop.")
         start_time: float = time.time()
 
         best_val_loss: float = float("inf")
         best_val_metrics: dict[str, float] = {}
+        best_state: dict[str, torch.Tensor] | None = None
         last_val: tuple[float, dict[str, float]] = (float("inf"), {})
         last_train_loss: float = 0.0
         last_train_acc: float | None = None
@@ -671,6 +678,13 @@ class FabricTrainer:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_val_metrics = dict(val_metrics)
+                # Snapshot the weights of the best epoch so the final test
+                # pass and serialization describe the same checkpoint as the
+                # reported metrics (matters when stopped early).
+                best_state = {
+                    k: v.detach().cpu().clone()
+                    for k, v in self.model.state_dict().items()
+                }
 
             if trial is not None:
                 trial.report(val_loss, step=epoch)
@@ -702,6 +716,14 @@ class FabricTrainer:
 
         if not math.isfinite(best_val_loss):
             best_val_loss, best_val_metrics = last_val
+
+        # Restore the best epoch's weights so the final test pass — and the
+        # model the caller serializes — match the reported metrics. Without
+        # any best snapshot (validation never produced a finite loss) the
+        # last weights are the only thing available.
+        if best_state is not None:
+            self.model.load_state_dict(best_state)
+            logger.info("Restored best-epoch weights (val_loss %.4f)", best_val_loss)
 
         # Final held-out evaluation — once per fit, after selection. Extra
         # metrics must never fail training, so a failure degrades to no test

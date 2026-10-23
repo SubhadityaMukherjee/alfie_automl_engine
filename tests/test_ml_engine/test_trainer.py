@@ -545,7 +545,7 @@ def _bare_trainer(**attrs) -> FabricTrainer:
     """A FabricTrainer built without __init__, stubbed for loop tests."""
     trainer = FabricTrainer.__new__(FabricTrainer)
     trainer.fabric = SimpleNamespace(device="cpu")
-    trainer.model = SimpleNamespace(train=lambda: None, eval=lambda: None)
+    trainer.model = torch.nn.Linear(2, 2)
     trainer.model_computes_loss = False
     trainer.loss_fn = None
     trainer.time_limit = None
@@ -591,6 +591,27 @@ def test_fit_returns_aliases_after_normal_training():
     assert metrics["test_loss"] == pytest.approx(0.45)
     assert metrics["test_acc"] == pytest.approx(0.88)
     assert metrics["test_f1_macro"] == pytest.approx(0.86)
+
+
+def test_fit_restores_best_epoch_weights():
+    model = torch.nn.Linear(2, 2)
+    trainer = _bare_trainer(epochs=2, model=model)
+
+    def train_epoch(epoch, start_time):
+        # Mark the weights per epoch so we can tell which epoch survives.
+        model.weight.data.fill_(float(epoch + 1))
+        return 0.5, 0.9
+
+    losses = iter([0.4, 0.6])  # epoch 1 improves, epoch 2 gets worse
+    trainer.train_epoch = train_epoch
+    trainer.validate = lambda start_time: {"loss": next(losses), "accuracy": 0.9}
+    trainer.test = lambda: {"loss": 0.45, "accuracy": 0.88}
+
+    best_loss, _ = trainer.fit()
+
+    assert best_loss == pytest.approx(0.4)
+    # Weights are the best epoch's (epoch 1), not the last epoch's (epoch 2).
+    assert torch.all(model.weight == 1.0)
 
 
 def test_fit_raises_when_time_limit_fired_before_any_batch():
