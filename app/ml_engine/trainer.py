@@ -450,12 +450,18 @@ class FabricTrainer:
             loss = self.loss_fn(outputs.float(), labels)
             return loss, outputs
 
-    def train_epoch(self, epoch: int, start_time: float) -> tuple[float, float | None]:
+    def train_epoch(
+        self, epoch: int, start_time: float
+    ) -> tuple[float | None, float | None]:
         """Train for a single epoch; return (average training loss, train accuracy).
 
         Accuracy is a running argmax match over the epoch and is only
         computed when logits and a label tensor are available
         (``model_computes_loss=False``); LM-style tasks return ``None``.
+
+        Returns ``None`` for the loss when not a single batch was trained
+        (e.g. the time limit fired immediately) — callers must not treat
+        that as a real result.
         """
         self.model.train()
         # Accumulate on-device and sync once per epoch (per-batch .item()
@@ -491,17 +497,22 @@ class FabricTrainer:
                 correct_sum += (preds == labels).sum()
                 total_count += labels.size(0)
 
-        avg_loss: float = (loss_sum / max(1, batch_count)).item()
+        if not batch_count:
+            logger.warning(
+                "Epoch %d trained no batches (time limit); skipping", epoch + 1
+            )
+            return None, None
+
+        avg_loss: float = (loss_sum / batch_count).item()
         total: int = int(total_count.item())
         train_acc: float | None = int(correct_sum.item()) / total if total else None
-        if batch_count:
-            if train_acc is not None:
-                logger.info(
-                    f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}, "
-                    f"Training Accuracy: {train_acc:.4f}"
-                )
-            else:
-                logger.info(f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}")
+        if train_acc is not None:
+            logger.info(
+                f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}, "
+                f"Training Accuracy: {train_acc:.4f}"
+            )
+        else:
+            logger.info(f"Epoch {epoch + 1} Training Loss: {avg_loss:.4f}")
         return avg_loss, train_acc
 
     def validate(self, start_time: float) -> dict[str, float]:
@@ -541,7 +552,13 @@ class FabricTrainer:
                     all_labels.append(labels.detach().cpu())
                 batch_count += 1
 
-        avg_loss: float = (val_loss / max(1, batch_count)).item()
+        if not batch_count:
+            # An empty validation pass must never look like a perfect 0.0
+            # loss — inf loses every best-epoch comparison in fit().
+            logger.warning("Validation ran no batches; reporting loss=inf")
+            return {"loss": float("inf")}
+
+        avg_loss: float = (val_loss / batch_count).item()
         metrics: dict[str, float] = {"loss": avg_loss}
 
         if all_probs:
@@ -586,7 +603,11 @@ class FabricTrainer:
                     all_labels.append(labels.detach().cpu())
                 batch_count += 1
 
-        avg_loss: float = (test_loss / max(1, batch_count)).item()
+        if not batch_count:
+            logger.warning("Test set produced no batches; skipping test metrics")
+            return {}
+
+        avg_loss: float = (test_loss / batch_count).item()
         metrics: dict[str, float] = {"loss": avg_loss}
 
         if all_probs:
@@ -619,18 +640,35 @@ class FabricTrainer:
         (both from the last epoch; ``train_acc`` is absent for LM-style
         tasks), and ``val_loss`` / ``val_acc`` / ``test_loss`` / ``test_acc``
         aliases for the AutoDW metadata upload.
+
+        Raises ``optuna.TrialPruned`` (inside a search) or
+        ``AutoMLTrainingError`` (standalone) when the time limit fired before
+        a single batch was trained — an untrained model must never be
+        reported as a real result.
+
+        On return the model carries the best epoch's weights (snapshot on
+        each validation improvement, restored after the loop), so the final
+        test pass and any serialization describe the same checkpoint as the
+        reported metrics — including when training was stopped early by the
+        time limit.
         """
         logger.info("Starting training loop.")
         start_time: float = time.time()
 
         best_val_loss: float = float("inf")
         best_val_metrics: dict[str, float] = {}
+        best_state: dict[str, torch.Tensor] | None = None
         last_val: tuple[float, dict[str, float]] = (float("inf"), {})
         last_train_loss: float = 0.0
         last_train_acc: float | None = None
+        trained_any_batch = False
 
         for epoch in range(self.epochs):
             train_loss, train_acc = self.train_epoch(epoch, start_time)
+            if train_loss is None:
+                # Time limit fired before this epoch did any work.
+                break
+            trained_any_batch = True
             last_train_loss = train_loss
             last_train_acc = train_acc
             val_metrics = self.validate(start_time)
@@ -640,6 +678,13 @@ class FabricTrainer:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_val_metrics = dict(val_metrics)
+                # Snapshot the weights of the best epoch so the final test
+                # pass and serialization describe the same checkpoint as the
+                # reported metrics (matters when stopped early).
+                best_state = {
+                    k: v.detach().cpu().clone()
+                    for k, v in self.model.state_dict().items()
+                }
 
             if trial is not None:
                 trial.report(val_loss, step=epoch)
@@ -660,8 +705,25 @@ class FabricTrainer:
             if self._check_time_limit(start_time):
                 break
 
+        if not trained_any_batch:
+            # No real training happened — any loss/accuracy would be fake.
+            # A stopped-before-started trial is a pruned trial, not a result.
+            if trial is not None:
+                raise optuna.TrialPruned()
+            raise AutoMLTrainingError(
+                "Training stopped before any batch completed; no metrics to report"
+            )
+
         if not math.isfinite(best_val_loss):
             best_val_loss, best_val_metrics = last_val
+
+        # Restore the best epoch's weights so the final test pass — and the
+        # model the caller serializes — match the reported metrics. Without
+        # any best snapshot (validation never produced a finite loss) the
+        # last weights are the only thing available.
+        if best_state is not None:
+            self.model.load_state_dict(best_state)
+            logger.info("Restored best-epoch weights (val_loss %.4f)", best_val_loss)
 
         # Final held-out evaluation — once per fit, after selection. Extra
         # metrics must never fail training, so a failure degrades to no test
