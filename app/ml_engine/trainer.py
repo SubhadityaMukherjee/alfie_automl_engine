@@ -5,7 +5,6 @@ search (``FabricTrainer`` / ``run_optuna_search``) plus the AutoGluon-based
 tabular trainer (``AutoGluonTrainer``).
 """
 
-import functools
 import logging
 import math
 import shutil
@@ -693,6 +692,28 @@ class FabricTrainer:
 # ---------------------------------------------------------------------------
 # run_optuna_search
 # ---------------------------------------------------------------------------
+def _clamp_per_trial_timeout(
+    timeout_per_trial: float | None,
+    deadline: float | None,
+    now: float,
+) -> float | None:
+    """Clamp a trial's budget to the study's remaining overall time.
+
+    ``study.optimize(timeout=...)`` only stops *new* trials from starting; a
+    running trial would otherwise finish in full and blow the caller's
+    ``time_budget``. Clamping each trial's ``time_limit`` to the remaining
+    deadline bounds the total overshoot by preprocessing + one batch instead
+    of a full trial. Returns ``None`` when no budget applies; raises
+    ``optuna.TrialPruned`` when the deadline has already passed.
+    """
+    if deadline is None:
+        return timeout_per_trial
+    remaining: float = deadline - now
+    if remaining <= 0:
+        raise optuna.TrialPruned()
+    return remaining if timeout_per_trial is None else min(timeout_per_trial, remaining)
+
+
 def run_optuna_search(
     *,
     task_type: str = "image_classification",
@@ -714,6 +735,11 @@ def run_optuna_search(
     ``extra_kwargs`` are forwarded to the objective (e.g. ``text_column`` for
     text tasks).
 
+    When ``timeout`` is set it is a hard wall-clock cap on the whole search:
+    each trial receives an even share as ``timeout_per_trial``, clamped to
+    the remaining overall time, so a running trial never runs past the
+    deadline by more than its current batch.
+
     Raises:
         ValueError: If ``task_type`` is not in ``OBJECTIVE_REGISTRY``.
     """
@@ -731,13 +757,16 @@ def run_optuna_search(
     run_dir.mkdir(exist_ok=True)
 
     pruner = optuna.pruners.SuccessiveHalvingPruner(
-        min_resource=10,
+        # Prune from epoch 2 on: with max_epochs of 10-20 across configs,
+        # min_resource=10 effectively never pruned anything.
+        min_resource=2,
         reduction_factor=3,
         min_early_stopping_rate=0,
     )
     sampler = optuna.samplers.TPESampler(seed=42)
     study = optuna.create_study(direction="minimize", sampler=sampler, pruner=pruner)
     timeout_per_trial = timeout / max(n_trials, 1) if timeout else None
+    deadline: float | None = (time.time() + timeout) if timeout else None
 
     # Build keyword arguments for the objective
     objective_kwargs: dict = {
@@ -756,7 +785,15 @@ def run_optuna_search(
     }
 
     study.optimize(
-        functools.partial(objective_fn, **objective_kwargs),
+        lambda trial: objective_fn(
+            trial,
+            **{
+                **objective_kwargs,
+                "timeout_per_trial": _clamp_per_trial_timeout(
+                    timeout_per_trial, deadline, time.time()
+                ),
+            },
+        ),
         n_trials=n_trials,
         timeout=timeout,
     )
