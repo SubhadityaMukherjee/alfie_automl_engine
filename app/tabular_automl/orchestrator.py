@@ -46,6 +46,7 @@ from app.tabular_automl.services import (
     build_upload_payload,
     convert_leaderboard_safely,
     download_dataset,
+    extract_tabular_metrics_for_autodw,
     fetch_dataset_metadata,
     resolve_download_url,
     serialize_and_zip_predictor,
@@ -260,7 +261,7 @@ async def run_training_pipeline(
         save_model_path = tmp_path / "automl_model"
         try:
             with step("train"):
-                leaderboard, predictor, test_metrics = await offload(
+                leaderboard, predictor, test_metrics, train_acc = await offload(
                     train_automl,
                     dataset_path=dataset_path,
                     save_model_path=save_model_path,
@@ -303,12 +304,17 @@ async def run_training_pipeline(
         # 7. Upload the model and leaderboard back to AutoDW.
         try:
             with step("build_upload_payload"):
+                metrics, algorithm = extract_tabular_metrics_for_autodw(
+                    leaderboard, test_metrics, train_acc=train_acc
+                )
                 model_id, payload = build_upload_payload(
                     req.dataset_id,
                     req.dataset_version,
                     metadata,
                     req.task_type,
                     leaderboard_json,
+                    metrics=metrics,
+                    algorithm=algorithm,
                 )
         except Exception as e:
             logger.error("Failed to build upload payload: %s", e)

@@ -8,6 +8,7 @@ import datetime
 import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import requests
 
@@ -289,8 +290,23 @@ def build_upload_payload(
     description: str = "AutoML trained model",
     framework: str = "sklearn",
     extra_fields: dict | None = None,
+    metrics: dict | None = None,
+    algorithm: str | None = None,
 ) -> tuple[str, dict]:
-    """Return ``(model_id, form_data_dict)`` for the AutoDW upload request."""
+    """Return ``(model_id, form_data_dict)`` for the AutoDW upload request.
+
+    When ``metrics`` is provided, maps common training keys onto AutoDW's
+    scalar metadata fields:
+
+    * ``train_acc`` → ``training_accuracy``
+    * ``val_acc`` → ``validation_accuracy``
+    * ``test_acc`` → ``test_accuracy``
+    * ``train_loss`` → ``training_loss``
+
+    ``algorithm`` is forwarded as-is when set (best model id / name).
+    Fields are only included when the value is present and parseable, so
+    partial metrics never break an upload.
+    """
 
     if not dataset_id or not isinstance(dataset_id, str):
         raise AutoMLValidationError("dataset_id must be a non-empty string")
@@ -310,7 +326,7 @@ def build_upload_payload(
     if not isinstance(version, str):
         version = "v1"
 
-    data = {
+    data: dict[str, Any] = {
         "model_id": model_id,
         "name": name or f"AutoML Model - {model_id}",
         "description": description,
@@ -321,7 +337,64 @@ def build_upload_payload(
         "leaderboard": leaderboard_str,
     }
 
+    if algorithm is not None:
+        data["algorithm"] = algorithm
+
+    metrics = metrics or {}
+    # Optional AutoDW scalar fields — include only when present/parseable.
+    if metrics.get("train_acc") is not None:
+        data["training_accuracy"] = float(metrics["train_acc"])
+    if metrics.get("val_acc") is not None:
+        data["validation_accuracy"] = float(metrics["val_acc"])
+    if metrics.get("test_acc") is not None:
+        data["test_accuracy"] = float(metrics["test_acc"])
+    if metrics.get("train_loss") is not None:
+        data["training_loss"] = float(metrics["train_loss"])
+
     if extra_fields:
         data.update(extra_fields)
 
     return model_id, data
+
+
+def extract_optuna_metrics_for_autodw(
+    optuna_result: dict | None,
+) -> tuple[dict, str | None]:
+    """Map a generic-engine Optuna result onto AutoDW's scalar metric fields.
+
+    Returns ``(metrics, algorithm)`` where ``metrics`` uses the internal keys
+    expected by ``build_upload_payload`` (``val_acc`` / ``test_acc`` /
+    ``train_loss``) and ``algorithm`` is the winning model id from the search
+    params. Both degrade to empty/``None`` when the result carries nothing —
+    metadata extraction must never fail an upload.
+    """
+    result = optuna_result or {}
+    best_metrics = result.get("best_metrics") or {}
+    best_params = result.get("best_params") or {}
+    if not isinstance(best_metrics, dict):
+        best_metrics = {}
+    if not isinstance(best_params, dict):
+        best_params = {}
+
+    metrics: dict = {
+        "train_acc": to_float_or_none(best_metrics.get("train_acc")),
+        "val_acc": to_float_or_none(
+            best_metrics.get("val_acc", best_metrics.get("accuracy"))
+        ),
+        "test_acc": to_float_or_none(best_metrics.get("test_acc")),
+        "train_loss": to_float_or_none(best_metrics.get("train_loss")),
+    }
+    algorithm = best_params.get("model_id")
+    return metrics, str(algorithm) if algorithm is not None else None
+
+
+def to_float_or_none(value) -> float | None:
+    """Best-effort float conversion for numpy / AutoGluon / torch scalars."""
+    try:
+        if value is None:
+            return None
+        if hasattr(value, "item"):
+            value = value.item()
+        return float(value)
+    except (TypeError, ValueError):
+        return None

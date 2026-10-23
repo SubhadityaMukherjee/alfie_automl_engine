@@ -404,6 +404,22 @@ def test_build_upload_payload_leaderboard_is_valid_json(fake_metadata):
     assert parsed == lb
 
 
+def test_build_upload_payload_forwards_metrics_and_algorithm(fake_metadata):
+    _, data = build_upload_payload(
+        "ds1",
+        "v1",
+        fake_metadata,
+        "classification",
+        {},
+        metrics={"val_acc": 0.9, "test_acc": 0.85, "train_loss": 0.1},
+        algorithm="vit_small_patch16_224",
+    )
+    assert data["validation_accuracy"] == pytest.approx(0.9)
+    assert data["test_accuracy"] == pytest.approx(0.85)
+    assert data["training_loss"] == pytest.approx(0.1)
+    assert data["algorithm"] == "vit_small_patch16_224"
+
+
 # ---------------------------------------------------------------------------
 # serialize_and_zip_model
 # ---------------------------------------------------------------------------

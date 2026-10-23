@@ -156,7 +156,7 @@ def test_train_invalid_target_column(
 def test_train_leaderboard_works(
     trainer_class: AutoGluonTrainer, small_df: pd.DataFrame
 ):
-    leaderboard, _, test_metrics = trainer_class.train(
+    leaderboard, _, test_metrics, train_acc = trainer_class.train(
         train_df=small_df, test_df=None, target_column="target", time_limit=20
     )
     for key in ["model", "eval_metric", "score_val", "score_test", "fit_time"]:
@@ -164,6 +164,9 @@ def test_train_leaderboard_works(
     # Binary target -> the test-set metric suite is computed.
     assert "accuracy" in test_metrics
     assert 0.0 <= test_metrics["accuracy"] <= 1.0
+    # Binary target -> training accuracy of the best model is reported.
+    assert train_acc is not None
+    assert 0.0 <= train_acc <= 1.0
 
 
 def test_train_leaderboard_exception(
