@@ -1,5 +1,6 @@
 import shutil
 import tempfile
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -253,3 +254,107 @@ def test_tabular_test_metrics_excludes_out_of_vocabulary_labels():
     metrics = _compute_tabular_test_metrics(predictor, test_df, "target")
 
     assert metrics["accuracy"] == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# emissions tracking
+# ---------------------------------------------------------------------------
+
+
+class _FakePredictorForEmissions:
+    """Predictor stand-in for emissions wiring tests (no real AutoGluon)."""
+
+    problem_type = ""  # unknown type -> the metrics suite is skipped
+
+    def __init__(self, label=None, path=None):
+        self.label = label
+        self.path = path
+
+    def fit(self, train_data=None, time_limit=None, num_gpus=None, num_cpus=None):
+        return self
+
+    def clone_for_deployment(self, path):
+        # Raise so train() falls back to the base predictor (warning path).
+        raise RuntimeError("clone unsupported in fake")
+
+    def leaderboard(self, data):
+        return pd.DataFrame({"model": ["FakeModel"], "score_val": [0.9]})
+
+
+def test_train_writes_emissions_csv_and_summary(tmp_path, monkeypatch, small_df):
+    """train() writes emissions.csv into save_model_path and stores the
+    summary on trainer.emissions_summary."""
+    import csv
+
+    monkeypatch.setenv("EMISSIONS_TRACKING_ENABLED", "true")
+    save_path = tmp_path / "automl_model"
+    save_path.mkdir()
+
+    header = [
+        "timestamp",
+        "project_name",
+        "duration",
+        "emissions",
+        "energy_consumed",
+        "country_name",
+        "country_iso_code",
+    ]
+
+    def fake_tracker(**kwargs):
+        output_file = Path(kwargs["output_dir"]) / kwargs["output_file"]
+
+        class _Fake:
+            def start(self):
+                pass
+
+            def stop(self):
+                with open(output_file, "w", newline="", encoding="utf-8") as fh:
+                    writer = csv.DictWriter(fh, fieldnames=header)
+                    writer.writeheader()
+                    writer.writerow(
+                        {
+                            "project_name": kwargs["project_name"],
+                            "duration": "2.5",
+                            "emissions": "5e-07",
+                            "energy_consumed": "8e-07",
+                            "country_name": "Netherlands",
+                            "country_iso_code": "NLD",
+                        }
+                    )
+                return 5e-07
+
+        return _Fake()
+
+    monkeypatch.setattr("app.core.emissions._load_tracker", fake_tracker)
+
+    trainer = AutoGluonTrainer(
+        save_model_path=save_path, PredictorClass=_FakePredictorForEmissions
+    )
+    _, _, _, _ = trainer.train(
+        train_df=small_df, test_df=None, target_column="target", time_limit=20
+    )
+
+    assert trainer.emissions_summary is not None
+    assert trainer.emissions_summary["emissions_kg"] == 5e-07
+    assert trainer.emissions_summary["duration_seconds"] == 2.5
+    assert trainer.emissions_summary["country_iso_code"] == "NLD"
+    # The CSV lives in save_model_path, so serialize_and_zip_predictor ships
+    # it inside automl_predictor.zip.
+    assert (save_path / "emissions.csv").exists()
+
+
+def test_train_emissions_disabled_writes_no_csv(tmp_path, small_df):
+    """With tracking disabled (root conftest default) no CSV is written and
+    the summary stays None — never a fake zero."""
+    save_path = tmp_path / "automl_model"
+    save_path.mkdir()
+
+    trainer = AutoGluonTrainer(
+        save_model_path=save_path, PredictorClass=_FakePredictorForEmissions
+    )
+    _, _, _, _ = trainer.train(
+        train_df=small_df, test_df=None, target_column="target", time_limit=20
+    )
+
+    assert trainer.emissions_summary is None
+    assert not (save_path / "emissions.csv").exists()

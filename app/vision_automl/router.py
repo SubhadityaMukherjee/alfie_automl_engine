@@ -178,6 +178,7 @@ async def find_best_model_for_vision(
                 "leaderboard": result.leaderboard,
                 "model_id": result.model_id,
                 "version": result.version,
+                "emissions": result.emissions,
                 "deployment_instructions": render_deployment_instructions(
                     deployment_instructions
                 ),
@@ -279,6 +280,7 @@ async def find_best_model_for_multimodal_vision(
                 "auxiliary_columns": result.auxiliary_columns,
                 "model_id": result.model_id,
                 "version": result.version,
+                "emissions": result.emissions,
                 "deployment_instructions": render_deployment_instructions(
                     deployment_instructions
                 ),

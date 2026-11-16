@@ -30,6 +30,7 @@ from transformers import (
 from app.core.config import get_settings
 from app.core.exceptions import AutoMLDataError, AutoMLRuntimeError
 
+from .augmentation import build_image_augmentation, build_video_augmentation
 from .dataset import (
     CausalLMFromCSVDataset,
     ImageClassificationFromCSVDataset,
@@ -253,6 +254,7 @@ class ImageClassificationDataModule(BaseDataModule):
         batch_size: int = DEFAULT_BATCH_SIZE,
         num_workers: int = DEFAULT_NUM_WORKERS,
         transform: Callable | None = None,
+        augment: bool = True,
         shuffle: bool = True,
         val_split: float = DEFAULT_VAL_SPLIT,
         test_split: float = DEFAULT_TEST_SPLIT,
@@ -263,6 +265,7 @@ class ImageClassificationDataModule(BaseDataModule):
         self.img_col: str = img_col
         self.label_col: str = label_col
         self.transform: Callable | None = transform
+        self.augment: bool = augment
         self.train_dataset: ImageClassificationFromCSVDataset | None = None
         self.val_dataset: ImageClassificationFromCSVDataset | None = None
         self.test_dataset: ImageClassificationFromCSVDataset | None = None
@@ -286,6 +289,14 @@ class ImageClassificationDataModule(BaseDataModule):
         """
         return True
 
+    def _augment_enabled(self) -> bool:
+        """Whether default augmentation may be applied to the training split.
+
+        Subclasses whose labels depend on pixel geometry (keypoints, masks,
+        boxes) disable it so augmentations never misalign their labels.
+        """
+        return True
+
     def setup(self) -> None:
         """Split the CSV, build the image datasets, and load the image processor."""
         df = self._read_csv(self.csv_file)
@@ -306,13 +317,20 @@ class ImageClassificationDataModule(BaseDataModule):
             else None
         )
 
+        # Augmentations go to the training split only, and only when the
+        # caller did not supply an explicit transform of their own.
+        train_transform = self.transform
+        if train_transform is None and self.augment and self._augment_enabled():
+            train_transform = build_image_augmentation()
+            logger.info("Default image augmentation enabled for the training split")
+
         try:
             self.train_dataset = ImageClassificationFromCSVDataset(
                 csv_file=train_df,
                 root_dir=self.root_dir,
                 img_col=self.img_col,
                 label_col=self.label_col,
-                transform=self.transform,
+                transform=train_transform,
                 decode_size=decode_size,
             )
             self.val_dataset = ImageClassificationFromCSVDataset(
@@ -414,6 +432,7 @@ class MultimodalClassificationDataModule(BaseDataModule):
         batch_size: int = DEFAULT_BATCH_SIZE,
         num_workers: int = DEFAULT_NUM_WORKERS,
         transform: Callable | None = None,
+        augment: bool = True,
         shuffle: bool = True,
         val_split: float = DEFAULT_VAL_SPLIT,
         test_split: float = DEFAULT_TEST_SPLIT,
@@ -425,6 +444,7 @@ class MultimodalClassificationDataModule(BaseDataModule):
         self.label_col: str = label_col
         self.auxiliary_columns: list[str] = auxiliary_columns or []
         self.transform: Callable | None = transform
+        self.augment: bool = augment
         self.train_dataset: MultimodalClassificationDataset | None = None
         self.val_dataset: MultimodalClassificationDataset | None = None
         self.test_dataset: MultimodalClassificationDataset | None = None
@@ -476,6 +496,13 @@ class MultimodalClassificationDataModule(BaseDataModule):
 
         decode_size = _processor_draft_size(self.processor)
 
+        # Augmentations go to the training split only, and only when the
+        # caller did not supply an explicit transform of their own.
+        train_transform = self.transform
+        if train_transform is None and self.augment:
+            train_transform = build_image_augmentation()
+            logger.info("Default image augmentation enabled for the training split")
+
         try:
             self.train_dataset = MultimodalClassificationDataset(
                 csv_file=train_df,
@@ -483,7 +510,7 @@ class MultimodalClassificationDataModule(BaseDataModule):
                 img_col=self.img_col,
                 label_col=self.label_col,
                 auxiliary_columns=self.auxiliary_columns,
-                transform=self.transform,
+                transform=train_transform,
                 decode_size=decode_size,
             )
             self.val_dataset = MultimodalClassificationDataset(
@@ -1087,6 +1114,7 @@ class VideoClassificationDataModule(BaseDataModule):
         label_col: str = "label",
         class_labels_col: str = "class_labels",
         num_frames: int = 8,
+        augment: bool = True,
         batch_size: int = DEFAULT_BATCH_SIZE,
         num_workers: int = DEFAULT_NUM_WORKERS,
         val_split: float = DEFAULT_VAL_SPLIT,
@@ -1099,6 +1127,7 @@ class VideoClassificationDataModule(BaseDataModule):
         self.label_col = label_col
         self.class_labels_col = class_labels_col
         self.num_frames = num_frames
+        self.augment = augment
         self.processor: AutoImageProcessor | None = None
         self.train_df: pd.DataFrame | None = None
         self.val_df: pd.DataFrame | None = None
@@ -1176,13 +1205,16 @@ class VideoClassificationDataModule(BaseDataModule):
             logger.error("Failed to load processor from %s: %s", self.hf_model_id, e)
             raise
 
-    def _make_dataset(self, df: pd.DataFrame) -> Dataset:
+    def _make_dataset(self, df: pd.DataFrame, augment: bool = False) -> Dataset:
         from torchvision.io import read_video
 
         root = self.root_dir
         num_frames = self.num_frames
         video_col = self.video_col
         label_col = self.label_col
+
+        if augment:
+            logger.info("Default video augmentation enabled for the training split")
 
         def _decode_clip(video_path: str) -> torch.Tensor:
             """Decode ``num_frames`` evenly-spaced frames as (T, C, H, W)."""
@@ -1210,9 +1242,16 @@ class VideoClassificationDataModule(BaseDataModule):
                 row = self.df.iloc[idx]
                 video_path = str(root / str(row[video_col]))
                 frames = _decode_clip(video_path)
-                return frames.float() / 255.0, torch.tensor(
-                    int(row[label_col]), dtype=torch.long
-                )
+                clip = frames.float() / 255.0
+                if augment:
+                    # One parameter set per clip: the pad/perspective/grayscale
+                    # choices stay consistent across the clip's frames, and the
+                    # trailing RestoreSize returns the clip to its native (H, W)
+                    # so batches still stack.
+                    clip = build_video_augmentation((clip.shape[-2], clip.shape[-1]))(
+                        clip
+                    )
+                return clip, torch.tensor(int(row[label_col]), dtype=torch.long)
 
         return _VideoDataset(df)
 
@@ -1223,9 +1262,11 @@ class VideoClassificationDataModule(BaseDataModule):
             "labels": torch.tensor(labels, dtype=torch.long),
         }
 
-    def _make_df_loader(self, df: pd.DataFrame, shuffle: bool) -> DataLoader:
+    def _make_df_loader(
+        self, df: pd.DataFrame, shuffle: bool, augment: bool = False
+    ) -> DataLoader:
         return DataLoader(
-            self._make_dataset(df),
+            self._make_dataset(df, augment=augment),
             batch_size=self.batch_size,
             shuffle=shuffle,
             num_workers=self.num_workers,
@@ -1234,7 +1275,7 @@ class VideoClassificationDataModule(BaseDataModule):
         )
 
     def train_dataloader(self) -> DataLoader:
-        return self._make_df_loader(self.train_df, shuffle=True)
+        return self._make_df_loader(self.train_df, shuffle=True, augment=self.augment)
 
     def val_dataloader(self) -> DataLoader:
         return self._make_df_loader(self.val_df, shuffle=False)
@@ -1286,6 +1327,11 @@ class KeypointDetectionDataModule(ImageClassificationDataModule):
 
     def _draft_decode_enabled(self) -> bool:
         """Disabled: keypoint coordinates are absolute pixels."""
+        return False
+
+    def _augment_enabled(self) -> bool:
+        """Disabled: geometric augmentation would warp images without
+        warping the keypoint coordinates paired with them."""
         return False
 
     def _collate_fn(self, batch):

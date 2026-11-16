@@ -39,6 +39,7 @@ dependencies = [
   "flask>=3.1,<4",
   "structlog>=24.1,<25",
   "pydantic-settings>=2.0,<3",
+  "codecarbon>=3.3.2",
 ]
 
 [project.optional-dependencies]

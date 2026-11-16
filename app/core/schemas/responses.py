@@ -58,6 +58,7 @@ class TrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
     deployment_instructions: str | None = None
+    emissions: dict[str, Any] | None = None
     process_log: list[dict[str, Any]] = []
 
 
@@ -70,6 +71,7 @@ class VisionTrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
     deployment_instructions: str | None = None
+    emissions: dict[str, Any] | None = None
     process_log: list[dict[str, Any]] = []
 
 
@@ -78,6 +80,7 @@ class MultimodalTrainingSuccessResponse(BaseModel):
     leaderboard: str
     auxiliary_columns: list[str]
     deployment_instructions: str | None = None
+    emissions: dict[str, Any] | None = None
     process_log: list[dict[str, Any]] = []
 
 
@@ -90,6 +93,7 @@ class AudioTrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
     deployment_instructions: str | None = None
+    emissions: dict[str, Any] | None = None
     process_log: list[dict[str, Any]] = []
 
 
@@ -102,4 +106,5 @@ class TextTrainingSuccessResponse(BaseModel):
     message: str
     leaderboard: str
     deployment_instructions: str | None = None
+    emissions: dict[str, Any] | None = None
     process_log: list[dict[str, Any]] = []

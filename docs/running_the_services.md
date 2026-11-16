@@ -263,6 +263,52 @@ The labels CSV must contain **exactly two required columns**:
 
 ---
 
+## Emissions tracking (CO2eq)
+
+Every training run (tabular, vision, multimodal, audio, text) records its
+energy use and CO2eq emissions with
+[codecarbon](https://github.com/mlco2/codecarbon). The summary is returned in
+the `emissions` field of the training endpoint's `200` response, embedded in
+the leaderboard JSON uploaded to AutoDW, written as `emissions.csv` into the
+training output folder (shipped inside the uploaded model zip), and added to
+the AutoDW upload form fields.
+
+```jsonc
+// 200 response (excerpt)
+{
+  "message": "AutoML training completed successfully and model uploaded to AutoDW",
+  "leaderboard": "...",
+  "model_id": "automl_ds1_1760000000",
+  "version": "v1",
+  "emissions": {
+    "duration_seconds": 32.5,
+    "emissions_kg": 3.2e-07,
+    "emissions_rate_kg_per_second": 2.1e-07,
+    "cpu_power_watts": 12.5,
+    "gpu_power_watts": 0.0,
+    "ram_power_watts": 3.0,
+    "cpu_energy_kwh": 4.2e-06,
+    "gpu_energy_kwh": 0.0,
+    "ram_energy_kwh": 1.0e-06,
+    "energy_consumed_kwh": 5.2e-06,
+    "country_name": "Netherlands",
+    "country_iso_code": "NLD"
+  },
+  "process_log": ["..."]
+}
+```
+
+Configuration (see `.env.template`):
+
+| Variable | Default | Meaning |
+| -------- | ------- | ------- |
+| `EMISSIONS_TRACKING_ENABLED` | `true` | Master switch; `false` removes the `emissions` field (it is `null`) and skips the CSV/payload fields. |
+| `EMISSIONS_COUNTRY_ISO_CODE` | `NLD` | ISO-3166 alpha-3 code for the carbon intensity (defaults to the Netherlands, where ALFIE is hosted). A configured country uses codecarbon's offline tracker — intensity is estimated from that country's energy mix, deterministic and without any network calls. Set another code for deployments elsewhere, or leave empty to autodetect the location from the server's IP. |
+
+Fields are only reported when measured (e.g. `gpu_power_watts` is omitted on
+GPU-less machines); when tracking is disabled or produces no data the
+`emissions` field is `null` — never a fake zero.
+
 ## API Workflow
 
 The AutoML Vision pipeline uses a **single-endpoint workflow**: one request

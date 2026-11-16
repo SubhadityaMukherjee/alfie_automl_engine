@@ -12,6 +12,7 @@ from typing import Any
 
 import requests
 
+from app.core.emissions import emissions_extra_fields
 from app.core.exceptions import (
     AutoDWDownloadError,
     AutoDWUploadError,
@@ -292,6 +293,7 @@ def build_upload_payload(
     extra_fields: dict | None = None,
     metrics: dict | None = None,
     algorithm: str | None = None,
+    emissions: dict | None = None,
 ) -> tuple[str, dict]:
     """Return ``(model_id, form_data_dict)`` for the AutoDW upload request.
 
@@ -304,8 +306,13 @@ def build_upload_payload(
     * ``train_loss`` → ``training_loss``
 
     ``algorithm`` is forwarded as-is when set (best model id / name).
-    Fields are only included when the value is present and parseable, so
-    partial metrics never break an upload.
+
+    ``emissions`` is an optional summary dict from ``app.core.emissions``
+    (``TrainingEmissionsTracker.summary``); its fields are flattened onto the
+    form (``emissions_kg``, ``energy_consumed_kwh``, ``duration_seconds``,
+    ...) so emissions metadata travels with the metrics. Fields are only
+    included when present and parseable, so partial metrics never break an
+    upload.
     """
 
     if not dataset_id or not isinstance(dataset_id, str):
@@ -353,6 +360,10 @@ def build_upload_payload(
 
     if extra_fields:
         data.update(extra_fields)
+
+    # Emissions fields last, so the tracking summary always reaches AutoDW
+    # even when a caller's extra_fields happen to carry related keys.
+    data.update(emissions_extra_fields(emissions))
 
     return model_id, data
 

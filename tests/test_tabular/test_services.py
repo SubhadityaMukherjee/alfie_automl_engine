@@ -273,6 +273,29 @@ def test_convert_leaderboard_safely_with_test_metrics():
     assert "**f1_macro**: 0.85" in str_out
 
 
+def test_convert_leaderboard_safely_includes_emissions():
+    leaderboard = pd.DataFrame({"model": ["A"], "score": [0.9]})
+    emissions = {"emissions_kg": 2e-06, "duration_seconds": 30.0}
+
+    json_out, str_out = convert_leaderboard_safely(
+        leaderboard, {"accuracy": 0.9}, emissions=emissions
+    )
+
+    assert json_out["emissions"] == emissions
+    assert "### Emissions" in str_out
+    assert "**emissions_kg**: 2e-06" in str_out
+    assert "**duration_seconds**: 30.0" in str_out
+
+
+def test_convert_leaderboard_safely_emissions_default_empty():
+    # No emissions tracked -> key present but empty; no markdown section.
+    json_out, str_out = convert_leaderboard_safely(
+        pd.DataFrame({"model": ["A"], "score": [0.9]}), {}
+    )
+    assert json_out["emissions"] == {}
+    assert "### Emissions" not in str_out
+
+
 # ---------------------------------------------------------------------------
 # serialize_and_zip_predictor
 # ---------------------------------------------------------------------------

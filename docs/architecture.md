@@ -102,6 +102,7 @@ service router under one `/automl` prefix (e.g.
 - `logging.py` — structlog setup plus per-service rotating log files.
 - `chat_handler.py` — facade over Azure AI Inference chat models (sync, async, streaming, with images).
 - `service_helpers.py` — AutoDW dataset metadata fetch / download / model upload / payload building.
+- `emissions.py` — CO2eq/energy tracking for training runs (codecarbon wrapper: `TrainingEmissionsTracker`, CSV + summary helpers). Every modality's training records its emissions; the summary rides in the API response and the AutoDW upload, the `emissions.csv` ships inside the model zip.
 - `dataset_extraction.py` — shared ZIP + CSV + media-folder dataset extraction helpers used by the vision, audio, and text pipelines.
 - `health.py` — `/health` and `/ready` endpoints.
 - `utils.py` — Jinja2 prompt template rendering.
@@ -127,9 +128,12 @@ and `text_automl` share the same shape:
 2. Resolve the correct download URL (respecting dataset splits).
 3. Download the dataset to a temporary directory (the media services also extract the ZIP).
 4. Validate user-supplied parameters against the dataset.
-5. Train within the given time budget (delegated to `app/ml_engine`).
-6. Serialize and zip the model artifacts.
-7. Upload the model and leaderboard back to AutoDW.
+5. Train within the given time budget (delegated to `app/ml_engine`); the run's
+   CO2eq/energy emissions are tracked and an `emissions.csv` is written into
+   the training output folder.
+6. Serialize and zip the model artifacts (the `emissions.csv` is included).
+7. Upload the model and leaderboard back to AutoDW; the emissions summary is
+   part of the API response and of the AutoDW upload form.
 
 Blocking steps (network, training) are pushed off the event loop via `offload`.
 
@@ -149,8 +153,9 @@ engines can evolve independently:
 - `model.py` — thin wrappers around Hugging Face `AutoModelFor...` classes,
   plus the tabular task models (`SUPPORTED_TABULAR_TASK_TYPES`).
 - `trainer.py` — `FabricTrainer` (Lightning Fabric training loop with early
-  stopping, time limits, and Optuna pruning), `run_optuna_search`, and the
-  AutoGluon-backed `AutoGluonTrainer` for tabular tasks.
+  stopping, time limits, and Optuna pruning), `run_optuna_search` (tracks
+  emissions for the whole search), and the AutoGluon-backed
+  `AutoGluonTrainer` for tabular tasks (tracks emissions for the fit).
 - `hpo/optuna_objectives.py` — one Optuna objective per task type plus
   `OBJECTIVE_REGISTRY`; `run_optuna_search` dispatches through the registry.
 - `feature_mapping.py` — extracts label maps, tokenizer vocabularies, and

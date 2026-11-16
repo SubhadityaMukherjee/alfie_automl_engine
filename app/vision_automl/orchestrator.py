@@ -23,9 +23,10 @@ import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterator
+from typing import Any, Iterator
 
 from app.core.concurrency import offload
+from app.core.emissions import coerce_emissions_summary
 from app.core.exceptions import AutoDWUploadError, AutoMLValidationError
 from app.core.process_log import step
 from app.core.service_helpers import (
@@ -112,6 +113,9 @@ class VisionTrainingResult:
     # AutoDW-assigned identity of the uploaded model, needed for retraining.
     model_id: str
     version: str
+    # CO2eq/energy tracking summary for the training run (None when
+    # emissions tracking was disabled or produced no data).
+    emissions: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -124,6 +128,8 @@ class MultimodalTrainingResult:
     # AutoDW-assigned identity of the uploaded model, needed for retraining.
     model_id: str = ""
     version: str = ""
+    # CO2eq/energy tracking summary for the training run.
+    emissions: dict[str, Any] | None = None
 
 
 def _require_zip(metadata: dict) -> None:
@@ -246,6 +252,7 @@ async def run_vision_pipeline(
         # 8. Upload.
         with step("build_upload_payload"):
             metrics, algorithm = extract_optuna_metrics_for_autodw(optuna_result)
+            emissions = coerce_emissions_summary(optuna_result.get("emissions"))
             model_id, payload = build_upload_payload(
                 req.dataset_id,
                 req.dataset_version,
@@ -254,6 +261,7 @@ async def run_vision_pipeline(
                 leaderboard_json,
                 metrics=metrics,
                 algorithm=algorithm,
+                emissions=emissions,
             )
         with step("upload_model"):
             upload_resp = await offload(
@@ -273,6 +281,7 @@ async def run_vision_pipeline(
         leaderboard=leaderboard_str,
         model_id=model_id,
         version=version,
+        emissions=emissions,
     )
 
 
@@ -367,6 +376,7 @@ async def run_multimodal_pipeline(
         # 8. Upload.
         with step("build_upload_payload"):
             metrics, algorithm = extract_optuna_metrics_for_autodw(optuna_result)
+            emissions = coerce_emissions_summary(optuna_result.get("emissions"))
             model_id, payload = build_upload_payload(
                 req.dataset_id,
                 req.dataset_version,
@@ -375,6 +385,7 @@ async def run_multimodal_pipeline(
                 leaderboard_json,
                 metrics=metrics,
                 algorithm=algorithm,
+                emissions=emissions,
             )
         with step("upload_model"):
             upload_resp = await offload(
@@ -397,4 +408,5 @@ async def run_multimodal_pipeline(
         auxiliary_columns=auxiliary_columns,
         model_id=model_id,
         version=version,
+        emissions=emissions,
     )

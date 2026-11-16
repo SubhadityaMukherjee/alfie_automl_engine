@@ -188,6 +188,7 @@ def convert_leaderboard_safely(optuna_result: dict) -> tuple[dict, str]:
         "best_metrics": optuna_result.get("best_metrics") or {},
         "best_params": optuna_result.get("best_params"),
         "trials": optuna_result.get("n_trials"),
+        "emissions": optuna_result.get("emissions") or {},
     }
     leaderboard_str = json.dumps(leaderboard_json, indent=2)
     return leaderboard_json, leaderboard_str
@@ -206,6 +207,7 @@ def build_upload_payload(
     leaderboard_json: dict,
     metrics: dict | None = None,
     algorithm: str | None = None,
+    emissions: dict | None = None,
 ) -> tuple[str, dict]:
     """Return (model_id, form_data_dict) for the AutoDW upload request."""
     return _core_build_upload_payload(
@@ -220,4 +222,5 @@ def build_upload_payload(
         framework="pytorch",
         metrics=metrics,
         algorithm=algorithm,
+        emissions=emissions,
     )
