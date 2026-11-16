@@ -432,3 +432,79 @@ def test_best_model_success(
     # The response reports the AutoDW-assigned model identity for retraining.
     assert body["model_id"] == "model_id"
     assert body["version"] == "v1"
+
+
+# ---------------------------------------------------------------------------
+# best_model — emissions reporting
+# ---------------------------------------------------------------------------
+
+
+@patch("app.tabular_automl.router.deployment_instructions", return_value="deploy info")
+@patch("app.tabular_automl.orchestrator.upload_model")
+@patch(
+    "app.tabular_automl.orchestrator.build_upload_payload",
+    return_value=("model_id", {"key": "val"}),
+)
+@patch(
+    "app.tabular_automl.orchestrator.convert_leaderboard_safely",
+    return_value=({"score": 0.9}, "leaderboard_str"),
+)
+@patch(
+    "app.tabular_automl.orchestrator.summarize_training_emissions",
+    return_value={
+        "emissions_kg": 1e-06,
+        "energy_consumed_kwh": 2e-06,
+        "duration_seconds": 12.5,
+        "country_iso_code": "NLD",
+    },
+)
+@patch("app.tabular_automl.orchestrator.serialize_and_zip_predictor")
+@patch(
+    "app.tabular_automl.orchestrator.train_automl",
+    return_value=(MagicMock(), MagicMock(), {}, None),
+)
+@patch("app.tabular_automl.orchestrator.validate_tabular_inputs", return_value=None)
+@patch(
+    "app.tabular_automl.orchestrator.download_dataset",
+    side_effect=_make_download_side_effect(),
+)
+@patch(
+    "app.tabular_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.tabular_automl.orchestrator.fetch_dataset_metadata",
+    return_value={"file_type": "csv", "original_filename": "train.csv"},
+)
+def test_best_model_reports_emissions(
+    mock_fetch,
+    mock_resolve,
+    mock_download,
+    mock_validate,
+    mock_train,
+    mock_serialize,
+    mock_emissions,
+    mock_convert,
+    mock_payload,
+    mock_upload,
+    mock_instructions,
+):
+    zip_path = MagicMock()
+    zip_path.exists.return_value = True
+    mock_serialize.return_value = zip_path
+
+    upload_resp = MagicMock()
+    upload_resp.status_code = 200
+    upload_resp.json.return_value = {"version": "v1"}
+    mock_upload.return_value = upload_resp
+
+    resp = client.post("/automl/tabular/best_model/", data=_VALID_PARAMS)
+    assert resp.status_code == 200
+    body = resp.json()
+    # The emissions summary is part of the JSON output.
+    assert body["emissions"]["emissions_kg"] == 1e-06
+    assert body["emissions"]["duration_seconds"] == 12.5
+    assert body["emissions"]["country_iso_code"] == "NLD"
+    # ...and travels with the metrics onto the AutoDW upload form.
+    kwargs = mock_payload.call_args.kwargs
+    assert kwargs["emissions"]["energy_consumed_kwh"] == 2e-06

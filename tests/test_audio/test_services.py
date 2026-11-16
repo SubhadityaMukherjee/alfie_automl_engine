@@ -149,6 +149,25 @@ def test_convert_leaderboard_safely_complete():
     assert json.loads(lb_str) == lb_json
 
 
+def test_convert_leaderboard_safely_includes_emissions():
+    result = {
+        "best_value": 0.123,
+        "best_params": {"lr": 0.001},
+        "best_metrics": {"loss": 0.123, "accuracy": 0.9},
+        "n_trials": 3,
+        "emissions": {"emissions_kg": 2e-06, "duration_seconds": 30.0},
+    }
+    lb_json, lb_str = convert_leaderboard_safely(result)
+    assert lb_json["emissions"] == {"emissions_kg": 2e-06, "duration_seconds": 30.0}
+    assert json.loads(lb_str) == lb_json
+
+
+def test_convert_leaderboard_safely_emissions_default_empty():
+    # Missing emissions key degrades to an empty dict (additive contract).
+    lb_json, _ = convert_leaderboard_safely({"best_value": 0.123})
+    assert lb_json["emissions"] == {}
+
+
 # ---------------------------------------------------------------------------
 # build_upload_payload
 # ---------------------------------------------------------------------------

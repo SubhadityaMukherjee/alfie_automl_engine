@@ -630,3 +630,110 @@ def test_fit_prunes_trial_when_time_limit_fired_before_any_batch():
 
     with pytest.raises(optuna.TrialPruned):
         trainer.fit(trial=trial)
+
+
+# ---------------------------------------------------------------------------
+# run_optuna_search — emissions tracking
+# ---------------------------------------------------------------------------
+
+
+def test_run_optuna_search_tracks_emissions(monkeypatch, tmp_path: Path):
+    """The search result carries the emissions summary, and the emissions
+    CSV is copied into workdir/model/ so it ships inside the model zip."""
+    import csv as _csv
+
+    from app.ml_engine.hpo import optuna_objectives as objectives_module
+
+    monkeypatch.setattr(
+        objectives_module,
+        "OBJECTIVE_REGISTRY",
+        {"image_classification": lambda trial, **kwargs: 0.5},
+    )
+    # Opt back in (root conftest disables tracking) and swap the real
+    # codecarbon tracker for a fake that appends one codecarbon-shaped row.
+    monkeypatch.setenv("EMISSIONS_TRACKING_ENABLED", "true")
+
+    header = [
+        "timestamp",
+        "project_name",
+        "duration",
+        "emissions",
+        "energy_consumed",
+        "country_name",
+        "country_iso_code",
+    ]
+
+    def fake_tracker(**kwargs):
+        from app.core.emissions import EMISSIONS_CSV_FILENAME
+
+        output_file = Path(kwargs["output_dir"]) / kwargs.get(
+            "output_file", EMISSIONS_CSV_FILENAME
+        )
+
+        class _Fake:
+            def __init__(self, **_):
+                pass
+
+            def start(self):
+                pass
+
+            def stop(self):
+                with open(output_file, "w", newline="", encoding="utf-8") as fh:
+                    writer = _csv.DictWriter(fh, fieldnames=header)
+                    writer.writeheader()
+                    writer.writerow(
+                        {
+                            "project_name": kwargs["project_name"],
+                            "duration": "4.0",
+                            "emissions": "1e-06",
+                            "energy_consumed": "2e-06",
+                            "country_name": "Denmark",
+                            "country_iso_code": "DNK",
+                        }
+                    )
+                return 1e-06
+
+        return _Fake()
+
+    monkeypatch.setattr("app.core.emissions._load_tracker", fake_tracker)
+
+    result = run_optuna_search(
+        task_type="image_classification",
+        csv_path=tmp_path / "labels.csv",
+        images_dir=tmp_path / "images",
+        workdir=tmp_path,
+        n_trials=1,
+    )
+
+    assert result["emissions"] == {
+        "duration_seconds": 4.0,
+        "emissions_kg": 1e-06,
+        "energy_consumed_kwh": 2e-06,
+        "country_name": "Denmark",
+        "country_iso_code": "DNK",
+    }
+    # The CSV was copied into the model dir for the upload zip.
+    assert (tmp_path / "model" / "emissions.csv").exists()
+
+
+def test_run_optuna_search_emissions_disabled_is_none(monkeypatch, tmp_path: Path):
+    """With tracking disabled the result carries emissions=None (never a
+    zero)."""
+    from app.ml_engine.hpo import optuna_objectives as objectives_module
+
+    monkeypatch.setattr(
+        objectives_module,
+        "OBJECTIVE_REGISTRY",
+        {"image_classification": lambda trial, **kwargs: 0.5},
+    )
+
+    result = run_optuna_search(
+        task_type="image_classification",
+        csv_path=tmp_path / "labels.csv",
+        images_dir=tmp_path / "images",
+        workdir=tmp_path,
+        n_trials=1,
+    )
+
+    assert result["emissions"] is None
+    assert not (tmp_path / "emissions.csv").exists()

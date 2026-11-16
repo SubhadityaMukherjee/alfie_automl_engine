@@ -118,6 +118,34 @@ def test_build_upload_payload_algorithm_forwarded():
     assert data["algorithm"] == "resnet18"
 
 
+def test_build_upload_payload_includes_emissions_fields():
+    from app.core.service_helpers import build_upload_payload
+
+    emissions = {
+        "emissions_kg": 3.2e-07,
+        "energy_consumed_kwh": 5.2e-06,
+        "duration_seconds": 1.5,
+        "country_iso_code": "NLD",
+    }
+    _, data = build_upload_payload(
+        "ds1", "v1", {}, "classification", {}, emissions=emissions
+    )
+    assert data["emissions_kg"] == pytest.approx(3.2e-07)
+    assert data["energy_consumed_kwh"] == pytest.approx(5.2e-06)
+    assert data["duration_seconds"] == pytest.approx(1.5)
+    assert data["country_iso_code"] == "NLD"
+
+
+def test_build_upload_payload_without_emissions_stays_unchanged():
+    from app.core.service_helpers import build_upload_payload
+
+    _, data = build_upload_payload("ds1", "v1", {}, "classification", {})
+    assert "emissions_kg" not in data
+    assert "energy_consumed_kwh" not in data
+    assert "duration_seconds" not in data
+    assert "country_iso_code" not in data
+
+
 # ---------------------------------------------------------------------------
 # extract_optuna_metrics_for_autodw
 # ---------------------------------------------------------------------------

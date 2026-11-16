@@ -40,6 +40,7 @@ from torch import nn, optim
 from tqdm import tqdm
 
 from app.core.config import get_settings
+from app.core.emissions import TrainingEmissionsTracker, copy_emissions_csv
 from app.core.exceptions import (
     AutoMLConfigError,
     AutoMLDataError,
@@ -846,19 +847,31 @@ def run_optuna_search(
         **extra_kwargs,
     }
 
-    study.optimize(
-        lambda trial: objective_fn(
-            trial,
-            **{
-                **objective_kwargs,
-                "timeout_per_trial": _clamp_per_trial_timeout(
-                    timeout_per_trial, deadline, time.time()
-                ),
-            },
-        ),
-        n_trials=n_trials,
-        timeout=timeout,
+    # Track CO2eq emissions for the whole search (all trials). The CSV lands
+    # in workdir and is copied into workdir/model/ below so it ships inside
+    # the uploaded zip; the summary dict rides on the returned result.
+    emissions_tracker = TrainingEmissionsTracker(
+        project_name=f"alfie-automl-{task_type}",
+        output_dir=workdir,
     )
+    emissions: dict | None = None
+    emissions_tracker.start()
+    try:
+        study.optimize(
+            lambda trial: objective_fn(
+                trial,
+                **{
+                    **objective_kwargs,
+                    "timeout_per_trial": _clamp_per_trial_timeout(
+                        timeout_per_trial, deadline, time.time()
+                    ),
+                },
+            ),
+            n_trials=n_trials,
+            timeout=timeout,
+        )
+    finally:
+        emissions = emissions_tracker.stop()
 
     completed = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
     if not completed:
@@ -869,6 +882,10 @@ def run_optuna_search(
 
     best_trial_dir = run_dir / f"trial_{study.best_trial.number}"
     _copy_best_trial_artifacts(best_trial_dir, workdir)
+
+    # Ship the per-run emissions CSV inside the model folder so it lands in
+    # the zip built by serialize_and_zip_model (and reaches AutoDW).
+    copy_emissions_csv(workdir / "emissions.csv", Path(workdir) / "model")
 
     # Objectives attach their best-epoch metrics as a trial user attr, so the
     # search can report what the winning hyperparameters actually achieved.
@@ -882,6 +899,7 @@ def run_optuna_search(
         "best_metrics": best_metrics,
         "n_trials": len(study.trials),
         "model_dir": best_trial_dir,
+        "emissions": emissions,
     }
 
 
@@ -956,6 +974,9 @@ class AutoGluonTrainer:
 
         self.DatasetClass = DatasetClass
         self.PredictorClass = PredictorClass
+        # Summary dict (or None) from the emissions CSV written by the most
+        # recent train() call; see app.core.emissions.
+        self.emissions_summary: dict | None = None
         logger.debug(f"AutoGluon trainer, model path {self.save_model_path}")
 
     def train(
@@ -978,7 +999,9 @@ class AutoGluonTrainer:
         Returns ``(leaderboard, predictor, test_metrics, train_acc)`` where
         ``test_metrics`` is empty when the suite could not be computed and
         ``train_acc`` is the best model's training-set accuracy (``None``
-        for regression or when not computable).
+        for regression or when not computable). Also writes
+        ``emissions.csv`` (CO2eq/energy tracking) into ``save_model_path``
+        and exposes the summary as ``self.emissions_summary``.
         """
         if not isinstance(train_df, pd.DataFrame):
             raise AutoMLDataError("train_df is not a DataFrame")
@@ -1019,46 +1042,59 @@ class AutoGluonTrainer:
             logger.exception("Failed to create TabularDataset")
             raise AutoMLDataError(f"Dataset creation failed: {e}") from e
 
-        try:
-            predictor = self.PredictorClass(
-                label=target_column, path=str(self.save_model_path)
-            ).fit(
-                train_data=train_dataset,
-                time_limit=time_limit,
-                num_gpus=num_gpus,
-                num_cpus=num_cpus,
-            )
-        except Exception as e:
-            logger.exception("AutoGluon training failed")
-            raise AutoMLTrainingError(f"Model training failed: {e}") from e
-
-        try:
-            save_path_clone_opt = self.save_model_path / "-clone-opt"
-            path_clone_opt = predictor.clone_for_deployment(
-                path=str(save_path_clone_opt)
-            )
-            predictor_clone_opt = self.PredictorClass.load(path=str(path_clone_opt))
-        except Exception as e:
-            logger.warning(
-                f"Failed to clone model for deployment, falling back to base predictor: {e}"
-            )
-            predictor_clone_opt = predictor
-
-        try:
-            leaderboard = predictor.leaderboard(test_dataset)
-        except Exception as e:
-            logger.exception("Failed to generate leaderboard")
-            raise AutoMLLeaderboardError(f"Leaderboard generation failed: {e}") from e
-
-        test_metrics: dict[str, float] = _compute_tabular_test_metrics(
-            predictor_clone_opt, final_test_df, target_column
+        # Track CO2eq emissions for the whole fit+evaluation. The CSV is
+        # written into save_model_path, which serialize_and_zip_predictor
+        # packages into the uploaded zip; the summary is kept on
+        # self.emissions_summary for callers.
+        self.emissions_summary = None
+        emissions_tracker = TrainingEmissionsTracker(
+            project_name="alfie-automl-tabular",
+            output_dir=self.save_model_path,
         )
-        # Accuracy of the best model on its own training data — best-effort
-        # (None for regression or when the suite could not be computed).
-        train_metrics: dict[str, float] = _compute_tabular_test_metrics(
-            predictor_clone_opt, final_train_df, target_column
-        )
-        train_acc: float | None = train_metrics.get("accuracy")
+        with emissions_tracker:
+            try:
+                predictor = self.PredictorClass(
+                    label=target_column, path=str(self.save_model_path)
+                ).fit(
+                    train_data=train_dataset,
+                    time_limit=time_limit,
+                    num_gpus=num_gpus,
+                    num_cpus=num_cpus,
+                )
+            except Exception as e:
+                logger.exception("AutoGluon training failed")
+                raise AutoMLTrainingError(f"Model training failed: {e}") from e
+
+            try:
+                save_path_clone_opt = self.save_model_path / "-clone-opt"
+                path_clone_opt = predictor.clone_for_deployment(
+                    path=str(save_path_clone_opt)
+                )
+                predictor_clone_opt = self.PredictorClass.load(path=str(path_clone_opt))
+            except Exception as e:
+                logger.warning(
+                    f"Failed to clone model for deployment, falling back to base predictor: {e}"
+                )
+                predictor_clone_opt = predictor
+
+            try:
+                leaderboard = predictor.leaderboard(test_dataset)
+            except Exception as e:
+                logger.exception("Failed to generate leaderboard")
+                raise AutoMLLeaderboardError(
+                    f"Leaderboard generation failed: {e}"
+                ) from e
+
+            test_metrics: dict[str, float] = _compute_tabular_test_metrics(
+                predictor_clone_opt, final_test_df, target_column
+            )
+            # Accuracy of the best model on its own training data — best-effort
+            # (None for regression or when the suite could not be computed).
+            train_metrics: dict[str, float] = _compute_tabular_test_metrics(
+                predictor_clone_opt, final_train_df, target_column
+            )
+            train_acc: float | None = train_metrics.get("accuracy")
+        self.emissions_summary = emissions_tracker.summary
         return leaderboard, predictor_clone_opt, test_metrics, train_acc
 
     def train_test_split(

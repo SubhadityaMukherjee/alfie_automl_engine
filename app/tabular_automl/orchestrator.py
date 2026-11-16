@@ -32,6 +32,7 @@ import requests
 
 from app.core.concurrency import offload
 from app.core.config import get_settings
+from app.core.emissions import summarize_training_emissions
 from app.core.exceptions import (
     AutoDWDownloadError,
     AutoDWUploadError,
@@ -85,6 +86,9 @@ class TrainingResult:
     # AutoDW-assigned identity of the uploaded model, needed for retraining.
     model_id: str
     version: str
+    # CO2eq/energy tracking summary for the training run (None when
+    # emissions tracking was disabled or produced no data).
+    emissions: dict | None = None
 
 
 def _validate_request(req: TabularTrainingRequest) -> None:
@@ -291,8 +295,12 @@ async def run_training_pipeline(
                 zip_path = await offload(
                     serialize_and_zip_predictor, predictor, save_model_path, tmp_path
                 )
+                # Emissions CSV was written into save_model_path by the
+                # trainer; it is already inside the zip, and its summary
+                # rides along in the response and upload payload.
+                emissions = await offload(summarize_training_emissions, save_model_path)
                 leaderboard_json, leaderboard_str = convert_leaderboard_safely(
-                    leaderboard, test_metrics
+                    leaderboard, test_metrics, emissions=emissions
                 )
         except Exception as e:
             logger.error("Failed to serialize and zip model: %s", e)
@@ -315,6 +323,7 @@ async def run_training_pipeline(
                     leaderboard_json,
                     metrics=metrics,
                     algorithm=algorithm,
+                    emissions=emissions,
                 )
         except Exception as e:
             logger.error("Failed to build upload payload: %s", e)
@@ -347,4 +356,5 @@ async def run_training_pipeline(
         leaderboard=leaderboard_str,
         model_id=model_id,
         version=version,
+        emissions=emissions,
     )

@@ -486,3 +486,76 @@ def test_multimodal_success(
     # The response reports the AutoDW-assigned model identity for retraining.
     assert body["model_id"] == "model_id"
     assert body["version"] == "v1"
+
+
+# ---------------------------------------------------------------------------
+# best_model — emissions reporting
+# ---------------------------------------------------------------------------
+
+
+@patch("app.vision_automl.router.deployment_instructions", return_value="deploy info")
+@patch("app.vision_automl.orchestrator.upload_model")
+@patch(
+    "app.vision_automl.orchestrator.build_upload_payload",
+    return_value=("model_id", {"key": "val"}),
+)
+@patch("app.vision_automl.orchestrator.serialize_and_zip_model")
+@patch(
+    "app.vision_automl.orchestrator.train_automl",
+    return_value={
+        "best_value": 0.1,
+        "best_params": {"model_id": "microsoft/resnet-50"},
+        "best_metrics": {"accuracy": 0.9, "val_acc": 0.9, "test_acc": 0.85},
+        "n_trials": 2,
+        "emissions": {"emissions_kg": 2e-06, "duration_seconds": 30.0},
+    },
+)
+@patch("app.vision_automl.orchestrator.validate_vision_inputs", return_value=None)
+@patch("app.vision_automl.orchestrator.extract_and_locate_dataset")
+@patch("app.vision_automl.orchestrator.download_dataset")
+@patch(
+    "app.vision_automl.orchestrator.resolve_download_url",
+    return_value="http://download",
+)
+@patch(
+    "app.vision_automl.orchestrator.fetch_dataset_metadata",
+    return_value={"file_type": "zip", "original_filename": "dataset.zip"},
+)
+def test_best_model_reports_emissions(
+    mock_fetch,
+    mock_resolve,
+    mock_download,
+    mock_extract,
+    mock_validate,
+    mock_train,
+    mock_serialize,
+    mock_payload,
+    mock_upload,
+    mock_instructions,
+):
+    import json as _json
+    from pathlib import Path
+
+    mock_download.return_value = Path("/tmp/dataset.zip")
+    mock_extract.return_value = (Path("/tmp/labels.csv"), Path("/tmp/images"))
+
+    zip_path = MagicMock()
+    zip_path.exists.return_value = True
+    mock_serialize.return_value = zip_path
+
+    upload_resp = MagicMock()
+    upload_resp.status_code = 200
+    upload_resp.json.return_value = {"version": "v1"}
+    mock_upload.return_value = upload_resp
+
+    resp = client.post("/automl/vision/best_model/", data=_VISION_PARAMS)
+    assert resp.status_code == 200
+    body = resp.json()
+    # The emissions summary is part of the JSON output...
+    assert body["emissions"]["emissions_kg"] == 2e-06
+    # ...and is embedded in the leaderboard JSON uploaded to AutoDW.
+    leaderboard = _json.loads(body["leaderboard"])
+    assert leaderboard["emissions"]["emissions_kg"] == 2e-06
+    # ...and travels onto the AutoDW upload form.
+    kwargs = mock_payload.call_args.kwargs
+    assert kwargs["emissions"]["duration_seconds"] == 30.0

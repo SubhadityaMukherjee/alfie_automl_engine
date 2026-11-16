@@ -186,13 +186,16 @@ def validate_tabular_inputs(
 
 
 def convert_leaderboard_safely(
-    leaderboard, test_metrics: dict[str, float] | None = None
+    leaderboard,
+    test_metrics: dict[str, float] | None = None,
+    emissions: dict | None = None,
 ) -> tuple[dict, str]:
     """Turn a leaderboard into a JSON-ready structure plus a markdown string.
 
-    DataFrames become ``{"models": [...], "test_metrics": {...}}`` plus a
-    markdown table; when test metrics were computed a "Test metrics" section
-    is appended to the markdown. Anything else falls back to its plain string
+    DataFrames become ``{"models": [...], "test_metrics": {...}, "emissions": {...}}``
+    plus a markdown table; when test metrics were computed a "Test metrics" section
+    is appended to the markdown, and when emissions were tracked an
+    "Emissions" section follows. Anything else falls back to its plain string
     form.
     """
     test_metrics = test_metrics or {}
@@ -200,6 +203,7 @@ def convert_leaderboard_safely(
         leaderboard_json: dict = {
             "models": leaderboard.to_dict(orient="records"),
             "test_metrics": test_metrics,
+            "emissions": emissions or {},
         }
         leaderboard_str = str(leaderboard.to_markdown())
         if test_metrics:
@@ -208,6 +212,11 @@ def convert_leaderboard_safely(
                 for name, value in sorted(test_metrics.items())
             )
             leaderboard_str = f"{leaderboard_str}\n\n### Test metrics\n\n{metrics_md}"
+        if emissions:
+            emissions_md = "\n".join(
+                f"- **{name}**: {value}" for name, value in sorted(emissions.items())
+            )
+            leaderboard_str = f"{leaderboard_str}\n\n### Emissions\n\n{emissions_md}"
     else:
         leaderboard_json = {"result": str(leaderboard)}
         leaderboard_str = str(leaderboard)
@@ -571,6 +580,7 @@ def build_upload_payload(
     leaderboard_json: list | dict,
     metrics: dict | None = None,
     algorithm: str | None = None,
+    emissions: dict | None = None,
 ) -> tuple[str, dict]:
     """Return (model_id, form_data_dict) for the AutoDW upload request."""
     instructions = deployment_instructions()
@@ -590,6 +600,7 @@ def build_upload_payload(
         extra_fields=extra,
         metrics=metrics,
         algorithm=algorithm,
+        emissions=emissions,
     )
 
 

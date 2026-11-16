@@ -56,8 +56,8 @@ Trains AutoGluon models on CSV/TSV/Parquet datasets fetched from AutoDW.
 | `num_gpus` | int \| `auto` | `auto` | GPU count for AutoML |
 | `dataset_split` | str | `None` | AutoDW dataset split to train on (e.g. `train`) |
 
-Responses: `200` success (message + leaderboard), `400` validation error,
-`502` AutoDW communication failure, `500` unexpected error.
+Responses: `200` success (message + leaderboard + emissions), `400` validation
+error, `502` AutoDW communication failure, `500` unexpected error.
 
 ---
 
@@ -96,7 +96,7 @@ to the consolidated ML engine (`app/ml_engine`).
 | ----- | ---- | ------- | ----------- |
 | `exclude_columns` | str | `None` | Comma-separated CSV columns to exclude from auxiliary features (all other non-filename/label columns are used; numeric columns are scaled, categorical columns encoded) |
 
-Responses for both endpoints: `200` success (message + leaderboard;
+Responses for both endpoints: `200` success (message + leaderboard + emissions;
 multimodal also returns the detected `auxiliary_columns`), `400` validation
 error, `502` AutoDW communication failure, `500` unexpected error.
 
@@ -133,8 +133,8 @@ Hugging Face models, on audio ZIP datasets fetched from AutoDW.
 | `num_gpus` | int \| `auto` | `auto` | GPU count for AutoML |
 | `dataset_split` | str | `None` | AutoDW dataset split to train on |
 
-Responses: `200` success (message + leaderboard), `400` validation error,
-`502` AutoDW communication failure, `500` unexpected error.
+Responses: `200` success (message + leaderboard + emissions), `400` validation
+error, `502` AutoDW communication failure, `500` unexpected error.
 
 ---
 
@@ -171,8 +171,8 @@ Required CSV columns per task type: `text` + `label` for
 `question_answering`; `text` for `causal_lm` / `masked_lm`; `input_text` +
 `target_text` for `seq2seq_lm`.
 
-Responses: `200` success (message + leaderboard), `400` validation error,
-`502` AutoDW communication failure, `500` unexpected error.
+Responses: `200` success (message + leaderboard + emissions), `400` validation
+error, `502` AutoDW communication failure, `500` unexpected error.
 
 ---
 
@@ -210,6 +210,15 @@ fetch failure).
   `vision/best_model`, `vision/multimodal_best_model`, `audio/best_model`,
   `text/best_model`) accept an optional `X-Task-ID` header used for request
   tracking.
+- **Emissions reporting**: every training endpoint reports a CO2eq/energy
+  summary for the run in the `emissions` field of its `200` response, embeds
+  the same summary in the uploaded leaderboard JSON, writes an
+  `emissions.csv` into the training output folder (shipped inside the model
+  zip to AutoDW), and adds the emissions fields to the AutoDW upload form.
+  Tracking can be disabled with `EMISSIONS_TRACKING_ENABLED=false`; the
+  location/carbon-intensity defaults to the Netherlands
+  (`EMISSIONS_COUNTRY_ISO_CODE=NLD`). See
+  [running the services](running_the_services.md#emissions-tracking-co2eq).
 - **Error shape**: errors are returned as `{"error": "<message>"}` with the
   status codes listed per service above.
 - Runnable `curl` examples live in

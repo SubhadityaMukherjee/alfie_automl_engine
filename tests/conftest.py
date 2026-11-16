@@ -9,6 +9,17 @@ import pytest
 from PIL import Image
 
 
+@pytest.fixture(autouse=True)
+def _no_emissions_tracking(monkeypatch):
+    """Keep codecarbon out of unit tests unless a test opts in.
+
+    Emissions tests opt back in with ``monkeypatch.setenv(
+    "EMISSIONS_TRACKING_ENABLED", "true")`` and usually swap the real
+    tracker for a fake via ``app.core.emissions._load_tracker``.
+    """
+    monkeypatch.setenv("EMISSIONS_TRACKING_ENABLED", "false")
+
+
 def _make_tiny_png(path) -> None:
     img = Image.new("RGB", (10, 10), color=(128, 64, 32))
     img.save(path)

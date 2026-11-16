@@ -87,6 +87,18 @@ class Settings(BaseSettings):
     # Upper bound for auto-selected DataLoader worker processes.
     auto_num_workers_max: int = 8
 
+    # --- Emissions tracking (codecarbon) -----------------------------------
+    # Master switch for CO2eq/energy tracking of training runs. When enabled,
+    # each training run writes an `emissions.csv` into its output folder,
+    # reports a summary in the API response, and uploads both with the model.
+    emissions_tracking_enabled: bool = True
+    # ISO-3166 alpha-3 country code used by codecarbon to pick the carbon
+    # intensity. Defaults to the Netherlands (ALFIE hosting). A configured
+    # country uses codecarbon's offline tracker (deterministic, no network);
+    # set another code for deployments elsewhere, or leave it empty ("") to
+    # autodetect the location from the server's IP.
+    emissions_country_iso_code: str = "NLD"
+
 
 def get_settings() -> Settings:
     """Return a ``Settings`` instance populated from the current environment.
