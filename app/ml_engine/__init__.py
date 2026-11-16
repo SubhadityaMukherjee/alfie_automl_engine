@@ -1,5 +1,6 @@
 """Generic ML engine shared by the vision, audio, and text AutoML services."""
 
+from .augmentation import build_image_augmentation, build_video_augmentation
 from .datamodule import ClassificationData, MultimodalClassificationDataModule
 from .dataset import ImageClassificationFromCSVDataset, MultimodalClassificationDataset
 from .model import ClassificationModel, MultimodalClassificationModel
@@ -14,4 +15,6 @@ __all__ = [
     "MultimodalClassificationModel",
     "FabricTrainer",
     "EarlyStopping",
+    "build_image_augmentation",
+    "build_video_augmentation",
 ]
